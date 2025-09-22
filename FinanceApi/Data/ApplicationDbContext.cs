@@ -24,6 +24,9 @@ namespace FinanceApi.Data
         public DbSet<Warehouse> Warehouse { get; set; }
         public DbSet<Deduction> Deduction { get; set; }
         public DbSet<Income> Income { get; set; }
+        public DbSet<Department> Department { get; set; }
+        public DbSet<Uom> Uom { get; set; }
+        public DbSet<Item> Item { get; set; }
         public DbSet<Customer> Customer { get; set; }
         public DbSet<Supplier> Supplier { get; set; }
         public DbSet<Sales> Sales { get; set; }
