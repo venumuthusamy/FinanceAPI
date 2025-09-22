@@ -39,7 +39,9 @@ namespace FinanceApi.Data
         public DbSet<ChartOfAccount> ChartOfAccount { get; set; }
         public DbSet<OpeningBalance> OpeningBalance { get; set; }
 
+        public DbSet<PurchaseRequest> PurchaseRequests { get; set; }
 
+        
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
