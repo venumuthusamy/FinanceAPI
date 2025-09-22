@@ -223,7 +223,41 @@ CREATE TABLE Service (
     UpdatedDate DATETIME,
     IsActive BIT DEFAULT 1
 );
+CREATE TABLE Department (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    DepartmentName VARCHAR(100) NOT NULL,
+	DepartmentCode VARCHAR(100) NOT NULL,
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1
+);
+CREATE TABLE Uom (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL,
+    Description VARCHAR(100) NOT NULL,
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1
+);
+CREATE TABLE Item (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    ItemCode VARCHAR(100) NOT NULL,
+	ItemName VARCHAR(100) NOT NULL,
+	UomId INT NOT NULL,
+	BudgetLineId INT NOT NULL,
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1,
 
+	FOREIGN KEY (UomId) REFERENCES Uom(Id),
+	FOREIGN KEY (BudgetLineId) REFERENCES ChartOfAccount(Id),
+);
 CREATE TABLE Customer (
     Id INT IDENTITY(1,1) PRIMARY KEY,
     Name VARCHAR(100) NOT NULL,
