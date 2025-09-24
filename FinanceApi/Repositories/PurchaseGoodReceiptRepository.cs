@@ -31,7 +31,7 @@ namespace FinanceApi.Repositories
                 FROM PurchaseGoodReceipt
                 ORDER BY ID";
 
-            return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
+            return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query); 
         }
 
 
