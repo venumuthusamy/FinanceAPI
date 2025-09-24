@@ -1,0 +1,16 @@
+﻿namespace FinanceApi.ModelDTO
+{
+    public class PurchaseGoodReceiptItemsDTO
+    {
+
+        public int ID { get; set; }
+        public int POID { get; set; }
+
+        public DateTime ReceptionDate { get; set; }
+
+        public int OverReceiptTolerance { get; set; }
+
+        public string GRNJson { get; set; }
+        public int FlagIssuesID { get; set; }
+    }
+}

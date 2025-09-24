@@ -4,6 +4,9 @@ using FinanceApi.Interfaces;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using FinanceApi.Repositories;
+using FinanceApi.Services;
+using FinanceApi.InterfaceService;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,8 +66,15 @@ builder.Services.Scan(scan => scan
         .AsImplementedInterfaces()
         .WithScopedLifetime()
 );
+builder.Services.AddScoped<IDbConnectionFactory, SqlDbConnectionFactory>();
+builder.Services.AddScoped<IPurchaseGoodReceiptRepository, PurchaseGoodReceiptRepository>();
+builder.Services.AddScoped<IIncotermsRepository, IncotermsRepository>();
+builder.Services.AddScoped<IFlagIssuesRepository, FlagIssuesRepository>();
 
 
+builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
+builder.Services.AddScoped<IIncotermsService, IncotermsService>();
+builder.Services.AddScoped<IflagIssuesServices, FlagIssuesServices>();
 // Add services to the container.
 
 builder.Services.AddControllers();
