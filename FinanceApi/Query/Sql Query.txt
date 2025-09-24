@@ -436,3 +436,31 @@ CREATE TABLE OpeningBalance (
     IsActive BIT DEFAULT 1,
     FOREIGN KEY (AccountHeadId) REFERENCES ChartOfAccount(Id)
 );
+
+CREATE TABLE PurchaseOrder (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    PurchaseOrderNo VARCHAR(100),
+    ApprovalStatus VARCHAR(100),
+    SupplierId INT NOT NULL,
+    ApproveLevelId INT NOT NULL,
+    PaymentTermId INT NOT NULL,
+    CurrencyId INT NOT NULL,
+    DeliveryId INT NOT NULL,
+    ContactNumber VARCHAR(50),
+    IncotermsId INT NOT NULL,
+    PoDate DATETIME NOT NULL,
+    DeliveryDate DATETIME NOT NULL,
+    Remarks VARCHAR(50),
+    FxRate DECIMAL(18,2),
+    Tax DECIMAL(18,2),
+    Shipping DECIMAL(18,2),
+    Discount DECIMAL(18,2),
+    SubTotal DECIMAL(18,2),
+    NetTotal DECIMAL(18,2),  
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1,
+    PoLines NVARCHAR(max),
+);
