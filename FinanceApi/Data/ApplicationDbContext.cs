@@ -41,7 +41,18 @@ namespace FinanceApi.Data
 
         public DbSet<PurchaseRequest> PurchaseRequests { get; set; }
 
-        
+        public DbSet<PurchaseOrder> PurchaseOrder { get; set; }
+
+        public DbSet<ApprovalLevel> ApprovalLevels { get; set; }
+
+        public DbSet<PaymentTerms> PaymentTerms { get; set; }
+
+        public DbSet<Currency> Currencies { get; set; }
+
+        public DbSet<Suppliers> suppliers { get; set; }
+
+
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
