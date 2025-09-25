@@ -10,8 +10,15 @@ namespace FinanceApi.Models
         public int SupplierId { get; set; }
         public int ApproveLevelId { get; set; }
         public int PaymentTermId { get; set; }
+
+        [ForeignKey("PaymentTermId")]
+        public PaymentTerms? PaymentTerms { get; set; }
         public int CurrencyId { get; set; }
+        public Currency? Currency { get; set; }
         public int DeliveryId { get; set; }
+
+        [ForeignKey("DeliveryId")]
+        public Location? Location { get; set; }
         public string ContactNumber { get; set; }
         public int IncotermsId { get; set; }  
         public DateTime PoDate { get; set; }
