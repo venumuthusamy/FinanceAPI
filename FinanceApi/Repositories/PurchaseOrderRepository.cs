@@ -26,9 +26,13 @@ namespace FinanceApi.Repositories
                     PurchaseOrderNo = s.PurchaseOrderNo,
                     SupplierId = s.SupplierId,
                     ApproveLevelId = s.ApproveLevelId,
+                    ApprovalStatus = s.ApprovalStatus,
                     PaymentTermId = s.PaymentTermId,
+                    PaymentTermName = s.PaymentTerms.PaymentTermsName,
                     CurrencyId = s.CurrencyId,
+                    CurrencyName = s.Currency.CurrencyName,
                     DeliveryId  = s.DeliveryId,
+                    DeliveryName = s.Location.Name,
                     ContactNumber = s.ContactNumber,
                     IncotermsId = s.IncotermsId,
                     PoDate = s.PoDate,
@@ -62,9 +66,13 @@ namespace FinanceApi.Repositories
                     PurchaseOrderNo = s.PurchaseOrderNo,
                     SupplierId = s.SupplierId,
                     ApproveLevelId = s.ApproveLevelId,
+                    ApprovalStatus = s.ApprovalStatus,
                     PaymentTermId = s.PaymentTermId,
+                    PaymentTermName = s.PaymentTerms.PaymentTermsName,
                     CurrencyId = s.CurrencyId,
+                    CurrencyName = s.Currency.CurrencyName,
                     DeliveryId = s.DeliveryId,
+                    DeliveryName = s.Location.Name,
                     ContactNumber = s.ContactNumber,
                     IncotermsId = s.IncotermsId,
                     PoDate = s.PoDate,
@@ -129,6 +137,7 @@ namespace FinanceApi.Repositories
                 existingPurchaseOrder.PurchaseOrderNo = updatedPurchaseOrder.PurchaseOrderNo;
                 existingPurchaseOrder.SupplierId = updatedPurchaseOrder.SupplierId;
                 existingPurchaseOrder.ApproveLevelId = updatedPurchaseOrder.ApproveLevelId;
+                existingPurchaseOrder.ApprovalStatus = updatedPurchaseOrder.ApprovalStatus;
                 existingPurchaseOrder.PaymentTermId = updatedPurchaseOrder.PaymentTermId;
                 existingPurchaseOrder.CurrencyId = updatedPurchaseOrder.CurrencyId;
                 existingPurchaseOrder.DeliveryId = updatedPurchaseOrder.DeliveryId;
