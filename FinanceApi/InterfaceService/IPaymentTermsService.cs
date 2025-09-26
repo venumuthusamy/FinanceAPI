@@ -6,9 +6,9 @@ namespace FinanceApi.InterfaceService
     public interface IPaymentTermsService
     {
         Task<IEnumerable<PaymentTermsDTO>> GetAllAsync();
-        Task<PaymentTermsDTO> GetByIdAsync(int id);
-        Task<PaymentTerms> CreateAsync(PaymentTerms paymentTerms);
-        Task<bool> UpdateAsync(int id, PaymentTerms paymentTerms);
-        Task<bool> DeleteAsync(int id);
+        Task<int> CreateAsync(PaymentTerms paymentTermsDTO);
+        Task<PaymentTermsDTO> GetById(int id);
+        Task UpdateAsync(PaymentTerms paymentTermsDTO);
+        Task DeleteLicense(int id);
     }
 }

@@ -19,68 +19,55 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        // GET: api/PurchaseRequest
-        //[HttpGet]
-        //[Route("GetPurchaseRequest")]
-        //public async Task<IActionResult> GetAll()
-        //{
-        //    var prs = await _service.GetAllAsync();
-        //    return Ok(new ResponseResult<IEnumerable<PurchaseRequestDTO>>(true, "Purchase requests retrieved successfully", prs));
-        //}
 
-        [HttpGet]
-        [Route("GetPurchaseRequest")]
+        [HttpGet("GetPurchaseRequest")]
         public async Task<IActionResult> GetAll()
         {
-            var result = await _service.GetAllAsync();
-            return Ok(new ResponseResult<IEnumerable<PurchaseRequestDTO>>(true, "Purchase requests retrieved successfully", result));
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Parchase Request retrieved successfully", list);
+            return Ok(data);
         }
-        // GET: api/PurchaseRequest/5
+
         [HttpGet("GetPurchaseRequestById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var pr = await _service.GetByIdAsync(id);
-            if (pr == null)
-                return NotFound(new ResponseResult<PurchaseRequest>(false, "Purchase request not found", null));
-
-            return Ok(new ResponseResult<PurchaseRequest>(true, "Purchase request retrieved successfully", pr));
+            var approvalLevel = await _service.GetById(id);
+            if (approvalLevel == null)
+            {
+                ResponseResult data1 = new ResponseResult(false, "Parchase Request not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
+            return Ok(data);
         }
 
-        // POST: api/PurchaseRequest
+
+
+
         [HttpPost("CreatePurchaseRequest")]
-       
-        public async Task<IActionResult> Create([FromBody] PurchaseRequest pr)
+        public async Task<ActionResult> Create(PurchaseRequest pr)
         {
-            if (pr == null)
-                return BadRequest(new ResponseResult<PurchaseRequest>(false, "Invalid data", null));
             pr.CreatedDate = DateTime.Now;
-            var created = await _service.CreateAsync(pr);
-            return Ok(new ResponseResult<PurchaseRequest>(true, "Purchase request created successfully", created));
+            var id = await _service.CreateAsync(pr);
+            ResponseResult data = new ResponseResult(true, "Purchase Request created successfully", id);
+            return Ok(data);
+
         }
 
-        // PUT: api/PurchaseRequest/5
         [HttpPut("UpdatePurchaseRequestById/{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] PurchaseRequest pr)
+        public async Task<IActionResult> Update(PurchaseRequest pr)
         {
-            if (pr == null)
-                return BadRequest(new ResponseResult<PurchaseRequest>(false, "Invalid data", null));
-
-            var updated = await _service.UpdateAsync(id, pr);
-            if (!updated)
-                return NotFound(new ResponseResult<PurchaseRequest>(false, "Purchase request not found", null));
-
-            return Ok(new ResponseResult<PurchaseRequest>(true, "Purchase request updated successfully", pr));
+            await _service.UpdateAsync(pr);
+            ResponseResult data = new ResponseResult(true, "Purchase Request updated successfully.", null);
+            return Ok(data);
         }
 
-        // DELETE: api/PurchaseRequest/5
         [HttpDelete("DeletePurchaseRequestById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted)
-                return NotFound(new ResponseResult<PurchaseRequest>(false, "Purchase request not found", null));
-
-            return Ok(new ResponseResult<string>(true, "Purchase request deleted successfully", null));
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Purchase Request Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

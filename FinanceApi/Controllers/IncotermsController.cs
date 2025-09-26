@@ -19,46 +19,52 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("GetAll")]
+
+        [HttpGet("GetAllIncoterms")]
         public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
-        }
-
-
-        [HttpGet("get/{id}")]
-        public async Task<IActionResult> GetById(long id)
-        {
-            var licenseObj = await _service.GetById(id);
-            var data = new ResponseResult<object>(true, "Success", licenseObj);
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
             return Ok(data);
         }
 
-        [HttpPost("insert")]
+
+
+        [HttpPost("createIncoterms")]
         public async Task<ActionResult> Create(IncotermsDTO incotermsDTO)
         {
+
             var id = await _service.CreateAsync(incotermsDTO);
-            var data = new ResponseResult<object>(true, "Incoterms Created Successfully", id);
+            ResponseResult data = new ResponseResult(true, "Incoterms created sucessfully", id);
             return Ok(data);
 
         }
 
 
-        [HttpPut("update/{id}")]
+        [HttpGet("getIncotermsById/{id}")]
+        public async Task<IActionResult> GetById(int id)
+        {
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
+
+
+        [HttpPut("updateIncotermsById")]
         public async Task<IActionResult> Update(IncotermsDTO incotermsDTO)
         {
             await _service.UpdateLicense(incotermsDTO);
-            var data = new ResponseResult<object>(true, "Incoterms updated successfully.", null);
+            ResponseResult data = new ResponseResult(true, "Incoterms updated successfully.", null);
             return Ok(data);
         }
 
 
 
-        [HttpDelete("delete/{id}")]
+        [HttpDelete("deleteIncotermsById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
             await _service.DeleteLicense(id);
-            var data = new ResponseResult<object>(true, "Incoterms Deleted sucessfully", null);
+            ResponseResult data = new ResponseResult(true, "Incoterms Deleted sucessfully", null);
             return Ok(data);
         }
     }

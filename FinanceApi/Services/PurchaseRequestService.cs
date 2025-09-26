@@ -14,30 +14,31 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public Task<IEnumerable<PurchaseRequestDTO>> GetAllAsync()
+        public async Task<IEnumerable<PurchaseRequestDTO>> GetAllAsync()
         {
-            return _repository.GetAllAsync();
+            return await _repository.GetAllAsync();
         }
 
-        public Task<PurchaseRequest?> GetByIdAsync(int id)
+        public async Task<int> CreateAsync(PurchaseRequest purchaseRequest)
         {
-            return _repository.GetByIdAsync(id);
+            return await _repository.CreateAsync(purchaseRequest);
+
         }
 
-        public Task<PurchaseRequest> CreateAsync(PurchaseRequest pr)
+        public async Task<PurchaseRequestDTO> GetById(int id)
         {
-            return _repository.AddAsync(pr);
+            return await _repository.GetByIdAsync(id);
         }
 
-        public Task<bool> UpdateAsync(int id, PurchaseRequest pr)
+        public Task UpdateAsync(PurchaseRequest purchaseRequest)
         {
-            pr.ID = id;
-            return _repository.UpdateAsync(pr);
+            return _repository.UpdateAsync(purchaseRequest);
         }
 
-        public Task<bool> DeleteAsync(int id)
+
+        public async Task DeleteLicense(int id)
         {
-            return _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

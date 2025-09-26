@@ -6,9 +6,9 @@ namespace FinanceApi.Interfaces
     public interface IPaymentTermsRepository
     {
         Task<IEnumerable<PaymentTermsDTO>> GetAllAsync();
-        Task<PaymentTermsDTO?> GetByIdAsync(int id);
-        Task<PaymentTerms> AddAsync(PaymentTerms paymentTerms);
-        Task<bool> UpdateAsync(PaymentTerms paymentTerms);
-        Task<bool> DeleteAsync(int id);
+        Task<PaymentTermsDTO> GetByIdAsync(int id);
+        Task<int> CreateAsync(PaymentTerms paymentTermsDTO);
+        Task UpdateAsync(PaymentTerms paymentTermsDTO);
+        Task DeactivateAsync(int id);
     }
 }

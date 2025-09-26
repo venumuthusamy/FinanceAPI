@@ -2,6 +2,7 @@
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Repositories
 {
@@ -39,7 +40,7 @@ namespace FinanceApi.Repositories
             return await Connection.QuerySingleAsync<FlagIssuesDTO>(query, new { Id = id });
         }
 
-        public async Task<int> CreateAsync(FlagIssuesDTO flagIssuesDTO)
+        public async Task<int> CreateAsync(FlagIssues flagIssuesDTO)
         {
             const string query = @"INSERT INTO FlagIssues (FlagIssuesNames,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
                                OUTPUT INSERTED.Id 
@@ -48,7 +49,7 @@ namespace FinanceApi.Repositories
         }
 
 
-        public async Task UpdateAsync(FlagIssuesDTO flagIssuesDTO)
+        public async Task UpdateAsync(FlagIssues flagIssuesDTO)
         {
             const string query = "UPDATE FlagIssues SET FlagIssuesNames = @FlagIssuesNames WHERE Id = @Id";
             await Connection.ExecuteAsync(query, flagIssuesDTO);

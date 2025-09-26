@@ -18,60 +18,55 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        // GET: api/Currency/GetCurrencies
+
         [HttpGet("GetCurrencies")]
         public async Task<IActionResult> GetAll()
         {
-            var result = await _service.GetAllAsync();
-            return Ok(new ResponseResult<IEnumerable<CurrencyDTO>>(true, "Currencies retrieved successfully", result));
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Currency retrieved successfully", list);
+            return Ok(data);
         }
 
-        // GET: api/Currency/GetCurrencyById/5
         [HttpGet("GetCurrencyById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var currency = await _service.GetByIdAsync(id);
-            if (currency == null)
-                return NotFound(new ResponseResult<CurrencyDTO>(false, "Currency not found", null));
-
-            return Ok(new ResponseResult<CurrencyDTO>(true, "Currency retrieved successfully", currency));
+            var approvalLevel = await _service.GetById(id);
+            if (approvalLevel == null)
+            {
+                ResponseResult data1 = new ResponseResult(false, "Currency not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
+            return Ok(data);
         }
 
-        // POST: api/Currency/CreateCurrency
+
+
+
         [HttpPost("CreateCurrency")]
-        public async Task<IActionResult> Create([FromBody] Currency currency)
+        public async Task<ActionResult> Create(Currency currencyDTO)
         {
-            if (currency == null)
-                return BadRequest(new ResponseResult<Currency>(false, "Invalid data", null));
+            currencyDTO.CreatedDate = DateTime.Now;
+            var id = await _service.CreateAsync(currencyDTO);
+            ResponseResult data = new ResponseResult(true, "Currency created successfully", id);
+            return Ok(data);
 
-            currency.CreatedDate = DateTime.Now;
-            var created = await _service.CreateAsync(currency);
-            return Ok(new ResponseResult<Currency>(true, "Currency created successfully", created));
         }
 
-        // PUT: api/Currency/UpdateCurrencyById/5
         [HttpPut("UpdateCurrencyById/{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] Currency currency)
+        public async Task<IActionResult> Update(Currency currencyDTO)
         {
-            if (currency == null)
-                return BadRequest(new ResponseResult<Currency>(false, "Invalid data", null));
-
-            var updated = await _service.UpdateAsync(id, currency);
-            if (!updated)
-                return NotFound(new ResponseResult<Currency>(false, "Currency not found", null));
-
-            return Ok(new ResponseResult<Currency>(true, "Currency updated successfully", currency));
+            await _service.UpdateAsync(currencyDTO);
+            ResponseResult data = new ResponseResult(true, "Currency updated successfully.", null);
+            return Ok(data);
         }
 
-        // DELETE: api/Currency/DeleteCurrencyById/5
         [HttpDelete("DeleteCurrencyById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted)
-                return NotFound(new ResponseResult<string>(false, "Currency not found", null));
-
-            return Ok(new ResponseResult<string>(true, "Currency deleted successfully", null));
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Currency Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

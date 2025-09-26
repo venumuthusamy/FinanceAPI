@@ -23,27 +23,31 @@ namespace FinanceApi.Controllers
         [HttpGet("GetAll")]
         public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt retrieved successfully", list);
+            return Ok(data);
         }
 
-
         [HttpGet("get/{id}")]
-        public async Task<IActionResult> GetById(long id)
+        public async Task<IActionResult> GetById(int id)
         {
-            var licenseObj = await _service.GetById(id);
-            var data = new ResponseResult<object>(true, "Success", licenseObj);
+            var approvalLevel = await _service.GetById(id);
+            if (approvalLevel == null)
+            {
+                ResponseResult data1 = new ResponseResult(false, "PurchaseGoodReceipt not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
             return Ok(data);
         }
 
         [HttpPost("insert")]
-        public async Task<ActionResult> Create(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO)
+        public async Task<ActionResult> Create(PurchaseGoodReceiptItemsDTO purchaseGoodReceiptItems)
         {
-            var id = await _service.CreateAsync(goodReceiptItemsDTO);
-             var data = new ResponseResult<object>(true, "PurchaseGoodItems Created Successfully", id);
+            var id = await _service.CreateAsync(purchaseGoodReceiptItems);
+            ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt created successfully", id);
             return Ok(data);
 
         }
-
-
     }
 }

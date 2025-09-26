@@ -27,7 +27,8 @@ namespace FinanceApi.Repositories
                     ReceptionDate,
                     OverReceiptTolerance,
                     GRNJson,
-                    FlagIssuesID
+                    FlagIssuesID,
+                    GrnNo
                 FROM PurchaseGoodReceipt
                 ORDER BY ID";
 
@@ -43,12 +44,46 @@ namespace FinanceApi.Repositories
             return await Connection.QuerySingleAsync<PurchaseGoodReceiptItemsDTO>(query, new { Id = id });
         }
 
+        //public async Task<int> CreateAsync(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO)
+        //{
+        //    const string query = @"INSERT INTO PurchaseGoodReceipt (POID, ReceptionDate, OverReceiptTolerance, GRNJson,FlagIssuesID) 
+        //                       OUTPUT INSERTED.Id 
+        //                       VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson,@FlagIssuesID)";
+        //    return await Connection.QueryFirstAsync<int>(query, goodReceiptItemsDTO);
+        //}
+
         public async Task<int> CreateAsync(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO)
         {
-            const string query = @"INSERT INTO PurchaseGoodReceipt (POID, ReceptionDate, OverReceiptTolerance, GRNJson,FlagIssuesID) 
-                               OUTPUT INSERTED.Id 
-                               VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson,@FlagIssuesID)";
-            return await Connection.QueryFirstAsync<int>(query, goodReceiptItemsDTO);
+            // Step 1: Get the last GrnNo from the database
+            const string getLastGRNQuery = @"SELECT TOP 1 GrnNo FROM PurchaseGoodReceipt ORDER BY Id DESC";
+            var lastGRN = await Connection.QueryFirstOrDefaultAsync<string>(getLastGRNQuery);
+
+            int nextNumber = 1;
+
+            // Step 2: Parse the last GRN number and increment it
+            if (!string.IsNullOrWhiteSpace(lastGRN) && lastGRN.StartsWith("GRN-"))
+            {
+                var numericPart = lastGRN.Substring(4);
+                if (int.TryParse(numericPart, out int lastNumber))
+                {
+                    nextNumber = lastNumber + 1;
+                }
+            }
+
+            // Step 3: Format the new GRN number
+            var newGRN = $"GRN-{nextNumber.ToString("D4")}";
+
+            // Step 4: Assign to DTO
+            goodReceiptItemsDTO.GrnNo = newGRN;
+
+            // Step 5: Insert new record with generated GRN number
+            const string insertQuery = @"
+        INSERT INTO PurchaseGoodReceipt 
+            (POID, ReceptionDate, OverReceiptTolerance, GRNJson, FlagIssuesID, GrnNo) 
+        OUTPUT INSERTED.Id 
+        VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson, @FlagIssuesID, @GrnNo)";
+
+            return await Connection.QueryFirstAsync<int>(insertQuery, goodReceiptItemsDTO);
         }
 
 

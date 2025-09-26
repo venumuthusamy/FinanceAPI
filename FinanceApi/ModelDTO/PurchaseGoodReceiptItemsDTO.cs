@@ -6,6 +6,8 @@
         public int ID { get; set; }
         public int POID { get; set; }
 
+        public string GrnNo { get; set; }
+
         public DateTime ReceptionDate { get; set; }
 
         public int OverReceiptTolerance { get; set; }

@@ -1,103 +1,58 @@
 ﻿using FinanceApi.Data;
+using Dapper;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace FinanceApi.Repositories
 {
-    public class ApprovalLevelRepository : IApprovalLevelRepository
+    public class ApprovalLevelRepository : DynamicRepository, IApprovalLevelRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public ApprovalLevelRepository(ApplicationDbContext context)
+        public ApprovalLevelRepository(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
         {
-            _context = context;
         }
 
         public async Task<IEnumerable<ApprovalLevelDTO>> GetAllAsync()
         {
-            return await _context.ApprovalLevels
-                .Where(a => a.IsActive == true)  // only active
-                .Select(a => new ApprovalLevelDTO
-                {
-                    Id = a.Id,
-                    Name = a.Name,
-                    Description = a.Description,
-                    CreatedBy = a.CreatedBy,
-                    CreatedDate = a.CreatedDate,
-                    UpdatedBy = a.UpdatedBy,
-                    UpdatedDate = a.UpdatedDate,
-                    IsActive = a.IsActive
-                })
-                .ToListAsync();
+            const string query = @"
+                SELECT * from ApprovalLevel";
+
+            return await Connection.QueryAsync<ApprovalLevelDTO>(query);
         }
 
 
-        // GET BY ID
-        public async Task<ApprovalLevelDTO?> GetByIdAsync(int id)
+        public async Task<ApprovalLevelDTO> GetByIdAsync(int id)
         {
-            var a = await _context.ApprovalLevels
-                .Where(x => x.Id == id && x.IsActive == true) // only active
-                .FirstOrDefaultAsync();
 
-            if (a == null) return null;
+            const string query = "SELECT * FROM ApprovalLevel WHERE Id = @Id";
 
-            return new ApprovalLevelDTO
-            {
-                Id = a.Id,
-                Name = a.Name,
-                Description = a.Description,
-                CreatedBy = a.CreatedBy,
-                CreatedDate = a.CreatedDate,
-                UpdatedBy = a.UpdatedBy,
-                UpdatedDate = a.UpdatedDate,
-                IsActive = a.IsActive
-            };
+            return await Connection.QuerySingleAsync<ApprovalLevelDTO>(query, new { Id = id });
+        }
+
+        public async Task<int> CreateAsync(ApprovalLevel approvalLevel)
+        {
+            const string query = @"INSERT INTO ApprovalLevel (Name,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@Name,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, approvalLevel);
         }
 
 
-        // CREATE
-        public async Task<ApprovalLevel> AddAsync(ApprovalLevel approvalLevel)
+        public async Task UpdateAsync(ApprovalLevel approvalLevel)
         {
-            approvalLevel.CreatedDate = DateTime.UtcNow;
-            _context.ApprovalLevels.Add(approvalLevel);
-            await _context.SaveChangesAsync();
-            return approvalLevel;
+            const string query = "UPDATE ApprovalLevel SET Name = @Name, Description =@Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, approvalLevel);
         }
 
-        // UPDATE
-        public async Task<bool> UpdateAsync(ApprovalLevel approvalLevel)
+        public async Task DeactivateAsync(int id)
         {
-            var existing = await _context.ApprovalLevels
-                .Where(a => a.Id == approvalLevel.Id && a.IsActive == true) // only active
-                .FirstOrDefaultAsync();
-
-            if (existing == null) return false;
-
-            existing.Name = approvalLevel.Name;
-            existing.Description = approvalLevel.Description;
-            existing.UpdatedBy = approvalLevel.UpdatedBy;
-            existing.UpdatedDate = DateTime.UtcNow;
-            existing.IsActive = approvalLevel.IsActive;
-
-            _context.ApprovalLevels.Update(existing);
-            await _context.SaveChangesAsync();
-            return true;
-        }
-
-        public async Task<bool> DeleteAsync(int id)
-        {
-            var existing = await _context.ApprovalLevels.FindAsync(id);
-            if (existing == null) return false;
-
-            // Soft delete: mark as inactive
-            existing.IsActive = false;
-            existing.UpdatedDate = DateTime.UtcNow;
-
-            _context.ApprovalLevels.Update(existing);
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE ApprovalLevel SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
 
     }

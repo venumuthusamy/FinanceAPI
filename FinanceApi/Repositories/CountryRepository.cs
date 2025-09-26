@@ -1,93 +1,73 @@
-﻿using FinanceApi.Models;
+﻿using Dapper;
 using FinanceApi.Data;
-using Microsoft.EntityFrameworkCore;
 using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
+using FinanceApi.Models;
+using Microsoft.EntityFrameworkCore;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 
 namespace FinanceApi.Repositories
 {
-    public class CountryRepository : ICountryRepository
+    public class CountryRepository : DynamicRepository, ICountryRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public CountryRepository(ApplicationDbContext context)
+        public CountryRepository(IDbConnectionFactory connectionFactory)
+       : base(connectionFactory)
         {
-            _context = context;
         }
 
-        public async Task<List<Country>> GetAllAsync()
+        public async Task<IEnumerable<Country>> GetAllAsync()
         {
-            return await _context.Country.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
-        }
+            const string query = @"
+                SELECT * from Country Where isActive = 'true' ";
 
-        public async Task<Country?> GetByIdAsync(int id)
-        {
-            return await _context.Country.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
-        }
-
-        public async Task<Country> CreateAsync(Country country)
-        {
-            try
-            {
-                country.CreatedBy = "System";
-                country.CreatedDate = DateTime.UtcNow;
-                country.IsActive = true;
-                _context.Country.Add(country);
-                await _context.SaveChangesAsync();
-                return country;
-            }        
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-        }
-
-        public async Task<Country?> UpdateAsync(int id, Country updatedCountry)
-        {
-            try
-            {
-                var existingCountry = await _context.Country.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingCountry == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingCountry.CountryName = updatedCountry.CountryName;
-                existingCountry.UpdatedBy = "System";
-                existingCountry.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingCountry;
-            }      
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-
-
+            return await Connection.QueryAsync<Country>(query);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task<Country> GetByIdAsync(int id)
         {
-            var country = await _context.Country.FirstOrDefaultAsync(s => s.Id == id);
-            if (country == null) return false;
 
-            country.IsActive = false;
-            
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "SELECT * FROM Country WHERE Id = @Id";
+
+            return await Connection.QuerySingleAsync<Country>(query, new { Id = id });
+        }
+        public async Task<int> CreateAsync(Country country)
+        {
+            const string query = @"
+        INSERT INTO Country 
+            (CountryName, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive) 
+        OUTPUT INSERTED.Id 
+        VALUES 
+            (@CountryName, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)
+    ";
+
+            var parameters = new DynamicParameters();
+            parameters.Add("@CountryName", country.CountryName);
+            parameters.Add("@CreatedBy", country.CreatedBy);
+            parameters.Add("@CreatedDate", country.CreatedDate);
+            parameters.Add("@UpdatedBy", country.UpdatedBy);
+            parameters.Add("@UpdatedDate", country.UpdatedDate);
+            parameters.Add("@IsActive", country.IsActive);
+
+            return await Connection.QueryFirstAsync<int>(query, parameters);
+        }
+
+
+
+
+        public async Task UpdateAsync(Country country)
+        {
+            const string query = "UPDATE Country SET CountryName = @CountryName WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, country);
+        }
+
+        public async Task DeactivateAsync(int id)
+        {
+            const string query = "UPDATE Country SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

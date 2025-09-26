@@ -4,10 +4,10 @@ namespace FinanceApi.Interfaces
 {
     public interface ICountryService
     {
-        Task<List<Country>> GetAllAsync();
-        Task<Country?> GetByIdAsync(int id);
-        Task<Country> CreateAsync(Country country);
-        Task<Country?> UpdateAsync(int id, Country country);
-        Task<bool> DeleteAsync(int id);
+        Task<IEnumerable<Country>> GetAllAsync();
+        Task<Country> GetById(int id);
+        Task<int> CreateAsync(Country country);
+        Task UpdateAsync(Country country);
+        Task DeleteLicense(int id);
     }
 }

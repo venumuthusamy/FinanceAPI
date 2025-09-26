@@ -1,13 +1,14 @@
 ﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.InterfaceService
 {
     public interface IflagIssuesServices
     {
         Task<IEnumerable<FlagIssuesDTO>> GetAllAsync();
-        Task<int> CreateAsync(FlagIssuesDTO flagIssuesDTO);
+        Task<int> CreateAsync(FlagIssues flagIssuesDTO);
         Task<FlagIssuesDTO> GetById(long id);
-       Task UpdateAsync(FlagIssuesDTO flagIssuesDTO);
+       Task UpdateAsync(FlagIssues flagIssuesDTO);
 
         Task DeleteAsync(int id);
     }

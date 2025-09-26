@@ -18,60 +18,54 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        // GET: api/PaymentTerms/GetPaymentTerms
         [HttpGet("GetPaymentTerms")]
         public async Task<IActionResult> GetAll()
         {
-            var result = await _service.GetAllAsync();
-            return Ok(new ResponseResult<IEnumerable<PaymentTermsDTO>>(true, "Payment terms retrieved successfully", result));
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "PaymentTerms retrieved successfully", list);
+            return Ok(data);
         }
 
-        // GET: api/PaymentTerms/GetPaymentTermById/5
         [HttpGet("GetPaymentTermById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var paymentTerm = await _service.GetByIdAsync(id);
-            if (paymentTerm == null)
-                return NotFound(new ResponseResult<PaymentTermsDTO>(false, "Payment term not found", null));
-
-            return Ok(new ResponseResult<PaymentTermsDTO>(true, "Payment term retrieved successfully", paymentTerm));
+            var approvalLevel = await _service.GetById(id);
+            if (approvalLevel == null)
+            {
+                ResponseResult data1 = new ResponseResult(false, "PaymentTerms not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
+            return Ok(data);
         }
 
-        // POST: api/PaymentTerms/CreatePaymentTerm
+
+
+
         [HttpPost("CreatePaymentTerm")]
-        public async Task<IActionResult> Create([FromBody] PaymentTerms paymentTerm)
+        public async Task<ActionResult> Create(PaymentTerms paymentTerms)
         {
-            if (paymentTerm == null)
-                return BadRequest(new ResponseResult<PaymentTerms>(false, "Invalid data", null));
+            paymentTerms.CreatedDate = DateTime.Now;
+            var id = await _service.CreateAsync(paymentTerms);
+            ResponseResult data = new ResponseResult(true, "PaymentTerms created successfully", id);
+            return Ok(data);
 
-            paymentTerm.CreatedDate = DateTime.Now;
-            var created = await _service.CreateAsync(paymentTerm);
-            return Ok(new ResponseResult<PaymentTerms>(true, "Payment term created successfully", created));
         }
 
-        // PUT: api/PaymentTerms/UpdatePaymentTermById/5
         [HttpPut("UpdatePaymentTermById/{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] PaymentTerms paymentTerm)
+        public async Task<IActionResult> Update(PaymentTerms paymentTerms)
         {
-            if (paymentTerm == null)
-                return BadRequest(new ResponseResult<PaymentTerms>(false, "Invalid data", null));
-
-            var updated = await _service.UpdateAsync(id, paymentTerm);
-            if (!updated)
-                return NotFound(new ResponseResult<PaymentTerms>(false, "Payment term not found", null));
-
-            return Ok(new ResponseResult<PaymentTerms>(true, "Payment term updated successfully", paymentTerm));
+            await _service.UpdateAsync(paymentTerms);
+            ResponseResult data = new ResponseResult(true, "PaymentTerms updated successfully.", null);
+            return Ok(data);
         }
 
-        // DELETE: api/PaymentTerms/DeletePaymentTermById/5
         [HttpDelete("DeletePaymentTermById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted)
-                return NotFound(new ResponseResult<string>(false, "Payment term not found", null));
-
-            return Ok(new ResponseResult<string>(true, "Payment term deleted successfully", null));
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "PaymentTerms Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

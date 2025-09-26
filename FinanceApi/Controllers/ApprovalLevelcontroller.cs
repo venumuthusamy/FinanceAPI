@@ -17,59 +17,57 @@ namespace FinanceApi.Controllers
         {
             _service = service;
         }
+  
+
         [HttpGet("GetApprovalLevels")]
         public async Task<IActionResult> GetAll()
         {
-            var result = await _service.GetAllAsync();
-            return Ok(new ResponseResult<IEnumerable<ApprovalLevelDTO>>(true, "Approval levels retrieved successfully", result));
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Approval levels retrieved successfully", list);
+            return Ok(data);
         }
+   
 
-        // GET: api/ApprovalLevel/5
         [HttpGet("GetApprovalLevelById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var approvalLevel = await _service.GetByIdAsync(id);
+            var approvalLevel = await _service.GetById(id);
             if (approvalLevel == null)
-                return NotFound(new ResponseResult<ApprovalLevelDTO>(false, "Approval level not found", null));
-
-            return Ok(new ResponseResult<ApprovalLevelDTO>(true, "Approval level retrieved successfully", approvalLevel));
+            {
+                ResponseResult data1 = new ResponseResult(false, "Approval level not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
+            return Ok(data);
         }
 
-        // POST: api/ApprovalLevel
+     
+
+
         [HttpPost("CreateApprovalLevel")]
-        public async Task<IActionResult> Create([FromBody] ApprovalLevel approvalLevel)
+        public async Task<ActionResult> Create(ApprovalLevel approvalLevel)
         {
-            if (approvalLevel == null)
-                return BadRequest(new ResponseResult<ApprovalLevel>(false, "Invalid data", null));
-
             approvalLevel.CreatedDate = DateTime.Now;
-            var created = await _service.CreateAsync(approvalLevel);
-            return Ok(new ResponseResult<ApprovalLevel>(true, "Approval level created successfully", created));
-        }
+            var id = await _service.CreateAsync(approvalLevel);
+            ResponseResult data = new ResponseResult(true, "Approval level created successfully", id);
+            return Ok(data);
 
-        // PUT: api/ApprovalLevel/5
+        }
+       
         [HttpPut("UpdateApprovalLevelById/{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] ApprovalLevel approvalLevel)
+        public async Task<IActionResult> Update(ApprovalLevel approvalLevel)
         {
-            if (approvalLevel == null)
-                return BadRequest(new ResponseResult<ApprovalLevel>(false, "Invalid data", null));
-
-            var updated = await _service.UpdateAsync(id, approvalLevel);
-            if (!updated)
-                return NotFound(new ResponseResult<ApprovalLevel>(false, "Approval level not found", null));
-
-            return Ok(new ResponseResult<ApprovalLevel>(true, "Approval level updated successfully", approvalLevel));
+            await _service.UpdateAsync(approvalLevel);
+            ResponseResult data = new ResponseResult(true, "Approval level updated successfully.", null);
+            return Ok(data);
         }
 
-        // DELETE: api/ApprovalLevel/5
-        [HttpDelete("DeleteApprovalLevelById/{id}")]
+        [HttpDelete("delete/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted)
-                return NotFound(new ResponseResult<string>(false, "Approval level not found", null));
-
-            return Ok(new ResponseResult<string>(true, "Approval level deleted successfully", null));
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Approval level Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

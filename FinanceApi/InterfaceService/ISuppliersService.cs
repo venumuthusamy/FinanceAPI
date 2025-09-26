@@ -6,9 +6,9 @@ namespace FinanceApi.InterfaceService
     public interface ISuppliersService
     {
         Task<IEnumerable<SuppliersDTO>> GetAllAsync();
-        Task<SuppliersDTO?> GetByIdAsync(int id);
-        Task<Suppliers> CreateAsync(Suppliers supplier);
-        Task<bool> UpdateAsync(int id, Suppliers supplier);
-        Task<bool> DeleteAsync(int id);
+        Task<int> CreateAsync(Suppliers supplier);
+        Task<SuppliersDTO> GetById(int id);
+        Task UpdateAsync(Suppliers supplier);
+        Task DeleteLicense(int id);
     }
 }

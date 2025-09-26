@@ -1,6 +1,7 @@
 ﻿using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Services
 {
@@ -18,7 +19,7 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
-        public async Task<int> CreateAsync(FlagIssuesDTO flagIssuesDTO)
+        public async Task<int> CreateAsync(FlagIssues flagIssuesDTO)
         {
             return await _repository.CreateAsync(flagIssuesDTO);
 
@@ -29,7 +30,7 @@ namespace FinanceApi.Services
             return await _repository.GetByIdAsync(id);
         }
 
-        public Task UpdateAsync(FlagIssuesDTO flagIssuesDTO)
+        public Task UpdateAsync(FlagIssues flagIssuesDTO)
         {
             return _repository.UpdateAsync(flagIssuesDTO);
         }

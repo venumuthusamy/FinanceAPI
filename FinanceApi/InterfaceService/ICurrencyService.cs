@@ -6,9 +6,9 @@ namespace FinanceApi.InterfaceService
     public interface ICurrencyService
     {
         Task<IEnumerable<CurrencyDTO>> GetAllAsync();
-        Task<CurrencyDTO?> GetByIdAsync(int id);
-        Task<Currency> CreateAsync(Currency currency);
-        Task<bool> UpdateAsync(int id, Currency currency);
-        Task<bool> DeleteAsync(int id);
+        Task<int> CreateAsync(Currency currencyDTO);
+        Task<CurrencyDTO> GetById(int id);
+        Task UpdateAsync(Currency currencyDTO);
+        Task DeleteLicense(int id);
     }
 }
