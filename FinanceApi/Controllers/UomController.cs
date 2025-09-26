@@ -15,13 +15,13 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("getAll")]
+        [HttpGet("GetAlluom")]
         public async Task<ActionResult<List<Uom>>> GetAll()
         {
             return Ok(await _service.GetAllAsync());
         }
 
-        [HttpGet("get/{id}")]
+        [HttpGet("GetuomById/{id}")]
         public async Task<ActionResult<Uom>> GetById(int id)
         {
             var uom = await _service.GetByIdAsync(id);
@@ -29,7 +29,7 @@ namespace FinanceApi.Controllers
             return Ok(uom);
         }
 
-        [HttpPost("insert")]
+        [HttpPost("Createuom")]
         public async Task<ActionResult<Uom>> Create(Uom uom)
         {
             try
@@ -51,7 +51,7 @@ namespace FinanceApi.Controllers
 
         }
 
-        [HttpPut("update/{id}")]
+        [HttpPut("UpdateuomById/{id}")]
         public async Task<ActionResult<Uom>> Update(int id, Uom uom)
         {
             var updated = await _service.UpdateAsync(id, uom);
@@ -59,7 +59,7 @@ namespace FinanceApi.Controllers
             return Ok(updated);
         }
 
-        [HttpDelete("delete/{id}")]
+        [HttpDelete("DeleteuomById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
             var deleted = await _service.DeleteAsync(id);
