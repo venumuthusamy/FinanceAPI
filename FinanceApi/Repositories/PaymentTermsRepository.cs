@@ -1,97 +1,56 @@
 ﻿using FinanceApi.Data;
+using Dapper;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace FinanceApi.Repositories
 {
-    public class PaymentTermsRepository : IPaymentTermsRepository
+    public class PaymentTermsRepository : DynamicRepository,IPaymentTermsRepository
     {
         private readonly ApplicationDbContext _context;
-
-        public PaymentTermsRepository(ApplicationDbContext context)
+        public PaymentTermsRepository(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
         {
-            _context = context;
         }
-
-        public async Task<PaymentTerms> AddAsync(PaymentTerms paymentTerms)
-        {
-            paymentTerms.CreatedDate = DateTime.UtcNow;
-            _context.PaymentTerms.Add(paymentTerms);
-            await _context.SaveChangesAsync();
-            return paymentTerms;
-        }
-
-
-        public async Task<bool> DeleteAsync(int id)
-        {
-            var existing = await _context.PaymentTerms.FindAsync(id);
-            if (existing == null) return false;
-
-            // Soft delete: mark as inactive
-            existing.IsActive = false;
-            existing.UpdatedDate = DateTime.UtcNow;
-
-            _context.PaymentTerms.Update(existing);
-            await _context.SaveChangesAsync();
-            return true;
-        }
-
-
         public async Task<IEnumerable<PaymentTermsDTO>> GetAllAsync()
         {
-            return await _context.PaymentTerms
-                .Where(p => p.IsActive == true)  // only active records
-                .Select(p => new PaymentTermsDTO
-                {
-                    Id = p.Id,
-                    PaymentTermsName = p.PaymentTermsName,
-                    Description = p.Description,
-                    CreatedBy = p.CreatedBy,
-                    CreatedDate = p.CreatedDate,
-                    UpdatedBy = p.UpdatedBy,
-                    UpdatedDate = p.UpdatedDate,
-                    IsActive = p.IsActive
-                })
-                .ToListAsync();
+            const string query = @"
+                SELECT * from PaymentTerms";
+
+            return await Connection.QueryAsync<PaymentTermsDTO>(query);
         }
 
-        public async Task<PaymentTermsDTO?> GetByIdAsync(int id)
+
+        public async Task<PaymentTermsDTO> GetByIdAsync(int id)
         {
-            var p = await _context.PaymentTerms
-                .Where(pt => pt.Id == id && pt.IsActive == true)  // only active
-                .FirstOrDefaultAsync();
 
-            if (p == null) return null;
+            const string query = "SELECT * FROM PaymentTerms WHERE Id = @Id";
 
-            return new PaymentTermsDTO
-            {
-                Id = p.Id,
-                PaymentTermsName = p.PaymentTermsName,
-                Description = p.Description,
-                CreatedBy = p.CreatedBy,
-                CreatedDate = p.CreatedDate,
-                UpdatedBy = p.UpdatedBy,
-                UpdatedDate = p.UpdatedDate,
-                IsActive = p.IsActive
-            };
+            return await Connection.QuerySingleAsync<PaymentTermsDTO>(query, new { Id = id });
         }
 
-        public async Task<bool> UpdateAsync(PaymentTerms paymentTerms)
+        public async Task<int> CreateAsync(PaymentTerms paymentTermsDTO)
         {
-            var existing = await _context.PaymentTerms.FindAsync(paymentTerms.Id);
-            if (existing == null) return false;
+            const string query = @"INSERT INTO PaymentTerms (PaymentTermsName,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@PaymentTermsName,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, paymentTermsDTO);
+        }
 
-            existing.PaymentTermsName = paymentTerms.PaymentTermsName;
-            existing.Description = paymentTerms.Description;
-            existing.UpdatedBy = paymentTerms.UpdatedBy;
-            existing.UpdatedDate = DateTime.UtcNow;
-            existing.IsActive = paymentTerms.IsActive;
 
-            _context.PaymentTerms.Update(existing);
-            await _context.SaveChangesAsync();
-            return true;
+        public async Task UpdateAsync(PaymentTerms paymentTermsDTO)
+        {
+            const string query = "UPDATE PaymentTerms SET PaymentTermsName = @PaymentTermsName, Description = @Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, paymentTermsDTO);
+        }
+
+        public async Task DeactivateAsync(int id)
+        {
+            const string query = "UPDATE PaymentTerms SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
 
     }

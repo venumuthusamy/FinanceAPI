@@ -6,9 +6,9 @@ namespace FinanceApi.InterfaceService
     public interface IApprovallevelSevice
     {
         Task<IEnumerable<ApprovalLevelDTO>> GetAllAsync();
-        Task<ApprovalLevelDTO> GetByIdAsync(int id);
-        Task<ApprovalLevel> CreateAsync(ApprovalLevel approvalLevel);
-        Task<bool> UpdateAsync(int id, ApprovalLevel approvalLevel);
-        Task<bool> DeleteAsync(int id);
+        Task<int> CreateAsync(ApprovalLevel approvalLevel);
+        Task<ApprovalLevelDTO> GetById(int id);
+        Task UpdateAsync(ApprovalLevel approvalLevel);
+        Task DeleteLicense(int id);
     }
 }

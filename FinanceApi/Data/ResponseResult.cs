@@ -1,14 +1,14 @@
 ﻿namespace FinanceApi.Data
 {
-    public class ResponseResult<T>
+    public class ResponseResult
     {
-        public bool Status { get; set; }
+        public bool isSuccess {  get; set; }
         public string Message { get; set; }
-        public T Data { get; set; }
+        public object? Data { get; set; }
 
-        public ResponseResult(bool status, string message, T data)
+        public ResponseResult(bool IsSuccess, string message, object? data)
         {
-            Status = status;
+            isSuccess = IsSuccess;
             Message = message;
             Data = data;
         }

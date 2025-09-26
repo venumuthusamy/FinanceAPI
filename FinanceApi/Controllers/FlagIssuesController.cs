@@ -13,51 +13,52 @@ namespace FinanceApi.Controllers
     {
         private readonly IflagIssuesServices _service;
 
-        public FlagIssuesController(IflagIssuesServices service)
-        {
-            _service = service;
-        }
 
-        [HttpGet("GetAll")]
+        [HttpGet("GetAllFlagissue")]
         public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
 
-        [HttpGet("get/{id}")]
-        public async Task<IActionResult> GetById(long id)
+
+        [HttpGet("getFlagissueById/{id}")]
+        public async Task<ActionResult> Create(FlagIssues flagIssuesDTO)
+        {
+
+            var id = await _service.CreateAsync(flagIssuesDTO);
+            ResponseResult data = new ResponseResult(true, "FlagIssues created sucessfully", id);
+            return Ok(data);
+
+        }
+
+
+        [HttpPost("createFlagissue")]
+        public async Task<IActionResult> GetById(int id)
         {
             var licenseObj = await _service.GetById(id);
-            var data = new ResponseResult<object>(true, "Success", licenseObj);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
             return Ok(data);
         }
 
-        [HttpPost("insert")]
-        public async Task<ActionResult> Create(FlagIssuesDTO flagIssuesDTO)
-        {
-            var id = await _service.CreateAsync(flagIssuesDTO);
-            var data = new ResponseResult<object>(true, "FlagIssues Created Successfully", id);
-            return Ok(data);
 
-        }
-
-
-        [HttpPut("update/{id}")]
-        public async Task<IActionResult> Update(FlagIssuesDTO flagIssuesDTO)
+        [HttpPut("updateFlagissueById")]
+        public async Task<IActionResult> Update(FlagIssues flagIssuesDTO)
         {
             await _service.UpdateAsync(flagIssuesDTO);
-            var data = new ResponseResult<object>(true, "FlagIssues updated successfully.", null);
+            ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
             return Ok(data);
         }
 
 
 
-        [HttpDelete("delete/{id}")]
+        [HttpDelete("deleteFlagissueById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
             await _service.DeleteAsync(id);
-            var data = new ResponseResult<object>(true, "FlagIssues Deleted sucessfully", null);
+            ResponseResult data = new ResponseResult(true, "FlagIssues Deleted sucessfully", null);
             return Ok(data);
         }
     }

@@ -14,34 +14,31 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public Task<IEnumerable<ApprovalLevelDTO>> GetAllAsync()
+        public async Task<IEnumerable<ApprovalLevelDTO>> GetAllAsync()
         {
-            return _repository.GetAllAsync();
+            return await _repository.GetAllAsync();
         }
 
-        // GET ApprovalLevel by ID
-        public Task<ApprovalLevelDTO> GetByIdAsync(int id)
+        public async Task<int> CreateAsync(ApprovalLevel approvalLevel)
         {
-            return _repository.GetByIdAsync(id);
+            return await _repository.CreateAsync(approvalLevel);
+
         }
 
-        // CREATE ApprovalLevel
-        public Task<ApprovalLevel> CreateAsync(ApprovalLevel approvalLevel)
+        public async Task<ApprovalLevelDTO> GetById(int id)
         {
-            return _repository.AddAsync(approvalLevel);
+            return await _repository.GetByIdAsync(id);
         }
 
-        // UPDATE ApprovalLevel
-        public Task<bool> UpdateAsync(int id, ApprovalLevel approvalLevel)
+        public Task UpdateAsync(ApprovalLevel approvalLevel)
         {
-            approvalLevel.Id = id;
             return _repository.UpdateAsync(approvalLevel);
         }
 
-        // DELETE ApprovalLevel
-        public Task<bool> DeleteAsync(int id)
+
+        public async Task DeleteLicense(int id)
         {
-            return _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

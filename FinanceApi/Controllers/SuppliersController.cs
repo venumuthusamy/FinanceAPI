@@ -19,60 +19,54 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        // GET: api/Suppliers/GetSuppliers
         [HttpGet("GetSuppliers")]
         public async Task<IActionResult> GetAll()
         {
-            var result = await _service.GetAllAsync();
-            return Ok(new ResponseResult<IEnumerable<SuppliersDTO>>(true, "Suppliers retrieved successfully", result));
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Supplier retrieved successfully", list);
+            return Ok(data);
         }
 
-        // GET: api/Suppliers/GetSupplierById/5
         [HttpGet("GetSupplierById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var supplier = await _service.GetByIdAsync(id);
-            if (supplier == null)
-                return NotFound(new ResponseResult<SuppliersDTO>(false, "Supplier not found", null));
-
-            return Ok(new ResponseResult<SuppliersDTO>(true, "Supplier retrieved successfully", supplier));
+            var approvalLevel = await _service.GetById(id);
+            if (approvalLevel == null)
+            {
+                ResponseResult data1 = new ResponseResult(false, "Supplier not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
+            return Ok(data);
         }
 
-        // POST: api/Suppliers/CreateSupplier
+
+
+
         [HttpPost("CreateSupplier")]
-        public async Task<IActionResult> Create([FromBody] Suppliers supplier)
+        public async Task<ActionResult> Create(Suppliers suppliers)
         {
-            if (supplier == null)
-                return BadRequest(new ResponseResult<Suppliers>(false, "Invalid data", null));
+            suppliers.CreatedDate = DateTime.Now;
+            var id = await _service.CreateAsync(suppliers);
+            ResponseResult data = new ResponseResult(true, "Supplier created successfully", id);
+            return Ok(data);
 
-            supplier.CreatedDate = DateTime.UtcNow;
-            var created = await _service.CreateAsync(supplier);
-            return Ok(new ResponseResult<Suppliers>(true, "Supplier created successfully", created));
         }
 
-        // PUT: api/Suppliers/UpdateSupplierById/5
         [HttpPut("UpdateSupplierById/{id}")]
-        public async Task<IActionResult> Update(int id, [FromBody] Suppliers supplier)
+        public async Task<IActionResult> Update(Suppliers suppliers)
         {
-            if (supplier == null)
-                return BadRequest(new ResponseResult<Suppliers>(false, "Invalid data", null));
-
-            var updated = await _service.UpdateAsync(id, supplier);
-            if (!updated)
-                return NotFound(new ResponseResult<Suppliers>(false, "Supplier not found", null));
-
-            return Ok(new ResponseResult<Suppliers>(true, "Supplier updated successfully", supplier));
+            await _service.UpdateAsync(suppliers);
+            ResponseResult data = new ResponseResult(true, "Supplier updated successfully.", null);
+            return Ok(data);
         }
 
-        // DELETE: api/Suppliers/DeleteSupplierById/5
         [HttpDelete("DeleteSupplierById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted)
-                return NotFound(new ResponseResult<string>(false, "Supplier not found", null));
-
-            return Ok(new ResponseResult<string>(true, "Supplier deleted successfully", null));
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Supplier Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

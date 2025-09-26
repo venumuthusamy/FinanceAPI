@@ -1,102 +1,57 @@
-﻿using FinanceApi.Data;
+﻿using Dapper;
+using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace FinanceApi.Repositories
 {
-    public class CurrencyRepository : ICurrencyRepository
+    public class CurrencyRepository : DynamicRepository,ICurrencyRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public CurrencyRepository(ApplicationDbContext context)
+        public CurrencyRepository(IDbConnectionFactory connectionFactory)
+      : base(connectionFactory)
         {
-            _context = context;
         }
-
-        // GET ALL active currencies
         public async Task<IEnumerable<CurrencyDTO>> GetAllAsync()
         {
-            return await _context.Currencies
-                .Where(c => c.IsActive == true)
-                .Select(c => new CurrencyDTO
-                {
-                    Id = c.Id,
-                    CurrencyName = c.CurrencyName,
-                    Description = c.Description,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
-                })
-                .ToListAsync();
+            const string query = @"
+                SELECT * from Currency";
+
+            return await Connection.QueryAsync<CurrencyDTO>(query);
         }
 
-        // GET BY ID (only active)
-        public async Task<CurrencyDTO?> GetByIdAsync(int id)
+
+        public async Task<CurrencyDTO> GetByIdAsync(int id)
         {
-            var c = await _context.Currencies
-                .Where(x => x.Id == id && x.IsActive == true)
-                .FirstOrDefaultAsync();
 
-            if (c == null) return null;
+            const string query = "SELECT * FROM Currency WHERE Id = @Id";
 
-            return new CurrencyDTO
-            {
-                Id = c.Id,
-                CurrencyName = c.CurrencyName,
-                Description = c.Description,
-                CreatedBy = c.CreatedBy,
-                CreatedDate = c.CreatedDate,
-                UpdatedBy = c.UpdatedBy,
-                UpdatedDate = c.UpdatedDate,
-                IsActive = c.IsActive
-            };
+            return await Connection.QuerySingleAsync<CurrencyDTO>(query, new { Id = id });
         }
 
-        // CREATE
-        public async Task<Currency> AddAsync(Currency currency)
+        public async Task<int> CreateAsync(Currency currencyDTO)
         {
-            currency.CreatedDate = DateTime.UtcNow;
-            _context.Currencies.Add(currency);
-            await _context.SaveChangesAsync();
-            return currency;
+            const string query = @"INSERT INTO Currency (CurrencyName,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@CurrencyName,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, currencyDTO);
         }
 
-        // UPDATE
-        public async Task<bool> UpdateAsync(Currency currency)
+
+        public async Task UpdateAsync(Currency currencyDTO)
         {
-            var existing = await _context.Currencies
-                .Where(c => c.Id == currency.Id && c.IsActive == true)
-                .FirstOrDefaultAsync();
-
-            if (existing == null) return false;
-
-           
-            existing.CurrencyName = currency.CurrencyName;
-            existing.UpdatedBy = currency.UpdatedBy;
-            existing.UpdatedDate = DateTime.UtcNow;
-            existing.IsActive = currency.IsActive;
-
-            _context.Currencies.Update(existing);
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE Currency SET CurrencyName = @CurrencyName, Description = @Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, currencyDTO);
         }
 
-        // SOFT DELETE
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var existing = await _context.Currencies.FindAsync(id);
-            if (existing == null) return false;
-
-            existing.IsActive = false;
-            existing.UpdatedDate = DateTime.UtcNow;
-
-            _context.Currencies.Update(existing);
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE Currency SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

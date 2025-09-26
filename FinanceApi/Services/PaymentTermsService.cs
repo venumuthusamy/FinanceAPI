@@ -15,31 +15,31 @@ namespace FinanceApi.Services
         }
 
 
-        public Task<PaymentTerms> CreateAsync(PaymentTerms paymentTerms)
+        public async Task<IEnumerable<PaymentTermsDTO>> GetAllAsync()
         {
-            return _repository.AddAsync(paymentTerms);
+            return await _repository.GetAllAsync();
         }
 
-        public Task<bool> DeleteAsync(int id)
+        public async Task<int> CreateAsync(PaymentTerms paymentTermsDTO)
         {
-            return _repository.DeleteAsync(id);
+            return await _repository.CreateAsync(paymentTermsDTO);
+
+        }
+
+        public async Task<PaymentTermsDTO> GetById(int id)
+        {
+            return await _repository.GetByIdAsync(id);
+        }
+
+        public Task UpdateAsync(PaymentTerms paymentTermsDTO)
+        {
+            return _repository.UpdateAsync(paymentTermsDTO);
         }
 
 
-        public Task<IEnumerable<PaymentTermsDTO>> GetAllAsync()
+        public async Task DeleteLicense(int id)
         {
-            return _repository.GetAllAsync();
-        }
-
-        public Task<bool> UpdateAsync(int id, PaymentTerms paymentTerms)
-        {
-            paymentTerms.Id = id;  // now 'id' exists
-            return _repository.UpdateAsync(paymentTerms);
-        }
-
-        Task<PaymentTermsDTO> IPaymentTermsService.GetByIdAsync(int id)
-        {
-            return _repository.GetByIdAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

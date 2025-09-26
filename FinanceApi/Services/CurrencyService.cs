@@ -14,35 +14,31 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        // GET ALL active currencies
-        public Task<IEnumerable<CurrencyDTO>> GetAllAsync()
+        public async Task<IEnumerable<CurrencyDTO>> GetAllAsync()
         {
-            return _repository.GetAllAsync();
+            return await _repository.GetAllAsync();
         }
 
-        // GET currency by ID (only active)
-        public Task<CurrencyDTO?> GetByIdAsync(int id)
+        public async Task<int> CreateAsync(Currency currencyDTO)
         {
-            return _repository.GetByIdAsync(id);
+            return await _repository.CreateAsync(currencyDTO);
+
         }
 
-        // CREATE a new currency
-        public Task<Currency> CreateAsync(Currency currency)
+        public async Task<CurrencyDTO> GetById(int id)
         {
-            return _repository.AddAsync(currency);
+            return await _repository.GetByIdAsync(id);
         }
 
-        // UPDATE an existing currency
-        public Task<bool> UpdateAsync(int id, Currency currency)
+        public Task UpdateAsync(Currency currencyDTO)
         {
-            currency.Id = id;
-            return _repository.UpdateAsync(currency);
+            return _repository.UpdateAsync(currencyDTO);
         }
 
-        // SOFT DELETE: mark IsActive = false
-        public Task<bool> DeleteAsync(int id)
+
+        public async Task DeleteLicense(int id)
         {
-            return _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 

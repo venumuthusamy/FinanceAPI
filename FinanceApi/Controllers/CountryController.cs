@@ -1,6 +1,10 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics.Metrics;
 
 
 namespace FinanceApi.Controllers
@@ -15,57 +19,52 @@ namespace FinanceApi.Controllers
         {
             _service = service;
         }
-
         [HttpGet("getAll")]
-        public async Task<ActionResult<List<Country>>> GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<Country>> GetById(int id)
-        {
-            var country = await _service.GetByIdAsync(id);
-            if (country == null) return NotFound();
-            return Ok(country);
-        }
+
 
         [HttpPost("insert")]
-        public async Task<ActionResult<Country>> Create(Country country)
+        public async Task<ActionResult> Create(Country country)
         {
-            try
-            {
-                var created = await _service.CreateAsync(country);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                // Return 400 Bad Request with just the message
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                // For unexpected exceptions, return 500 Internal Server Error
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
 
+            var id = await _service.CreateAsync(country);
+            ResponseResult data = new ResponseResult(true, "Country created sucessfully", id);
+            return Ok(data);
 
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Country>> Update(int id, Country country)
+
+        [HttpGet("get/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
-            var updated = await _service.UpdateAsync(id, country);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
+
+
+        [HttpPut("update")]
+        public async Task<IActionResult> Update(Country country)
+        {
+            await _service.UpdateAsync(country);
+            ResponseResult data = new ResponseResult(true, "Country updated successfully.", null);
+            return Ok(data);
+        }
+
+
 
         [HttpDelete("delete/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Country Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }
