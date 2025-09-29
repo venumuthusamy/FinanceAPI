@@ -62,7 +62,7 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
+        [HttpDelete("DeleteApprovalLevelById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
             await _service.DeleteLicense(id);

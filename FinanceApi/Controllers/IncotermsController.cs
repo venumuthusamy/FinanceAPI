@@ -49,8 +49,7 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
-
-        [HttpPut("updateIncotermsById")]
+        [HttpPut("updateIncotermsById/{id}")]
         public async Task<IActionResult> Update(IncotermsDTO incotermsDTO)
         {
             await _service.UpdateLicense(incotermsDTO);

@@ -12,6 +12,10 @@ namespace FinanceApi.Controllers
     public class FlagIssuesController : ControllerBase
     {
         private readonly IflagIssuesServices _service;
+        public FlagIssuesController(IflagIssuesServices service)
+        {
+            _service = service;
+        }
 
 
         [HttpGet("GetAllFlagissue")]
@@ -24,7 +28,7 @@ namespace FinanceApi.Controllers
 
 
 
-        [HttpGet("getFlagissueById/{id}")]
+        [HttpPost("createFlagissue")]
         public async Task<ActionResult> Create(FlagIssues flagIssuesDTO)
         {
 
@@ -35,7 +39,8 @@ namespace FinanceApi.Controllers
         }
 
 
-        [HttpPost("createFlagissue")]
+       
+        [HttpGet("getFlagissueById/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
             var licenseObj = await _service.GetById(id);
@@ -44,7 +49,7 @@ namespace FinanceApi.Controllers
         }
 
 
-        [HttpPut("updateFlagissueById")]
+        [HttpPut("updateFlagissueById/{id}")]
         public async Task<IActionResult> Update(FlagIssues flagIssuesDTO)
         {
             await _service.UpdateAsync(flagIssuesDTO);
