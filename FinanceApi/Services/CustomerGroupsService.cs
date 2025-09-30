@@ -1,4 +1,5 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Services
@@ -9,33 +10,35 @@ namespace FinanceApi.Services
 
         public CustomerGroupsService(ICustomerGroupsRepository repository)
         {
-            _repository = repository;
+            _repository = repository; 
         }
 
-        public async Task<List<CustomerGroups>> GetAllAsync()
+        public async Task<IEnumerable<CustomerGroupsDTO>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
 
-        public async Task<CustomerGroups?> GetByIdAsync(int id)
+        public async Task<CustomerGroupsDTO> GetById(int id)
         {
             return await _repository.GetByIdAsync(id);
         }
-
-        public async Task<CustomerGroups> CreateAsync(CustomerGroups customerGroups)
+        public async Task<int> CreateAsync(CustomerGroups customerGroups)
         {
-
             return await _repository.CreateAsync(customerGroups);
+
         }
 
-        public async Task<CustomerGroups?> UpdateAsync(int id, CustomerGroups customerGroups)
+
+
+        public Task UpdateAsync(CustomerGroups customerGroups)
         {
-            return await _repository.UpdateAsync(id, customerGroups);
+            return _repository.UpdateAsync(customerGroups);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+
+        public async Task DeleteAsync(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

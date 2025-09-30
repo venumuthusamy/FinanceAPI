@@ -1,90 +1,57 @@
-﻿using FinanceApi.Data;
+﻿using Dapper;
+using FinanceApi.Data;
+using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
-using FinanceApi.Interfaces;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace FinanceApi.Repositories
 {
-    public class CustomerGroupsRepository : ICustomerGroupsRepository
+    public class CustomerGroupsRepository : DynamicRepository,ICustomerGroupsRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public CustomerGroupsRepository(ApplicationDbContext context)
+        public CustomerGroupsRepository(IDbConnectionFactory connectionFactory)
+      : base(connectionFactory)
         {
-            _context = context;
         }
 
-        public async Task<List<CustomerGroups>> GetAllAsync()
+        public async Task<IEnumerable<CustomerGroupsDTO>> GetAllAsync()
         {
-            return await _context.CustomerGroups.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
-        }
+            const string query = @" SELECT * from CustomerGroups Where isActive = 1";
 
-        public async Task<CustomerGroups?> GetByIdAsync(int id)
-        {
-            return await _context.CustomerGroups.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
-        }
-
-        public async Task<CustomerGroups> CreateAsync(CustomerGroups customerGroups)
-        {
-            try
-            {
-                customerGroups.CreatedBy = "System";
-                customerGroups.CreatedDate = DateTime.UtcNow;
-                customerGroups.IsActive = true;
-                _context.CustomerGroups.Add(customerGroups);
-                await _context.SaveChangesAsync();
-                return customerGroups;
-            }          
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-        }
-
-        public async Task<CustomerGroups?> UpdateAsync(int id, CustomerGroups updatedCustomerGroups)
-        {
-            try
-            {
-                var existingCustomerGroups = await _context.CustomerGroups.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingCustomerGroups == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingCustomerGroups.Name = updatedCustomerGroups.Name;
-                existingCustomerGroups.Description = updatedCustomerGroups.Description;
-                existingCustomerGroups.UpdatedBy = "System";
-                existingCustomerGroups.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingCustomerGroups;
-            }          
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            return await Connection.QueryAsync<CustomerGroupsDTO>(query);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task<CustomerGroupsDTO> GetByIdAsync(long id)
         {
-            var customerGroups = await _context.CustomerGroups.FirstOrDefaultAsync(s => s.Id == id);
-            if (customerGroups == null) return false;
 
-            customerGroups.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "SELECT * FROM CustomerGroups WHERE Id = @Id";
+
+            return await Connection.QuerySingleAsync<CustomerGroupsDTO>(query, new { Id = id });
+        }
+
+        public async Task<int> CreateAsync(CustomerGroups customerGroups)
+        {
+            const string query = @"INSERT INTO CustomerGroups (Name,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@Name,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, customerGroups);
+        }
+
+
+        public async Task UpdateAsync(CustomerGroups customerGroups)
+        {
+            const string query = "UPDATE CustomerGroups SET Name = @Name, Description = @Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, customerGroups);
+        }
+
+        public async Task DeactivateAsync(int id)
+        {
+            const string query = "UPDATE CustomerGroups SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

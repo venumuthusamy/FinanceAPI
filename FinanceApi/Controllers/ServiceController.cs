@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,59 +13,53 @@ namespace FinanceApi.Controllers
 
         public ServiceController(IServicesService service)
         {
-            _service = service;
+            _service = service; 
         }
 
-        [HttpGet("getAll")]
-        public async Task<ActionResult<List<Service>>> GetAll()
+        [HttpGet("getAllService")]
+        public async Task<IActionResult> getAllService()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<Service>> GetById(int id)
+
+        [HttpGet("getbyIdService/{id}")]
+        public async Task<IActionResult> getbyIdService(int id)
         {
-            var service = await _service.GetByIdAsync(id);
-            if (service == null) return NotFound();
-            return Ok(service);
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
-        [HttpPost("insert")]
-        public async Task<ActionResult<Service>> Create(Service service)
-        {
-            try
-            {
-                var created = await _service.CreateAsync(service);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                // Return 400 Bad Request with just the message
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                // For unexpected exceptions, return 500 Internal Server Error
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
 
+        [HttpPost("CreateService")]
+        public async Task<ActionResult> CreateService(Service service)
+        {
+
+            var id = await _service.CreateAsync(service);
+            ResponseResult data = new ResponseResult(true, "Service created sucessfully", id);
+            return Ok(data);
 
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Service>> Update(int id, Service service)
+        [HttpPut("updateService")]
+        public async Task<IActionResult> updateService(Service service)
         {
-            var services = await _service.UpdateAsync(id, service);
-            if (services == null) return NotFound();
-            return Ok(services);
+            await _service.UpdateAsync(service);
+            ResponseResult data = new ResponseResult(true, "Service updated successfully.", null);
+            return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
-        public async Task<IActionResult> Delete(int id)
+
+
+        [HttpDelete("deleteService/{id}")]
+        public async Task<IActionResult> deleteService(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteAsync(id);
+            ResponseResult data = new ResponseResult(true, "Service Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

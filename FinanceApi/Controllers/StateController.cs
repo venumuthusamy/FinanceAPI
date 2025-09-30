@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,54 +16,51 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("getAll")]
-        public async Task<ActionResult<List<StateDto>>> GetAll()
+
+        [HttpGet("getAllState")]
+        public async Task<IActionResult> getAllState()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<StateDto>> GetById(int id)
+
+        [HttpGet("getbyIdState/{id}")]
+        public async Task<IActionResult> getbyIdState(int id)
         {
-            var state = await _service.GetByIdAsync(id);
-            if (state == null) return NotFound();
-            return Ok(state);
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
-        [HttpPost("insert")]
-        public async Task<ActionResult<State>> Create(State state)
-        {
-            try
-            {
-                var created = await _service.CreateAsync(state);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
 
+        [HttpPost("CreateState")]
+        public async Task<ActionResult> CreateState(State state)
+        {
+
+            var id = await _service.CreateAsync(state);
+            ResponseResult data = new ResponseResult(true, "State created sucessfully", id);
+            return Ok(data);
 
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<State>> Update(int id, State state)
+        [HttpPut("updateState")]
+        public async Task<IActionResult> updateState(State state)
         {
-            var updated = await _service.UpdateAsync(id, state);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            await _service.UpdateAsync(state);
+            ResponseResult data = new ResponseResult(true, "State updated successfully.", null);
+            return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
-        public async Task<IActionResult> Delete(int id)
+
+
+        [HttpDelete("deleteState/{id}")]
+        public async Task<IActionResult> deleteState(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteAsync(id);
+            ResponseResult data = new ResponseResult(true, "State Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

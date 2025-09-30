@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,56 +17,51 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("getAll")]
-        public async Task<ActionResult<List<SupplierGroups>>> GetAll()
+
+        [HttpGet("getAllSupplierGroups")]
+        public async Task<IActionResult> getAllSupplierGroups()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<SupplierGroups>> GetById(int id)
+
+        [HttpGet("getbySupplierGroups/{id}")]
+        public async Task<IActionResult> getbySupplierGroups(int id)
         {
-            var customerGroups = await _service.GetByIdAsync(id);
-            if (customerGroups == null) return NotFound();
-            return Ok(customerGroups);
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
-        [HttpPost("insert")]
-        public async Task<ActionResult<SupplierGroups>> Create(SupplierGroups supplierGroups)
-        {
-            try
-            {
-                var created = await _service.CreateAsync(supplierGroups);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                // Return 400 Bad Request with just the message
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                // For unexpected exceptions, return 500 Internal Server Error
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
 
+        [HttpPost("CreateSupplierGroups")]
+        public async Task<ActionResult> CreateSupplierGroups(SupplierGroups supplierGroups)
+        {
+
+            var id = await _service.CreateAsync(supplierGroups);
+            ResponseResult data = new ResponseResult(true, "SupplierGroups created sucessfully", id);
+            return Ok(data);
 
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<SupplierGroups>> Update(int id, SupplierGroups supplierGroups)
+        [HttpPut("updateSupplierGroups")]
+        public async Task<IActionResult> updateSupplierGroups(SupplierGroups supplierGroups)
         {
-            var updated = await _service.UpdateAsync(id, supplierGroups);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            await _service.UpdateAsync(supplierGroups);
+            ResponseResult data = new ResponseResult(true, "SupplierGroups updated successfully.", null);
+            return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
-        public async Task<IActionResult> Delete(int id)
+
+
+        [HttpDelete("deleteSupplierGroups/{id}")]
+        public async Task<IActionResult> deleteSupplierGroups(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteAsync(id);
+            ResponseResult data = new ResponseResult(true, "SupplierGroups Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

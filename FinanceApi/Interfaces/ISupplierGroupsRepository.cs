@@ -1,13 +1,14 @@
-﻿using FinanceApi.Models;
+﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
 {
     public interface ISupplierGroupsRepository
     {
-        Task<List<SupplierGroups>> GetAllAsync();
-        Task<SupplierGroups?> GetByIdAsync(int id);
-        Task<SupplierGroups> CreateAsync(SupplierGroups supplierGroups);
-        Task<SupplierGroups?> UpdateAsync(int id, SupplierGroups supplierGroups);
-        Task<bool> DeleteAsync(int id);
+        Task<IEnumerable<SupplierGroupDTO>> GetAllAsync();
+        Task<SupplierGroupDTO> GetByIdAsync(long id);
+        Task<int> CreateAsync(SupplierGroups supplierGroups);
+        Task UpdateAsync(SupplierGroups supplierGroups);
+        Task DeactivateAsync(int id);
     }
 }

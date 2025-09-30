@@ -1,93 +1,59 @@
-﻿using FinanceApi.Data;
+﻿using Dapper;
+using FinanceApi.Data;
+using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
-using FinanceApi.Interfaces;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 
 
 namespace FinanceApi.Repositories
 {
-    public class ServiceRepository : IServicesRepository
+    public class ServiceRepository : DynamicRepository,IServicesRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public ServiceRepository(ApplicationDbContext context)
+        public ServiceRepository(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
         {
-            _context = context;
         }
 
-        public async Task<List<Service>> GetAllAsync()
+        public async Task<IEnumerable<ServiceDTO>> GetAllAsync()
         {
-            return await _context.Service.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
-        }
+            const string query = @" SELECT * from Service Where isActive = 1";
 
-        public async Task<Service?> GetByIdAsync(int id)
-        {
-            return await _context.Service.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
-        }
-
-        public async Task<Service> CreateAsync(Service service)
-        {
-            try
-            {
-                service.CreatedBy = "System";
-                service.CreatedDate = DateTime.UtcNow;
-                service.IsActive = true;
-                _context.Service.Add(service);
-                await _context.SaveChangesAsync();
-                return service;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-        }
-
-        public async Task<Service?> UpdateAsync(int id, Service updatedService)
-        {
-            try
-            {
-                var existingService = await _context.Service.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingService == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingService.Name = updatedService.Name;
-                existingService.Charge = updatedService.Charge;
-                existingService.Tax = updatedService.Tax;
-                existingService.Description = updatedService.Description;
-                existingService.UpdatedBy = "System";
-                existingService.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return updatedService;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            return await Connection.QueryAsync<ServiceDTO>(query);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task<ServiceDTO> GetByIdAsync(long id)
         {
-            var service = await _context.Service.FirstOrDefaultAsync(s => s.Id == id);
-            if (service == null) return false;
 
-            service.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "SELECT * FROM Service WHERE Id = @Id";
+
+            return await Connection.QuerySingleAsync<ServiceDTO>(query, new { Id = id });
+        }
+
+        public async Task<int> CreateAsync(Service service)
+        {
+            const string query = @"INSERT INTO Service (Name,Charge,Tax,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@Name,@Charge,@Tax,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, service);
+        }
+
+
+        public async Task UpdateAsync(Service service)
+        {
+            const string query = "UPDATE Service SET Name = @Name,Charge = @Charge,Tax = @Tax,Description = @Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, service);
+        }
+
+        public async Task DeactivateAsync(int id)
+        {
+            const string query = "UPDATE Service SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

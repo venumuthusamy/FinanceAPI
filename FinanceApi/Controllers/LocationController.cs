@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,53 +16,51 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("getAll")]
-        public async Task<ActionResult<List<LocationDto>>> GetAll()
+
+        [HttpGet("getAllLocation")]
+        public async Task<IActionResult> getAllLocation()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<LocationDto>> GetById(int id)
+
+        [HttpGet("getLocationbyId/{id}")]
+        public async Task<IActionResult> getLocationbyId(int id)
         {
-            var location = await _service.GetByIdAsync(id);
-            if (location == null) return NotFound();
-            return Ok(location);
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
-        [HttpPost("insert")]
-        public async Task<ActionResult<Location>> Create(Location location)
+
+        [HttpPost("CreateLocation")]
+        public async Task<ActionResult> CreateLocation(Location location)
         {
-            try
-            {
-                var created = await _service.CreateAsync(location);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
+
+            var id = await _service.CreateAsync(location);
+            ResponseResult data = new ResponseResult(true, "Location created sucessfully", id);
+            return Ok(data);
+
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Location>> Update(int id, Location location)
+        [HttpPut("updateLocation")]
+        public async Task<IActionResult> updateLocation(Location location)
         {
-            var updated = await _service.UpdateAsync(id, location);
-            if (updated == null) return NotFound();
-            return (updated);
+            await _service.UpdateAsync(location);
+            ResponseResult data = new ResponseResult(true, "Location updated successfully.", null);
+            return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
-        public async Task<ActionResult<Location>> Delete(int id)
-        {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
 
+
+        [HttpDelete("deleteLocation/{id}")]
+        public async Task<IActionResult> deleteLocation(int id)
+        {
+            await _service.DeleteAsync(id);
+            ResponseResult data = new ResponseResult(true, "Location Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }
