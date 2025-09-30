@@ -12,7 +12,7 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<Income>> GetAllAsync()
+        public async Task<IEnumerable<Income>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
@@ -22,20 +22,20 @@ namespace FinanceApi.Services
             return await _repository.GetByIdAsync(id);
         }
 
-        public async Task<Income> CreateAsync(Income income)
+        public async Task<int> CreateAsync(Income income)
         {
 
             return await _repository.CreateAsync(income);
         }
 
-        public async Task<Income?> UpdateAsync(int id, Income income)
+        public async Task UpdateAsync(Income income)
         {
-            return await _repository.UpdateAsync(id, income);
+            await _repository.UpdateAsync(income);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeleteLicense(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

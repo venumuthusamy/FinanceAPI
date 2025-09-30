@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,55 +18,43 @@ namespace FinanceApi.Controllers
         }
 
         [HttpGet("getAll")]
-        public async Task<ActionResult<List<Department>>> GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
         [HttpGet("get/{id}")]
-        public async Task<ActionResult<Department>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
-            var department = await _service.GetByIdAsync(id);
-            if (department == null) return NotFound();
-            return Ok(department);
+            var licenseObj = await _service.GetByIdAsync(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
         [HttpPost("insert")]
-        public async Task<ActionResult<Department>> Create(Department department)
+        public async Task<ActionResult> Create(Department department)
         {
-            try
-            {
-                var created = await _service.CreateAsync(department);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                // Return 400 Bad Request with just the message
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                // For unexpected exceptions, return 500 Internal Server Error
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
-
-
+            var id = await _service.CreateAsync(department);
+            ResponseResult data = new ResponseResult(true, "Department created sucessfully", id);
+            return Ok(data);
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Department>> Update(int id, Department department)
+        [HttpPut("update")]
+        public async Task<IActionResult> Update(Department department)
         {
-            var updated = await _service.UpdateAsync(id, department);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            await _service.UpdateAsync(department);
+            ResponseResult data = new ResponseResult(true, "Department updated successfully.", null);
+            return Ok(data);
         }
 
         [HttpDelete("delete/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Department Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

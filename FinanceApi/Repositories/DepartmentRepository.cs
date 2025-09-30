@@ -2,92 +2,55 @@
 using FinanceApi.Data;
 using Microsoft.EntityFrameworkCore;
 using FinanceApi.Interfaces;
+using Dapper;
 
 namespace FinanceApi.Repositories
 {
-    public class DepartmentRepository : IDepartmentRepository
+    public class DepartmentRepository : DynamicRepository,IDepartmentRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public DepartmentRepository(ApplicationDbContext context)
+        public DepartmentRepository(IDbConnectionFactory connectionFactory)
+         : base(connectionFactory)
         {
-            _context = context;
+
         }
 
-        public async Task<List<Department>> GetAllAsync()
+        public async Task<IEnumerable<Department>> GetAllAsync()
         {
-            return await _context.Department.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
+            const string query = @"
+                SELECT * from Department Where isActive = 'true' ";
+
+            return await Connection.QueryAsync<Department>(query);
         }
 
         public async Task<Department?> GetByIdAsync(int id)
         {
-            return await _context.Department.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
+            const string query = "SELECT * FROM Department WHERE Id = @Id";
+
+            return await Connection.QuerySingleAsync<Department>(query, new { Id = id });
         }
 
-        public async Task<Department> CreateAsync(Department department)
+        public async Task<int> CreateAsync(Department department)
         {
-            try
-            {
-                department.CreatedBy = "System";
-                department.CreatedDate = DateTime.UtcNow;
-                department.IsActive = true;
-                _context.Department.Add(department);
-                await _context.SaveChangesAsync();
-                return department;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"INSERT INTO Department (DepartmentCode,DepartmentName,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@DepartmentCode,@DepartmentName,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, department);
         }
 
-        public async Task<Department?> UpdateAsync(int id, Department updatedDepartment)
+        public async Task UpdateAsync(Department updatedDepartment)
         {
-            try
-            {
-                var existingDepartment = await _context.Department.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingDepartment == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingDepartment.DepartmentCode = updatedDepartment.DepartmentCode;
-                existingDepartment.DepartmentName = updatedDepartment.DepartmentName;
-                existingDepartment.UpdatedBy = "System";
-                existingDepartment.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingDepartment;
-            }
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-
+            const string query = "UPDATE Department SET DepartmentCode = @DepartmentCode,DepartmentName = @DepartmentName WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, updatedDepartment);
 
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var department = await _context.Department.FirstOrDefaultAsync(s => s.Id == id);
-            if (department == null) return false;
-
-            department.IsActive = false;
-
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE Department SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

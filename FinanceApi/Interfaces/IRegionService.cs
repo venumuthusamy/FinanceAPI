@@ -3,11 +3,12 @@
 namespace FinanceApi.Interfaces
 {
     public interface IRegionService
-    {
-        Task<List<Region>> GetAllAsync();
-        Task<Region?> GetByIdAsync(int id);
-        Task<Region> CreateAsync(Region region);
-        Task<Region?> UpdateAsync(int id, Region region);
-        Task<bool> DeleteAsync(int id);
+    {    
+
+        Task<IEnumerable<Region>> GetAllAsync();
+        Task<Region> GetById(int id);
+        Task<int> CreateAsync(Region region);
+        Task UpdateAsync(Region region);
+        Task DeleteLicense(int id);
     }
 }

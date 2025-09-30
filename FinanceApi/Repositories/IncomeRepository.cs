@@ -2,90 +2,53 @@
 using FinanceApi.Data;
 using Microsoft.EntityFrameworkCore;
 using FinanceApi.Interfaces;
+using Dapper;
 
 
 namespace FinanceApi.Repositories
 {
-    public class IncomeRepository : IIncomeRepository
+    public class IncomeRepository : DynamicRepository,IIncomeRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public IncomeRepository(ApplicationDbContext context)
+        public IncomeRepository(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
         {
-            _context = context;
-        }
 
-        public async Task<List<Income>> GetAllAsync()
+        }
+        public async Task<IEnumerable<Income>> GetAllAsync()
         {
-            return await _context.Income.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
+            const string query = @"
+                SELECT * from Income Where isActive = 'true' ";
+
+            return await Connection.QueryAsync<Income>(query);
         }
 
         public async Task<Income?> GetByIdAsync(int id)
         {
-            return await _context.Income.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
+            const string query = "SELECT * FROM Income WHERE Id = @Id";
+            return await Connection.QuerySingleAsync<Income>(query, new { Id = id });
         }
 
-        public async Task<Income> CreateAsync(Income income)
+        public async Task<int> CreateAsync(Income income)
         {
-            try
-            {
-                income.CreatedBy = "System";
-                income.CreatedDate = DateTime.UtcNow;
-                income.IsActive = true;
-                _context.Income.Add(income);
-                await _context.SaveChangesAsync();
-                return income;
-            }           
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"INSERT INTO Income (Name,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@Name,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, income);
         }
 
-        public async Task<Income?> UpdateAsync(int id, Income updatedIncome)
+        public async Task  UpdateAsync(Income updatedIncome)
         {
-            try
-            {
-                var existingIncome = await _context.Income.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingIncome == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingIncome.Name = updatedIncome.Name;
-                existingIncome.Description = updatedIncome.Description;
-                existingIncome.UpdatedBy = "System";
-                existingIncome.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingIncome;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = "UPDATE Income SET Name = @Name,Description = @Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, updatedIncome);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var income = await _context.Income.FirstOrDefaultAsync(s => s.Id == id);
-            if (income == null) return false;
-
-            income.IsActive = false;
-
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE Income SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

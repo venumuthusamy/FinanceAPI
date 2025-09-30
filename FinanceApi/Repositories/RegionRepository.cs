@@ -2,87 +2,57 @@
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
 using FinanceApi.Interfaces;
+using Dapper;
+using System.Diagnostics.Metrics;
 
 namespace FinanceApi.Repositories
 {
-    public class RegionRepository : IRegionRepository
+    public class RegionRepository : DynamicRepository,IRegionRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public RegionRepository(ApplicationDbContext context)
+
+
+        public RegionRepository(IDbConnectionFactory connectionFactory)
+            : base(connectionFactory)
         {
-            _context = context;
+            
         }
 
-        public async Task<List<Region>> GetAllAsync()
+        public async Task<IEnumerable<Region>> GetAllAsync()
         {
-            return await _context.Region.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
+            const string query = @"
+                SELECT * from Region Where isActive = 'true' ";
+
+            return await Connection.QueryAsync<Region>(query);
         }
 
         public async Task<Region?> GetByIdAsync(int id)
         {
-            return await _context.Region.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
+            const string query = "SELECT * FROM Region WHERE Id = @Id";
+
+            return await Connection.QuerySingleAsync<Region>(query, new { Id = id });
         }
 
-        public async Task<Region> CreateAsync(Region region)
+        public async Task<int> CreateAsync(Region region)
         {
-            try
-            {
-                region.CreatedBy = "System";
-                region.CreatedDate = DateTime.UtcNow;
-                region.IsActive = true;
-                _context.Region.Add(region);
-                await _context.SaveChangesAsync();
-                return region;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"INSERT INTO Region (RegionName,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@RegionName,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, region);
         }
 
-        public async Task<Region?> UpdateAsync(int id, Region updatedRegion)
+        public async Task UpdateAsync(Region updatedRegion)
         {
-            try
-            {
-                var existingRegion = await _context.Region.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingRegion == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingRegion.RegionName = updatedRegion.RegionName;
-                existingRegion.UpdatedBy = "System";
-                existingRegion.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingRegion;
-            }          
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = "UPDATE Region SET RegionName = @RegionName  WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, updatedRegion);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var region = await _context.Region.FirstOrDefaultAsync(s => s.Id == id);
-            if (region == null) return false;
-
-            region.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE Region SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,55 +17,43 @@ namespace FinanceApi.Controllers
         }
 
         [HttpGet("getAll")]
-        public async Task<ActionResult<List<Deduction>>> GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
         [HttpGet("get/{id}")]
-        public async Task<ActionResult<Deduction>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
-            var deduction = await _service.GetByIdAsync(id);
-            if (deduction == null) return NotFound();
-            return Ok(deduction);
+            var licenseObj = await _service.GetByIdAsync(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
         [HttpPost("insert")]
-        public async Task<ActionResult<Deduction>> Create(Deduction deduction)
+        public async Task<ActionResult> Create(Deduction deduction)
         {
-            try
-            {
-                var created = await _service.CreateAsync(deduction);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                // Return 400 Bad Request with just the message
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                // For unexpected exceptions, return 500 Internal Server Error
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
-
-
+            var id = await _service.CreateAsync(deduction);
+            ResponseResult data = new ResponseResult(true, "Deduction created sucessfully", id);
+            return Ok(data);
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Deduction>> Update(int id, Deduction deduction)
+        [HttpPut("update")]
+        public async Task<IActionResult> Update(Deduction deduction)
         {
-            var updated = await _service.UpdateAsync(id, deduction);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            await _service.UpdateAsync(deduction);
+            ResponseResult data = new ResponseResult(true, "Deduction updated successfully.", null);
+            return Ok(data);
         }
 
         [HttpDelete("delete/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Deduction Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }

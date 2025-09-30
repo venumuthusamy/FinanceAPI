@@ -4,10 +4,10 @@ namespace FinanceApi.Interfaces
 {
     public interface IDepartmentRepository
     {
-        Task<List<Department>> GetAllAsync();
-        Task<Department?> GetByIdAsync(int id);
-        Task<Department> CreateAsync(Department department);
-        Task<Department?> UpdateAsync(int id, Department department);
-        Task<bool> DeleteAsync(int id);
+        Task<IEnumerable<Department>> GetAllAsync();
+        Task<Department> GetByIdAsync(int id);
+        Task<int> CreateAsync(Department department);
+        Task UpdateAsync(Department department);
+        Task DeactivateAsync(int id);
     }
 }
