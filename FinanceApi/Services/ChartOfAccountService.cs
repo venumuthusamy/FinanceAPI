@@ -1,4 +1,6 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.InterfaceService;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Repositories;
 
@@ -13,29 +15,30 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<ChartOfAccount>> GetAllAsync()
+        public async Task<IEnumerable<ChartOfAccountDTO>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
 
-        public async Task<ChartOfAccount?> GetByIdAsync(int id)
+        public async Task<int> CreateAsync(ChartOfAccount chartOfAccount)
+        {
+            return await _repository.CreateAsync(chartOfAccount);
+        }
+
+        public async Task<ChartOfAccountDTO?> GetById(int id)
         {
             return await _repository.GetByIdAsync(id);
         }
 
-        public async Task<ChartOfAccount> CreateAsync(ChartOfAccount coa)
+        public Task UpdateAsync(ChartOfAccount chartOfAccount)
         {
-            return await _repository.CreateAsync(coa);
+            return _repository.UpdateAsync(chartOfAccount);
         }
 
-        public async Task<ChartOfAccount?> UpdateAsync(int id, ChartOfAccount coa)
+        public async Task DeleteChartOfAccount(int id)
         {
-            return await _repository.UpdateAsync(id, coa);
-        }
-
-        public async Task<bool> DeleteAsync(int id)
-        {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
+
 }

@@ -5,143 +5,68 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinanceApi.Repositories
 {
-    public class ChartOfAccountRepository : IChartOfAccountRepository
+    using Dapper;
+    using FinanceApi.ModelDTO;
+
+    public class ChartOfAccountRepository : DynamicRepository, IChartOfAccountRepository
     {
-        private readonly ApplicationDbContext _context;
-
-        public ChartOfAccountRepository(ApplicationDbContext context)
+        public ChartOfAccountRepository(IDbConnectionFactory connectionFactory)
+            : base(connectionFactory)
         {
-            _context = context;
         }
 
-        public async Task<List<ChartOfAccount>> GetAllAsync()
+        public async Task<IEnumerable<ChartOfAccountDTO>> GetAllAsync()
         {
-            return await _context.ChartOfAccount
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.Id)
-                .Select(s => new ChartOfAccount
-                {
-                    Id = s.Id,
-                    HeadName = s.HeadName,
-                    HeadCode = s.HeadCode,
-                    HeadLevel = s.HeadLevel,
-                    HeadType = s.HeadType,
-                    HeadCodeName = s.HeadCodeName,
-                    IsGl = s.IsGl,
-                    IsTransaction = s.IsTransaction,
-                    ParentHead = s.ParentHead,
-                    PHeadName = s.PHeadName,
-                    Balance = s.Balance,
-                    OpeningBalance = s.OpeningBalance,
-                    CreatedBy = s.CreatedBy,
-                    CreatedDate = s.CreatedDate,
-                    UpdatedBy = s.UpdatedBy,
-                    UpdatedDate = s.UpdatedDate,
-                    IsActive = s.IsActive
-                })
-                .ToListAsync();
+            const string query = @"SELECT * FROM ChartOfAccount";
+            return await Connection.QueryAsync<ChartOfAccountDTO>(query);
         }
 
-
-        public async Task<ChartOfAccount?> GetByIdAsync(int id)
+        public async Task<ChartOfAccountDTO?> GetByIdAsync(int id)
         {
-            return await _context.ChartOfAccount
-                .Where(s => s.Id == id)
-                .Where(c => c.IsActive)
-                .Select(s => new ChartOfAccount
-                {
-                    Id = s.Id,
-                    HeadName = s.HeadName,
-                    HeadCode = s.HeadCode,
-                    HeadLevel = s.HeadLevel,
-                    HeadType = s.HeadType,
-                    HeadCodeName = s.HeadCodeName,
-                    IsGl = s.IsGl,
-                    IsTransaction = s.IsTransaction,
-                    ParentHead = s.ParentHead,
-                    PHeadName = s.PHeadName,
-                    Balance = s.Balance,
-                    OpeningBalance = s.OpeningBalance,
-                    CreatedBy = s.CreatedBy,
-                    CreatedDate = s.CreatedDate,
-                    UpdatedBy = s.UpdatedBy,
-                    UpdatedDate = s.UpdatedDate,
-                    IsActive = s.IsActive
-                })
-                .FirstOrDefaultAsync();
+            const string query = @"SELECT * FROM ChartOfAccount WHERE Id = @Id";
+            // Use QuerySingleOrDefault to avoid throwing when not found
+            return await Connection.QuerySingleOrDefaultAsync<ChartOfAccountDTO>(query, new { Id = id });
         }
 
-
-        public async Task<ChartOfAccount> CreateAsync(ChartOfAccount coa)
+        public async Task<int> CreateAsync(ChartOfAccount coa)
         {
-            try
-            {
-                coa.CreatedBy = "System";
-                coa.CreatedDate = DateTime.UtcNow;
-                coa.IsActive = true;
-                _context.ChartOfAccount.Add(coa);
-                await _context.SaveChangesAsync();
-                return coa;
-
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"
+INSERT INTO ChartOfAccount
+(HeadCode, HeadLevel, HeadName, HeadType, HeadCodeName, IsGl, IsTransaction, ParentHead, PHeadName,
+ Balance, OpeningBalance, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+OUTPUT INSERTED.Id
+VALUES
+(@HeadCode, @HeadLevel, @HeadName, @HeadType, @HeadCodeName, @IsGl, @IsTransaction, @ParentHead, @PHeadName,
+ @Balance, @OpeningBalance, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, coa);
         }
 
-        public async Task<ChartOfAccount?> UpdateAsync(int id, ChartOfAccount updatedCoa)
+        public async Task UpdateAsync(ChartOfAccount coa)
         {
-            try
-            {
-                var existingCoa = await _context.ChartOfAccount.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingCoa == null) return null;
-
-                existingCoa.HeadName = updatedCoa.HeadName;
-                existingCoa.HeadCode = updatedCoa.HeadCode;
-                existingCoa.HeadLevel = updatedCoa.HeadLevel;
-                existingCoa.HeadType = updatedCoa.HeadType;
-                existingCoa.HeadCodeName = updatedCoa.HeadCodeName;
-                existingCoa.IsGl = updatedCoa.IsGl;
-                existingCoa.IsTransaction = updatedCoa.IsTransaction;
-                existingCoa.ParentHead = updatedCoa.ParentHead;
-                existingCoa.PHeadName = updatedCoa.PHeadName;
-                existingCoa.Balance = updatedCoa.Balance;
-                existingCoa.OpeningBalance = updatedCoa.OpeningBalance;
-
-                existingCoa.UpdatedBy = "System";
-                existingCoa.UpdatedDate = DateTime.UtcNow;              
-
-                await _context.SaveChangesAsync();
-                return existingCoa;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"
+UPDATE ChartOfAccount
+SET HeadCode = @HeadCode,
+    HeadLevel = @HeadLevel,
+    HeadName = @HeadName,
+    HeadType = @HeadType,
+    HeadCodeName = @HeadCodeName,
+    IsGl = @IsGl,
+    IsTransaction = @IsTransaction,
+    ParentHead = @ParentHead,
+    PHeadName = @PHeadName,
+    Balance = @Balance,
+    OpeningBalance = @OpeningBalance,
+    UpdatedBy = @UpdatedBy,
+    UpdatedDate = @UpdatedDate
+WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, coa);
         }
 
-
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var coa = await _context.ChartOfAccount.FirstOrDefaultAsync(s => s.Id == id);
-            if (coa == null) return false;
-
-            coa.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = @"UPDATE ChartOfAccount SET IsActive = 0 WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, new { Id = id });
         }
     }
+
 }

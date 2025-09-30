@@ -1,9 +1,11 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanceApi.Controllers
 {
+    // Controller (same pattern as CurrencyController)
     [ApiController]
     [Route("api/[controller]")]
     public class UomController : ControllerBase
@@ -15,56 +17,52 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("GetAlluom")]
-        public async Task<ActionResult<List<Uom>>> GetAll()
+        [HttpGet("GetUoms")]
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "UOMs retrieved successfully", list);
+            return Ok(data);
         }
 
-        [HttpGet("GetuomById/{id}")]
-        public async Task<ActionResult<Uom>> GetById(int id)
+        [HttpGet("GetUomById/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
-            var uom = await _service.GetByIdAsync(id);
-            if (uom == null) return NotFound();
-            return Ok(uom);
-        }
-
-        [HttpPost("Createuom")]
-        public async Task<ActionResult<Uom>> Create(Uom uom)
-        {
-            try
+            var uom = await _service.GetById(id);
+            if (uom == null)
             {
-                var created = await _service.CreateAsync(uom);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+                ResponseResult data1 = new ResponseResult(false, "UOM not found", null);
+                return Ok(data1);
             }
-            catch (ArgumentException ex)
-            {
-                // Return 400 Bad Request with just the message
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                // For unexpected exceptions, return 500 Internal Server Error
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
-
-
+            ResponseResult data = new ResponseResult(true, "Success", uom);
+            return Ok(data);
         }
 
-        [HttpPut("UpdateuomById/{id}")]
-        public async Task<ActionResult<Uom>> Update(int id, Uom uom)
+        [HttpPost("CreateUom")]
+        public async Task<ActionResult> Create(Uom uom)
         {
-            var updated = await _service.UpdateAsync(id, uom);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            uom.CreatedDate = DateTime.Now; // match CurrencyController behavior
+            var id = await _service.CreateAsync(uom);
+            ResponseResult data = new ResponseResult(true, "UOM created successfully", id);
+            return Ok(data);
         }
 
-        [HttpDelete("DeleteuomById/{id}")]
+        [HttpPut("UpdateUomById/{id}")]
+        public async Task<IActionResult> Update(Uom uom)
+        {
+            await _service.UpdateAsync(uom);
+            ResponseResult data = new ResponseResult(true, "UOM updated successfully.", null);
+            return Ok(data);
+        }
+
+        [HttpDelete("DeleteUomById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteUom(id);
+            ResponseResult data = new ResponseResult(true, "UOM Deleted successfully", null);
+            return Ok(data);
         }
     }
+
+
 }

@@ -1,93 +1,58 @@
-﻿using FinanceApi.Data;
+﻿using Dapper;
+using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace FinanceApi.Repositories
 {
-    public class UomRepository : IUomRepository
+    // Repository (Dapper style like CurrencyRepository)
+    public class UomRepository : DynamicRepository, IUomRepository
     {
-        private readonly ApplicationDbContext _context;
-
-        public UomRepository(ApplicationDbContext context)
+        public UomRepository(IDbConnectionFactory connectionFactory)
+            : base(connectionFactory)
         {
-            _context = context;
         }
 
-        public async Task<List<Uom>> GetAllAsync()
+        public async Task<IEnumerable<UomDTO>> GetAllAsync()
         {
-            return await _context.Uom.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
+            const string query = @"SELECT * FROM Uom WHERE IsActive = 1 ORDER BY Id";
+            return await Connection.QueryAsync<UomDTO>(query);
         }
 
-        public async Task<Uom?> GetByIdAsync(int id)
+        public async Task<UomDTO> GetByIdAsync(int id)
         {
-            return await _context.Uom.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
+            const string query = @"SELECT * FROM Uom WHERE Id = @Id";
+            return await Connection.QuerySingleAsync<UomDTO>(query, new { Id = id });
         }
 
-        public async Task<Uom> CreateAsync(Uom uom)
+        public async Task<int> CreateAsync(Uom uom)
         {
-            try
-            {
-                uom.CreatedBy = "System";
-                uom.CreatedDate = DateTime.UtcNow;
-                uom.IsActive = true;
-                _context.Uom.Add(uom);
-                await _context.SaveChangesAsync();
-                return uom;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"
+INSERT INTO Uom (Name, Description, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+OUTPUT INSERTED.Id
+VALUES (@Name, @Description, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, uom);
         }
 
-        public async Task<Uom?> UpdateAsync(int id, Uom updatedUom)
+        public async Task UpdateAsync(Uom uom)
         {
-            try
-            {
-                var existingUom = await _context.Uom.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingUom == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingUom.Name = updatedUom.Name;
-                existingUom.Description = updatedUom.Description;
-                existingUom.UpdatedBy = "System";
-                existingUom.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingUom;
-            }
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-
-
+            const string query = @"
+UPDATE Uom
+SET Name = @Name,
+    Description = @Description,
+    UpdatedBy = @UpdatedBy,
+    UpdatedDate = @UpdatedDate
+WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, uom);
         }
 
-
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var uom = await _context.Uom.FirstOrDefaultAsync(s => s.Id == id);
-            if (uom == null) return false;
-
-            uom.IsActive = false;
-
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = @"UPDATE Uom SET IsActive = 0 WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, new { Id = id });
         }
     }
+
 }
