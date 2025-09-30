@@ -1,9 +1,12 @@
-﻿using FinanceApi.Interfaces;
-using FinanceApi.Models;
+﻿using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanceApi.Controllers
 {
+    using FinanceApi.Data;
+    using FinanceApi.InterfaceService;
+    using Microsoft.AspNetCore.Mvc;
+
     [ApiController]
     [Route("api/[controller]")]
     public class ChartOfAccountController : ControllerBase
@@ -15,54 +18,51 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("getAll")]
-        public async Task<ActionResult<List<ChartOfAccount>>> GetAll()
+        [HttpGet("GetChartOfAccounts")]
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            var data = new ResponseResult(true, "Chart of Accounts retrieved successfully", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<ChartOfAccount>> GetById(int id)
+        [HttpGet("GetChartOfAccountById/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
-            var coa = await _service.GetByIdAsync(id);
-            if (coa == null) return NotFound();
-            return Ok(coa);
-        }
-
-        [HttpPost("insert")]
-        public async Task<ActionResult<State>> Create(ChartOfAccount coa)
-        {
-            try
+            var coa = await _service.GetById(id);
+            if (coa == null)
             {
-                var created = await _service.CreateAsync(coa);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+                var notFound = new ResponseResult(false, "Chart of Account not found", null);
+                return Ok(notFound);
             }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
-
-
+            var data = new ResponseResult(true, "Success", coa);
+            return Ok(data);
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<State>> Update(int id, ChartOfAccount coa)
+        [HttpPost("CreateChartOfAccount")]
+        public async Task<IActionResult> Create(ChartOfAccount coa)
         {
-            var updated = await _service.UpdateAsync(id, coa);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            coa.CreatedDate = DateTime.Now; // match Currency pattern
+            var id = await _service.CreateAsync(coa);
+            var data = new ResponseResult(true, "Chart of Account created successfully", id);
+            return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
+        [HttpPut("UpdateChartOfAccountById/{id}")]
+        public async Task<IActionResult> Update(ChartOfAccount coa)
+        {
+            await _service.UpdateAsync(coa);
+            var data = new ResponseResult(true, "Chart of Account updated successfully.", null);
+            return Ok(data);
+        }
+
+        [HttpDelete("DeleteChartOfAccountById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteChartOfAccount(id);
+            var data = new ResponseResult(true, "Chart of Account deleted successfully", null);
+            return Ok(data);
         }
     }
+
 }

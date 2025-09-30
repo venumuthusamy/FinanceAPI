@@ -1,14 +1,15 @@
 ﻿using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
-namespace FinanceApi.Interfaces
+namespace FinanceApi.InterfaceService
 {
-    public interface IChartOfAccountRepository
+    public interface IChartOfAccountService
     {
         Task<IEnumerable<ChartOfAccountDTO>> GetAllAsync();
-        Task<ChartOfAccountDTO?> GetByIdAsync(int id); // nullable
+        Task<ChartOfAccountDTO?> GetById(int id); // nullable
         Task<int> CreateAsync(ChartOfAccount entity);
         Task UpdateAsync(ChartOfAccount entity);
-        Task DeactivateAsync(int id);
+        Task DeleteChartOfAccount(int id);
     }
+
 }
