@@ -1,4 +1,5 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Services
@@ -12,29 +13,32 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<LocationDto>> GetAllAsync()
+        public async Task<IEnumerable<LocationDto>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
 
-        public async Task<LocationDto?> GetByIdAsync(int id)
+        public async Task<LocationDto> GetById(int id)
         {
             return await _repository.GetByIdAsync(id);
         }
-
-        public async Task<Location> CreateAsync(Location location)
+        public async Task<int> CreateAsync(Location location)
         {
             return await _repository.CreateAsync(location);
+
         }
 
-        public async Task<Location?> UpdateAsync(int id, Location location)
+
+
+        public Task UpdateAsync(Location location)
         {
-            return await _repository.UpdateAsync(id, location);
+            return _repository.UpdateAsync(location);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+
+        public async Task DeleteAsync(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

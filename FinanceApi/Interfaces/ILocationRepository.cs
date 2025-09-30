@@ -4,10 +4,10 @@ namespace FinanceApi.Interfaces
 {
     public interface ILocationRepository
     {
-        Task<List<LocationDto>> GetAllAsync();
-        Task<LocationDto?> GetByIdAsync(int id);
-        Task<Location> CreateAsync(Location location);
-        Task<Location?> UpdateAsync(int id, Location location);
-        Task<bool> DeleteAsync(int id);
+        Task<IEnumerable<LocationDto>> GetAllAsync();
+        Task<LocationDto> GetByIdAsync(long id);
+        Task<int> CreateAsync(Location location);
+        Task UpdateAsync(Location location);
+        Task DeactivateAsync(int id);
     }
 }

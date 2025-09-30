@@ -12,30 +12,32 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<StateDto>> GetAllAsync()
+        public async Task<IEnumerable<StateDto>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
 
-        public async Task<StateDto?> GetByIdAsync(int id)
+        public async Task<StateDto> GetById(int id)
         {
             return await _repository.GetByIdAsync(id);
         }
-
-        public async Task<State> CreateAsync(State state)
+        public async Task<int> CreateAsync(State state)
         {
-
             return await _repository.CreateAsync(state);
+
         }
 
-        public async Task<State?> UpdateAsync(int id, State state)
+       
+
+        public Task UpdateAsync(State state)
         {
-            return await _repository.UpdateAsync(id, state);
+            return _repository.UpdateAsync(state);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+
+        public async Task DeleteAsync(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

@@ -1,135 +1,67 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using Dapper;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace FinanceApi.Repositories
 {
-    public class CityRepository : ICityRepository
+    public class CityRepository : DynamicRepository,ICityRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public CityRepository(ApplicationDbContext context)
+        public CityRepository(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
         {
-            _context = context;
         }
 
-        public async Task<List<CityDto>> GetAllAsync()
+        public async Task<IEnumerable<CityDto>> GetAllAsync()
         {
-            var result = await _context.City
-                .Include(c => c.State)
-                .Include(c => c.Country)
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.Id)
-                .Select(c => new CityDto
-                {
-                    Id = c.Id,
-                    CityId = c.Id,
-                    CityName = c.CityName,
-                    StateId = c.StateId,
-                    StateName = c.State != null ? c.State.StateName : string.Empty,
-                    CountryId = c.CountryId,
-                    CountryName = c.Country != null ? c.Country.CountryName : string.Empty,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
-                })
-                .ToListAsync();
+            const string query = @" SELECT * from City Where isActive = 1";
 
-            return result;
+            return await Connection.QueryAsync<CityDto>(query);
         }
 
 
-
-        public async Task<CityDto?> GetByIdAsync(int id)
+        public async Task<CityDto> GetByIdAsync(long id)
         {
-            return await _context.City
-                .Include(c => c.State)
-                .Include(c => c.Country)
-                .Where(c => c.Id == id)
-                .Where(c => c.IsActive)
-                .Select(c => new CityDto
-                {
-                    Id = c.Id,
-                    CityId = c.Id,
-                    CityName = c.CityName,
-                    StateId = c.StateId,
-                    StateName = c.State != null ? c.State.StateName : string.Empty,
-                    CountryId = c.CountryId,
-                    CountryName = c.Country != null ? c.Country.CountryName : string.Empty,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
-                })
-                .FirstOrDefaultAsync();
+
+            const string query = "SELECT * FROM City WHERE Id = @Id";
+
+            return await Connection.QuerySingleAsync<CityDto>(query, new { Id = id });
         }
 
-        public async Task<City> CreateAsync(City city)
+        public async Task<int> CreateAsync(City city)
         {
-            try
-            {
-                city.CreatedBy = "System";
-                city.CreatedDate = DateTime.UtcNow;
-                city.IsActive = true;
-                _context.City.Add(city);
-                await _context.SaveChangesAsync();
-                return city;
-            }           
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
-        }
-
-        public async Task<City?> UpdateAsync(int id, City updatedCity)
-        {
-            try
-            {
-                var existingCity = await _context.City.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingCity == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingCity.CityName = updatedCity.CityName;
-                existingCity.StateId = updatedCity.StateId;
-                existingCity.CountryId = updatedCity.CountryId;
-                existingCity.UpdatedBy = "System";
-                existingCity.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingCity;
-            }          
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            const string query = @"INSERT INTO City (CityName,StateId,CountryId,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@CityName,@StateId,@CountryId,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, city);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task UpdateAsync(City city)
         {
-            var city = await _context.City.FirstOrDefaultAsync(s => s.Id == id);
-            if (city == null) return false;
+            const string query = @"UPDATE City 
+                       SET CountryId = @CountryId, StateId = @StateId, CityName = @CityName
+                       WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, city);
+        }
 
-            city.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+        public async Task DeactivateAsync(int id)
+        {
+            const string query = "UPDATE City SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
+        }
+
+
+        public async Task<CityDto> GetStateWithCountryId(long id)
+        {
+
+            const string query = "SELECT s.Id, s.StateName FROM State AS s INNER JOIN Country AS c ON c.Id = s.CountryId WHERE c.Id = @id and s.isActive = 1;";
+
+            return await Connection.QuerySingleAsync<CityDto>(query, new { Id = id });
         }
     }
 }
