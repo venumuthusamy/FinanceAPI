@@ -12,7 +12,7 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<WarehouseDto>> GetAllAsync()
+        public async Task<IEnumerable<WarehouseDto>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
@@ -22,19 +22,19 @@ namespace FinanceApi.Services
             return await _repository.GetByIdAsync(id);
         }
 
-        public async Task<Warehouse> CreateAsync(Warehouse warehouse)
+        public async Task<int> CreateAsync(Warehouse warehouse)
         {
             return await _repository.CreateAsync(warehouse);
         }
 
-        public async Task<Warehouse?> UpdateAsync(int id, Warehouse warehouse)
+        public async Task UpdateAsync(Warehouse warehouse)
         {
-            return await _repository.UpdateAsync(id, warehouse);
+            await _repository.UpdateAsync(warehouse);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeleteLicense(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

@@ -12,30 +12,32 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<ItemDto>> GetAllAsync()
+        public Task<IEnumerable<ItemDto>> GetAllAsync()
         {
-            return await _repository.GetAllAsync();
+            return _repository.GetAllAsync();
         }
 
-        public async Task<ItemDto?> GetByIdAsync(int id)
+        public Task<int> CreateAsync(Item item)
         {
-            return await _repository.GetByIdAsync(id);
+            return _repository.CreateAsync(item);
         }
 
-        public async Task<Item> CreateAsync(Item item)
+        public Task<ItemDto?> GetById(int id)
         {
-
-            return await _repository.CreateAsync(item);
+            return _repository.GetByIdAsync(id);
         }
 
-        public async Task<Item?> UpdateAsync(int id, Item item)
+        // Mirror UomService: Update takes the entity; controller sets Id
+        public Task UpdateAsync(Item item)
         {
-            return await _repository.UpdateAsync(id, item);
+            // Ensure audit fields are set in controller or repository; either is fine.
+            return _repository.UpdateAsync(item);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+        public Task DeleteItem(int id)
         {
-            return await _repository.DeleteAsync(id);
+            return _repository.DeactivateAsync(id);
         }
     }
+
 }
