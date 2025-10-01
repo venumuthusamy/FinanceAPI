@@ -5,130 +5,95 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinanceApi.Repositories
 {
-    public class ItemRepository : IItemRepository
+    using Dapper;
+
+    public class ItemRepository : DynamicRepository, IItemRepository
     {
-        private readonly ApplicationDbContext _context;
+        public ItemRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory) { }
 
-        public ItemRepository(ApplicationDbContext context)
+        public async Task<IEnumerable<ItemDto>> GetAllAsync()
         {
-            _context = context;
+            const string sql = @"
+SELECT  i.Id,
+        i.ItemCode,
+        i.ItemName,
+        i.UomId,
+        COALESCE(u.Name,'')           AS UomName,
+        i.BudgetLineId,
+        COALESCE(coa.HeadName,'')     AS BudgetLineName,
+        i.CreatedBy,
+        i.CreatedDate,
+        i.UpdatedBy,
+        i.UpdatedDate,
+        i.IsActive
+FROM    Item i
+LEFT JOIN Uom u            ON u.Id  = i.UomId
+LEFT JOIN ChartOfAccount coa ON coa.Id = i.BudgetLineId
+WHERE   i.IsActive = 1
+ORDER BY i.Id;";
+            return await Connection.QueryAsync<ItemDto>(sql);
         }
-
-        public async Task<List<ItemDto>> GetAllAsync()
-        {
-            var result = await _context.Item
-                .Include(c => c.Uom)
-                .Include(c => c.ChartOfAccount)
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.Id)
-                .Select(c => new ItemDto
-                {
-                    Id = c.Id,
-                    ItemCode = c.ItemCode,
-                    ItemName = c.ItemName,
-                    UomName = c.Uom != null ? c.Uom.Name : string.Empty,
-                    UomId = c.UomId,
-                    BudgetLineId = c.BudgetLineId,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
-                })
-                .ToListAsync();
-
-            return result;
-        }
-
-
 
         public async Task<ItemDto?> GetByIdAsync(int id)
         {
-            return await _context.Item
-                .Include(c => c.Uom)
-                .Include(c => c.ChartOfAccount)
-                .Where(c => c.Id == id)
-                .Where(c => c.IsActive)
-                .Select(c => new ItemDto
-                {
-                    Id = c.Id,
-                    ItemCode = c.ItemCode,
-                    ItemName = c.ItemName,
-                    UomName = c.Uom != null ? c.Uom.Name : string.Empty,
-                    UomId = c.UomId,
-                    BudgetLineId = c.BudgetLineId,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
-                })
-                .FirstOrDefaultAsync();
+            const string sql = @"
+SELECT  i.Id,
+        i.ItemCode,
+        i.ItemName,
+        i.UomId,
+        COALESCE(u.Name,'')           AS UomName,
+        i.BudgetLineId,
+        COALESCE(coa.HeadName,'')     AS BudgetLineName,
+        i.CreatedBy,
+        i.CreatedDate,
+        i.UpdatedBy,
+        i.UpdatedDate,
+        i.IsActive
+FROM    Item i
+LEFT JOIN Uom u            ON u.Id  = i.UomId
+LEFT JOIN ChartOfAccount coa ON coa.Id = i.BudgetLineId
+WHERE   i.Id = @Id AND i.IsActive = 1;";
+            return await Connection.QueryFirstOrDefaultAsync<ItemDto>(sql, new { Id = id });
         }
 
-        public async Task<Item> CreateAsync(Item item)
+        public async Task<int> CreateAsync(Item item)
         {
-            try
-            {
-                item.CreatedBy = "System";
-                item.CreatedDate = DateTime.UtcNow;
-                item.IsActive = true;
-                _context.Item.Add(item);
-                await _context.SaveChangesAsync();
-                return item;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            // Set audit defaults (like your EF repo did)
+            item.CreatedBy = item.CreatedBy ?? "System";
+            item.CreatedDate = DateTime.UtcNow;
+            item.IsActive = true;
+
+            const string sql = @"
+INSERT INTO Item
+    (ItemCode, ItemName, UomId, BudgetLineId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+OUTPUT INSERTED.Id
+VALUES
+    (@ItemCode, @ItemName, @UomId, @BudgetLineId, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive);";
+
+            return await Connection.QueryFirstAsync<int>(sql, item);
         }
 
-        public async Task<Item?> UpdateAsync(int id, Item updatedItem)
+        public async Task UpdateAsync(Item item)
         {
-            try
-            {
-                var existingItem = await _context.Item.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingItem == null) return null;
+            // Route/controller will set item.Id and audit
+            const string sql = @"
+UPDATE Item
+SET ItemCode      = @ItemCode,
+    ItemName      = @ItemName,
+    UomId         = @UomId,
+    BudgetLineId  = @BudgetLineId,
+    UpdatedBy     = @UpdatedBy,
+    UpdatedDate   = @UpdatedDate
+WHERE Id = @Id;";
 
-                // Manually update only scalar properties (excluding Id)
-                existingItem.ItemCode = updatedItem.ItemCode;
-                existingItem.ItemName = updatedItem.ItemName;
-                existingItem.UomId = updatedItem.UomId;
-                existingItem.BudgetLineId = updatedItem.BudgetLineId;
-                existingItem.UpdatedBy = "System";
-                existingItem.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingItem;
-            }
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                throw;
-            }
+            await Connection.ExecuteAsync(sql, item);
         }
 
-
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var item = await _context.Item.FirstOrDefaultAsync(s => s.Id == id);
-            if (item == null) return false;
-
-            item.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+            const string sql = @"UPDATE Item SET IsActive = 0 WHERE Id = @Id;";
+            await Connection.ExecuteAsync(sql, new { Id = id });
         }
     }
+
 }

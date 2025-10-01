@@ -1,68 +1,68 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanceApi.Controllers
 {
+   
+
     [ApiController]
     [Route("api/[controller]")]
     public class ItemController : ControllerBase
     {
         private readonly IItemService _service;
+        public ItemController(IItemService service) => _service = service;
 
-        public ItemController(IItemService service)
+        [HttpGet("GetItems")]
+        public async Task<IActionResult> GetAll()
         {
-            _service = service;
+            var list = await _service.GetAllAsync();
+            var data = new ResponseResult(true, "Items retrieved successfully", list);
+            return Ok(data);
         }
 
-        [HttpGet("getAll")]
-        public async Task<ActionResult<List<ItemDto>>> GetAll()
+        [HttpGet("GetItemById/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
-            return Ok(await _service.GetAllAsync());
+            var item = await _service.GetById(id);
+            if (item == null)
+                return Ok(new ResponseResult(false, "Item not found", null));
+
+            return Ok(new ResponseResult(true, "Success", item));
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<ItemDto>> GetById(int id)
-        {
-            var item = await _service.GetByIdAsync(id);
-            if (item == null) return NotFound();
-            return Ok(item);
-        }
-
-        [HttpPost("insert")]
-        public async Task<ActionResult<Item>> Create(Item item)
+        [HttpPost("CreateItem")]
+        public async Task<IActionResult> Create([FromBody] Item item)
         {
             try
             {
-                var created = await _service.CreateAsync(item);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
+                var newId = await _service.CreateAsync(item);
+                return Ok(new ResponseResult(true, "Item created successfully", newId));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
+                return StatusCode(500, new ResponseResult(false, "Error creating item: " + ex.Message, null));
             }
-
-
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Item>> Update(int id, Item item)
+        [HttpPut("UpdateItemById/{id}")]
+        public async Task<IActionResult> Update(int id, [FromBody] Item item)
         {
-            var updated = await _service.UpdateAsync(id, item);
-            if (updated == null) return NotFound();
-            return Ok(updated);
+            item.Id = id;                         
+            item.UpdatedDate = DateTime.UtcNow;
+
+            await _service.UpdateAsync(item);
+            return Ok(new ResponseResult(true, "Item updated successfully.", null));
         }
 
-        [HttpDelete("delete/{id}")]
+
+        [HttpDelete("DeleteItemById/{id}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteItem(id);
+            return Ok(new ResponseResult(true, "Item deleted successfully", null));
         }
     }
+
 }
