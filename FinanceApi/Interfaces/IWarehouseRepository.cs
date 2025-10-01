@@ -3,11 +3,11 @@
 namespace FinanceApi.Interfaces
 {
     public interface IWarehouseRepository
-    {
-        Task<List<WarehouseDto>> GetAllAsync();
-        Task<WarehouseDto?> GetByIdAsync(int id);
-        Task<Warehouse> CreateAsync(Warehouse warehouse);
-        Task<Warehouse?> UpdateAsync(int id, Warehouse warehouse);
-        Task<bool> DeleteAsync(int id);
+    {       
+        Task<IEnumerable<WarehouseDto>> GetAllAsync();
+        Task<WarehouseDto> GetByIdAsync(int id);
+        Task<int> CreateAsync(Warehouse warehouse);
+        Task UpdateAsync(Warehouse warehouse);
+        Task DeactivateAsync(int id);
     }
 }

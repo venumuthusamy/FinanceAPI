@@ -1,4 +1,5 @@
-﻿using FinanceApi.Data;
+﻿using Dapper;
+using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.EntityFrameworkCore;
@@ -6,145 +7,97 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FinanceApi.Repositories
 {
-    public class WarehouseRepository : IWarehouseRepository
+    public class WarehouseRepository : DynamicRepository,IWarehouseRepository
     {
         private readonly ApplicationDbContext _context;
 
-        public WarehouseRepository(ApplicationDbContext context)
+        public WarehouseRepository(IDbConnectionFactory connectionFactory)
+        : base(connectionFactory)
         {
-            _context = context;
+
         }
 
-        public async Task<List<WarehouseDto>> GetAllAsync()
+        public async Task<IEnumerable<WarehouseDto>> GetAllAsync()
         {
-            var result = await _context.Warehouse
-                .Include(c => c.City)
-                .Include(c => c.State)
-                .Include(c => c.Country)
-                .Where(c => c.IsActive)
-                .OrderBy(c => c.Id)
-                .Select(c => new WarehouseDto
-                {
-                    Id = c.Id,
-                    Name = c.Name,
-                    CityId = c.CityId,
-                    CityName = c.City != null ? c.City.CityName : string.Empty,
-                    StateId = c.StateId,
-                    StateName = c.State != null ? c.State.StateName : string.Empty,
-                    CountryId = c.CountryId,
-                    CountryName = c.Country != null ? c.Country.CountryName : string.Empty,
-                    Address = c.Address,
-                    Description = c.Description,
-                    Phone = c.Phone,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
+            var query = @"
+                        SELECT 
+                            w.Id,
+                            w.Name,
+                            w.CityId,
+                            ISNULL(c.CityName, '') AS CityName,
+                            w.StateId,
+                            ISNULL(s.StateName, '') AS StateName,
+                            w.CountryId,
+                            ISNULL(co.CountryName, '') AS CountryName,
+                            w.Address,
+                            w.Description,
+                            w.Phone,
+                            w.CreatedBy,
+                            w.CreatedDate,
+                            w.UpdatedBy,
+                            w.UpdatedDate,
+                            w.IsActive
+                        FROM Warehouse w
+                        LEFT JOIN City c ON w.CityId = c.Id
+                        LEFT JOIN State s ON w.StateId = s.Id
+                        LEFT JOIN Country co ON w.CountryId = co.Id
+                        WHERE w.IsActive = 1
+                        ORDER BY w.Id";
 
-                })
-                .ToListAsync();
-            return result;
+            var rows = await Connection.QueryAsync<WarehouseDto>(query);
+            return rows.ToList();
         }
 
         public async Task<WarehouseDto?> GetByIdAsync(int id)
         {
-            var result = await _context.Warehouse
-                .Include(c => c.City)
-                .Include(c => c.State)
-                .Include(c => c.Country)
-                .Where(c => c.Id == id)
-                .Where(c => c.IsActive)
-                .Select(c => new WarehouseDto
-                {
-                    Id = c.Id,
-                    Name = c.Name,
-                    CityId = c.CityId,
-                    CityName = c.City != null ? c.City.CityName : string.Empty,
-                    StateId = c.StateId,
-                    StateName = c.State != null ? c.State.StateName : string.Empty,
-                    CountryId = c.CountryId,
-                    CountryName = c.Country != null ? c.Country.CountryName : string.Empty,
-                    Address = c.Address,
-                    Description = c.Description,
-                    Phone = c.Phone,
-                    CreatedBy = c.CreatedBy,
-                    CreatedDate = c.CreatedDate,
-                    UpdatedBy = c.UpdatedBy,
-                    UpdatedDate = c.UpdatedDate,
-                    IsActive = c.IsActive
+            const string sql = @"
+                            SELECT 
+                                w.Id,
+                                w.Name,
+                                w.CityId,
+                                ISNULL(c.CityName, '') AS CityName,
+                                w.StateId,
+                                ISNULL(s.StateName, '') AS StateName,
+                                w.CountryId,
+                                ISNULL(co.CountryName, '') AS CountryName,
+                                w.Address,
+                                w.Description,
+                                w.Phone,
+                                w.CreatedBy,
+                                w.CreatedDate,
+                                w.UpdatedBy,
+                                w.UpdatedDate,
+                                w.IsActive
+                            FROM Warehouse w
+                            LEFT JOIN City c ON w.CityId = c.Id
+                            LEFT JOIN State s ON w.StateId = s.Id
+                            LEFT JOIN Country co ON w.CountryId = co.Id
+                            WHERE w.Id = @id AND w.IsActive = 1;";
 
-                })
-                .FirstOrDefaultAsync();
+            var result = await Connection.QueryFirstOrDefaultAsync<WarehouseDto>(sql, new { id });
             return result;
+
         }
 
-        public async Task<Warehouse> CreateAsync(Warehouse warehouse)
+        public async Task<int> CreateAsync(Warehouse warehouse)
         {
-            try
-            {
-                warehouse.CreatedBy = "System";
-                warehouse.CreatedDate = DateTime.UtcNow;
-                warehouse.IsActive = true;
-                _context.Warehouse.Add(warehouse);
-                await _context.SaveChangesAsync();
-                return warehouse;
-            }
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error saving supplier: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"General error: {ex.Message}");
-                throw;
-            }
+            const string query = @"INSERT INTO Warehouse (Name,CountryId,StateId,CityId,Phone,Address,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+                               OUTPUT INSERTED.Id 
+                               VALUES (@Name,@CountryId,@StateId,@CityId,@Phone,@Address,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+            return await Connection.QueryFirstAsync<int>(query, warehouse);
         }
 
-        public async Task<Warehouse?> UpdateAsync(int id, Warehouse updatedWarehouse)
+        public async Task UpdateAsync(Warehouse updatedWarehouse)
         {
-            try
-            {
-                var existingWarehouse = await _context.Warehouse.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingWarehouse == null) return null;
-
-                // Manually update only scalar properties (excluding Id)
-                existingWarehouse.Name = updatedWarehouse.Name;
-                existingWarehouse.CityId = updatedWarehouse.CityId;
-                existingWarehouse.StateId = updatedWarehouse.StateId;
-                existingWarehouse.CountryId = updatedWarehouse.CountryId;
-                existingWarehouse.Address = updatedWarehouse.Address;
-                existingWarehouse.Description = updatedWarehouse.Description;
-                existingWarehouse.Phone = updatedWarehouse.Phone;
-                existingWarehouse.UpdatedBy = "System";
-                existingWarehouse.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingWarehouse;
-            }
-
-            catch (DbUpdateException dbEx)
-            {
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
-                throw new Exception($"Error saving supplier: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"General error: {ex.Message}");
-                throw;
-            }
+            const string query = "UPDATE Warehouse SET Name = @Name,CountryId = @CountryId,StateId = @StateId,CityId = @CityId,Phone = @Phone,Address = @Address,Description = @Description WHERE Id = @Id";
+            await Connection.ExecuteAsync(query, updatedWarehouse);
         }
 
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeactivateAsync(int id)
         {
-            var warehouse = await _context.Warehouse.FirstOrDefaultAsync(s => s.Id == id);
-            if (warehouse == null) return false;
-
-            warehouse.IsActive = false;
-            await _context.SaveChangesAsync();
-            return true;
+            const string query = "UPDATE Warehouse SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
         }
     }
 }

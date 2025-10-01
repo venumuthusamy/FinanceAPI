@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,51 +17,43 @@ namespace FinanceApi.Controllers
         }
 
         [HttpGet("getAll")]
-        public async Task<ActionResult<List<WarehouseDto>>> GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
         [HttpGet("get/{id}")]
-        public async Task<ActionResult<WarehouseDto>> GetById(int id)
+        public async Task<IActionResult> GetById(int id)
         {
-            var warehouse = await _service.GetByIdAsync(id);
-            if (warehouse == null) return NotFound();
-            return Ok(warehouse);
+            var licenseObj = await _service.GetByIdAsync(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
         [HttpPost("insert")]
-        public async Task<ActionResult<Warehouse>> Create(Warehouse warehouse)
+        public async Task<ActionResult> Create(Warehouse warehouse)
         {
-            try
-            {
-                var created = await _service.CreateAsync(warehouse);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
+            var id = await _service.CreateAsync(warehouse);
+            ResponseResult data = new ResponseResult(true, "Warehouse created sucessfully", id);
+            return Ok(data);
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<Warehouse>> Update(int id, Warehouse warehouse)
+        [HttpPut("update")]
+        public async Task<IActionResult> Update(Warehouse warehouse)
         {
-            var updated = await _service.UpdateAsync(id, warehouse);
-            if (updated == null) return NotFound();
-            return (updated);
+            await _service.UpdateAsync(warehouse);
+            ResponseResult data = new ResponseResult(true, "Warehouse updated successfully.", null);
+            return Ok(data);
         }
 
         [HttpDelete("delete/{id}")]
-        public async Task<ActionResult<Warehouse>> Delete(int id)
+        public async Task<IActionResult> Delete(int id)
         {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
+            await _service.DeleteLicense(id);
+            ResponseResult data = new ResponseResult(true, "Warehouse Deleted sucessfully", null);
+            return Ok(data);
 
         }
     }
