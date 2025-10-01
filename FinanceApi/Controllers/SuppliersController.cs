@@ -19,16 +19,16 @@ namespace FinanceApi.Controllers
             _service = service;
         }
 
-        [HttpGet("GetSuppliers")]
-        public async Task<IActionResult> GetAll()
+        [HttpGet("getAllSupplier")]
+        public async Task<IActionResult> getAllSupplier()
         {
             var list = await _service.GetAllAsync();
             ResponseResult data = new ResponseResult(true, "Supplier retrieved successfully", list);
             return Ok(data);
         }
 
-        [HttpGet("GetSupplierById/{id}")]
-        public async Task<IActionResult> GetById(int id)
+        [HttpGet("getSupplierbyId/{id}")]
+        public async Task<IActionResult> getSupplierbyId(int id)
         {
             var approvalLevel = await _service.GetById(id);
             if (approvalLevel == null)
@@ -44,7 +44,7 @@ namespace FinanceApi.Controllers
 
 
         [HttpPost("CreateSupplier")]
-        public async Task<ActionResult> Create(Suppliers suppliers)
+        public async Task<ActionResult> CreateSupplier(Suppliers suppliers)
         {
             suppliers.CreatedDate = DateTime.Now;
             var id = await _service.CreateAsync(suppliers);
@@ -53,16 +53,16 @@ namespace FinanceApi.Controllers
 
         }
 
-        [HttpPut("UpdateSupplierById/{id}")]
-        public async Task<IActionResult> Update(Suppliers suppliers)
+        [HttpPut("updateSupplier")]
+        public async Task<IActionResult> updateSupplier(Suppliers suppliers)
         {
             await _service.UpdateAsync(suppliers);
             ResponseResult data = new ResponseResult(true, "Supplier updated successfully.", null);
             return Ok(data);
         }
 
-        [HttpDelete("DeleteSupplierById/{id}")]
-        public async Task<IActionResult> Delete(int id)
+        [HttpDelete("deleteSupplier/{id}")]
+        public async Task<IActionResult> deleteSupplier(int id)
         {
             await _service.DeleteLicense(id);
             ResponseResult data = new ResponseResult(true, "Supplier Deleted sucessfully", null);

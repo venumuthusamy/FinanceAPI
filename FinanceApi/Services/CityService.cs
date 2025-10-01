@@ -40,9 +40,18 @@ namespace FinanceApi.Services
             await _repository.DeactivateAsync(id);
         }
 
-        public async Task<CityDto> GetStateWithCountryId(int id)
+     
+
+
+        public async Task<IEnumerable<CityDto>> GetStateWithCountryId(int id)
         {
             return await _repository.GetStateWithCountryId(id);
         }
+
+        public async Task<IEnumerable<CityDto>> GetCityWithStateId(int id)
+        {
+            return await _repository.GetCityWithStateId(id);
+        }
+
     }
 }

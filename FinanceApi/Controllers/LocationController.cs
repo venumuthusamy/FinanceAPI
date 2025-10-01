@@ -26,6 +26,16 @@ namespace FinanceApi.Controllers
         }
 
 
+        [HttpGet("getAllLocationDetails")]
+        public async Task<IActionResult> getAllLocationDetails()
+        {
+            var list = await _service.GetAllLocationDetails();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
+
+
         [HttpGet("getLocationbyId/{id}")]
         public async Task<IActionResult> getLocationbyId(int id)
         {

@@ -20,7 +20,7 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<SuppliersDTO>> GetAllAsync()
         {
             const string query = @"
-                SELECT * form Supplier";
+                SELECT * from Suppliers";
 
             return await Connection.QueryAsync<SuppliersDTO>(query);
         }
@@ -29,7 +29,7 @@ namespace FinanceApi.Repositories
         public async Task<SuppliersDTO> GetByIdAsync(int id)
         {
 
-            const string query = "SELECT * FROM Supplier WHERE Id = @Id";
+            const string query = "SELECT * FROM Suppliers WHERE Id = @Id";
 
             return await Connection.QuerySingleAsync<SuppliersDTO>(query, new { Id = id });
         }
@@ -81,7 +81,7 @@ namespace FinanceApi.Repositories
         public async Task UpdateAsync(Suppliers supplierDto)
         {
             const string query = @"
-        UPDATE Supplier
+        UPDATE Suppliers
         SET
             Name = @Name,
             ContactName = @ContactName,
@@ -109,7 +109,7 @@ namespace FinanceApi.Repositories
 
         public async Task DeactivateAsync(int id)
         {
-            const string query = "UPDATE Supplier SET IsActive = 0 WHERE ID = @id";
+            const string query = "UPDATE Suppliers SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
         }
 

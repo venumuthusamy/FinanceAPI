@@ -71,5 +71,14 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
+
+        [HttpGet("GetCityWithStateId/{id}")]
+        public async Task<IActionResult> GetCityWithStateId(int id)
+        {
+            var licenseObj = await _service.GetCityWithStateId(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
+
     }
 }

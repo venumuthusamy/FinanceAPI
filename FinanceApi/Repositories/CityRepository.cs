@@ -56,12 +56,27 @@ namespace FinanceApi.Repositories
         }
 
 
-        public async Task<CityDto> GetStateWithCountryId(long id)
+        public async Task<IEnumerable<CityDto>> GetStateWithCountryId(int id)
         {
+            const string query = @"
+        SELECT s.Id, s.StateName 
+        FROM State AS s 
+        INNER JOIN Country AS c ON c.Id = s.CountryId 
+        WHERE c.Id = @id AND s.isActive = 1";
 
-            const string query = "SELECT s.Id, s.StateName FROM State AS s INNER JOIN Country AS c ON c.Id = s.CountryId WHERE c.Id = @id and s.isActive = 1;";
+            return await Connection.QueryAsync<CityDto>(query, new { Id = id });
+        }
 
-            return await Connection.QuerySingleAsync<CityDto>(query, new { Id = id });
+
+        public async Task<IEnumerable<CityDto>> GetCityWithStateId(int id)
+        {
+            const string query = @"
+        SELECT c.Id, c.cityName
+FROM City AS c 
+INNER JOIN State AS s ON s.Id = c.StateId 
+WHERE c.StateId = @id and c.isActive = 1";
+
+            return await Connection.QueryAsync<CityDto>(query, new { Id = id });
         }
     }
 }

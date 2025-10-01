@@ -10,6 +10,8 @@ namespace FinanceApi.Interfaces
         Task UpdateAsync(City city);
         Task DeactivateAsync(int id);
 
-        Task<CityDto> GetStateWithCountryId(long id);
+        Task<IEnumerable<CityDto>> GetStateWithCountryId(int id);
+
+        Task<IEnumerable<CityDto>> GetCityWithStateId(int id);
     }
 }

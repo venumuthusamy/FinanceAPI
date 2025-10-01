@@ -18,6 +18,11 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
+        public async Task<IEnumerable<LocationDto>> GetAllLocationDetails()
+        {
+            return await _repository.GetAllLocationDetails();
+        }
+
         public async Task<LocationDto> GetById(int id)
         {
             return await _repository.GetByIdAsync(id);

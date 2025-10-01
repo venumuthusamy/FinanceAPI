@@ -25,6 +25,19 @@ namespace FinanceApi.Repositories
         }
 
 
+        public async Task<IEnumerable<LocationDto>> GetAllLocationDetails()
+        {
+            const string query = @" Select l.*,c.CountryName, s.StateName, c1.CityName
+   From Location as l
+   inner join Country as c on c.Id = l.CountryId
+   inner join State as s on s.Id = l.StateId
+   inner join City as c1 on c1.Id = l.CityId
+   Where l.IsActive = 1";
+
+            return await Connection.QueryAsync<LocationDto>(query);
+        }
+
+
         public async Task<LocationDto> GetByIdAsync(long id)
         {
 
