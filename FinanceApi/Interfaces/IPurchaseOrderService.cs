@@ -3,11 +3,11 @@
 namespace FinanceApi.Interfaces
 {
     public interface IPurchaseOrderService
-    {
-        Task<List<PurchaseOrderDto>> GetAllAsync();
-        Task<PurchaseOrderDto?> GetByIdAsync(int id);
-        Task<PurchaseOrder> CreateAsync(PurchaseOrder purchaseOrder);
-        Task<PurchaseOrder?> UpdateAsync(int id, PurchaseOrder purchaseOrder);
-        Task<bool> DeleteAsync(int id);
+    {    
+        Task<IEnumerable<PurchaseOrderDto>> GetAllAsync();
+        Task<PurchaseOrderDto> GetByIdAsync(int id);
+        Task<int> CreateAsync(PurchaseOrder purchaseOrder);
+        Task UpdateAsync(PurchaseOrder purchaseOrder);
+        Task DeleteLicense(int id);
     }
 }

@@ -445,8 +445,6 @@ CREATE TABLE PurchaseOrder (
     ApproveLevelId INT NOT NULL,
     PaymentTermId INT NOT NULL,
     CurrencyId INT NOT NULL,
-    DeliveryId INT NOT NULL,
-    ContactNumber VARCHAR(50),
     IncotermsId INT NOT NULL,
     PoDate DATETIME NOT NULL,
     DeliveryDate DATETIME NOT NULL,
