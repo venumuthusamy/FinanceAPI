@@ -60,6 +60,7 @@ namespace FinanceApi.Repositories
                            po.Id ,
                            po.PurchaseOrderNo,
                            po.SupplierId,
+                           ISNULL(s.Name, '') AS SupplierName,
                            po.ApproveLevelId,
                            po.ApprovalStatus,
                            po.PaymentTermId,
@@ -84,6 +85,7 @@ namespace FinanceApi.Repositories
                            po.IsActive                        
 
                            FROM PurchaseOrder po
+                           LEFT JOIN Suppliers s ON po.SupplierId = s.Id
                            LEFT JOIN PaymentTerms p ON po.PaymentTermId = p.Id
                            LEFT JOIN Currency c ON po.CurrencyId = c.Id
                            WHERE po.IsActive = 1
@@ -101,6 +103,7 @@ namespace FinanceApi.Repositories
                            po.Id ,
                            po.PurchaseOrderNo,
                            po.SupplierId,
+                           ISNULL(s.Name, '') AS SupplierName,
                            po.ApproveLevelId,
                            po.ApprovalStatus,
                            po.PaymentTermId,
@@ -125,6 +128,7 @@ namespace FinanceApi.Repositories
                            po.IsActive                        
 
                            FROM PurchaseOrder po
+                           LEFT JOIN Suppliers s ON po.SupplierId = s.Id
                            LEFT JOIN PaymentTerms p ON po.PaymentTermId = p.Id
                            LEFT JOIN Currency c ON po.CurrencyId = c.Id
                            WHERE po.Id = @id AND po.IsActive = 1;";
