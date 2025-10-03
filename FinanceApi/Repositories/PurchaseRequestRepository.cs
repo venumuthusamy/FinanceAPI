@@ -20,7 +20,9 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<PurchaseRequestDTO>> GetAllAsync()
         {
             const string query = @"
-                SELECT * from PurchaseRequest";
+                SELECT p.*,d.DepartmentName from PurchaseRequest as p 
+ inner join Department as d on
+ p.DepartmentID=d.Id ";
 
             return await Connection.QueryAsync<PurchaseRequestDTO>(query);
         }
@@ -68,11 +70,11 @@ namespace FinanceApi.Repositories
             const string insertQuery = @"
         INSERT INTO PurchaseRequest
             (Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines, CreatedDate,
-             UpdatedDate, CreatedBy, UpdateddBy, Description, PurchaseRequestNo)
+             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status)
         OUTPUT INSERTED.ID
         VALUES
             (@Requester, @DepartmentID, @DeliveryDate, @MultiLoc, @Oversea, @PRLines, @CreatedDate,
-             @UpdatedDate, @CreatedBy, @UpdateddBy, @Description, @PurchaseRequestNo)";
+             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status)";
 
             return await Connection.QueryFirstAsync<int>(insertQuery, pr);
         }
@@ -90,7 +92,7 @@ namespace FinanceApi.Repositories
             Oversea = @Oversea,
             PRLines = @PRLines,
             UpdatedDate = @UpdatedDate,
-            UpdateddBy = @UpdateddBy,
+            UpdatedBy = @UpdatedBy,
             Description = @Description
         WHERE ID = @ID";
 

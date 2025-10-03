@@ -23,8 +23,10 @@
 
         public int CreatedBy { get; set; }
 
-        public int UpdateddBy { get; set; }
+        public int UpdatedBy { get; set; }
         public string DepartmentName { get; set; }
         public string PurchaseRequestNo { get; set; }
+        public bool IsActive {  get; set; }
+        public int Status { get; set; }
     }
 }
