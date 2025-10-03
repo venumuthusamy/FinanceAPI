@@ -20,16 +20,16 @@ namespace FinanceApi.Controllers
         }
 
 
-        [HttpGet("GetAll")]
-        public async Task<IActionResult> GetAll()
+        [HttpGet("GetAllGRN")]
+        public async Task<IActionResult> GetAllGRN()
         {
             var list = await _service.GetAllAsync();
             ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt retrieved successfully", list);
             return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<IActionResult> GetById(int id)
+        [HttpGet("getGRNbyId/{id}")]
+        public async Task<IActionResult> getGRNbyId(int id)
         {
             var approvalLevel = await _service.GetById(id);
             if (approvalLevel == null)
@@ -41,8 +41,8 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
-        [HttpPost("insert")]
-        public async Task<ActionResult> Create(PurchaseGoodReceiptItemsDTO purchaseGoodReceiptItems)
+        [HttpPost("insertGRN")]
+        public async Task<ActionResult> insertGRN(PurchaseGoodReceiptItemsDTO purchaseGoodReceiptItems)
         {
             var id = await _service.CreateAsync(purchaseGoodReceiptItems);
             ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt created successfully", id);
