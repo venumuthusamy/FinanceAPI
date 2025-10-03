@@ -49,5 +49,9 @@ namespace FinanceApi.Models
 
         public bool? IsActive { get; set; }
 
+        public string ItemID { get; set; }
+
+        public string ComplianceDocuments { get; set; }
+
     }
 }

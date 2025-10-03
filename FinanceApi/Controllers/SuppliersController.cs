@@ -44,14 +44,24 @@ namespace FinanceApi.Controllers
 
 
         [HttpPost("CreateSupplier")]
-        public async Task<ActionResult> CreateSupplier(Suppliers suppliers)
+        public async Task<ActionResult> CreateSupplier(Suppliers supplier)
         {
-            suppliers.CreatedDate = DateTime.Now;
-            var id = await _service.CreateAsync(suppliers);
-            ResponseResult data = new ResponseResult(true, "Supplier created successfully", id);
-            return Ok(data);
+            supplier.CreatedDate = DateTime.Now;
+            supplier.UpdatedDate = DateTime.Now;
+            supplier.IsActive = true;
 
+            // Validate ItemID format if needed
+            if (!string.IsNullOrEmpty(supplier.ItemID))
+            {
+                // Optional: validation, trimming whitespace
+                supplier.ItemID = supplier.ItemID.Trim();
+            }
+
+            var id = await _service.CreateAsync(supplier);
+            var result = new ResponseResult(true, "Supplier created successfully", id);
+            return Ok(result);
         }
+
 
         [HttpPut("updateSupplier")]
         public async Task<IActionResult> updateSupplier(Suppliers suppliers)
