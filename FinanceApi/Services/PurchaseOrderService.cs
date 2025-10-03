@@ -13,7 +13,7 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<PurchaseOrderDto>> GetAllAsync()
+        public async Task<IEnumerable<PurchaseOrderDto>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
@@ -23,7 +23,7 @@ namespace FinanceApi.Services
             return await _repository.GetByIdAsync(id);
         }
 
-        public async Task<PurchaseOrder> CreateAsync(PurchaseOrder purchaseOrder)
+        public async Task<int> CreateAsync(PurchaseOrder purchaseOrder)
         {
             // Example validation logic you might add later
             if (purchaseOrder.PoLines == null || !purchaseOrder.PoLines.Any())
@@ -32,14 +32,14 @@ namespace FinanceApi.Services
             return await _repository.CreateAsync(purchaseOrder);
         }
 
-        public async Task<PurchaseOrder?> UpdateAsync(int id, PurchaseOrder purchaseOrder)
+        public async Task UpdateAsync(PurchaseOrder purchaseOrder)
         {
-            return await _repository.UpdateAsync(id, purchaseOrder);
+            await _repository.UpdateAsync(purchaseOrder);
         }
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeleteLicense(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

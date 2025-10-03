@@ -15,11 +15,11 @@ namespace FinanceApi.Models
         public PaymentTerms? PaymentTerms { get; set; }
         public int CurrencyId { get; set; }
         public Currency? Currency { get; set; }
-        public int DeliveryId { get; set; }
+        //public int DeliveryId { get; set; }
 
-        [ForeignKey("DeliveryId")]
-        public Location? Location { get; set; }
-        public string ContactNumber { get; set; }
+        //[ForeignKey("DeliveryId")]
+        //public Location? Location { get; set; }
+        //public string ContactNumber { get; set; }
         public int IncotermsId { get; set; }  
         public DateTime PoDate { get; set; }
         public DateTime DeliveryDate { get; set; }      
@@ -47,9 +47,9 @@ namespace FinanceApi.Models
         public string? PaymentTermName { get; set; }
         public int CurrencyId { get; set; }
         public string? CurrencyName { get; set; }
-        public int DeliveryId { get; set; }
-        public string? DeliveryName { get; set; }
-        public string ContactNumber { get; set; }
+        //public int DeliveryId { get; set; }
+        //public string? DeliveryName { get; set; }
+        //public string ContactNumber { get; set; }
         public int IncotermsId { get; set; }
         public string? IncotermsName { get; set; }
         public DateTime PoDate { get; set; }
