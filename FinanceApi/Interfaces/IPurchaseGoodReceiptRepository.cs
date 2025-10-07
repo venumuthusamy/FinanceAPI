@@ -8,6 +8,12 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllAsync();
 
         Task<PurchaseGoodReceiptItemsDTO> GetByIdAsync(long id);
-        Task<int> CreateAsync(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO);
+        Task<int> CreateAsync(PurchaseGoodReceiptItems goodReceiptItemsDTO);
+
+        Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllDetailsAsync();
+
+        Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt);
+
+        Task DeactivateAsync(int id);
     }
 }

@@ -19,7 +19,7 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
-        public async Task<int> CreateAsync(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO)
+        public async Task<int> CreateAsync(PurchaseGoodReceiptItems goodReceiptItemsDTO)
         {
             return await _repository.CreateAsync(goodReceiptItemsDTO);
 
@@ -28,6 +28,23 @@ namespace FinanceApi.Services
         public async Task<PurchaseGoodReceiptItemsDTO> GetById(long id)
         {
             return await _repository.GetByIdAsync(id);
+        }
+
+
+        public async Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllGRNDetailsAsync()
+        {
+            return await _repository.GetAllDetailsAsync();
+        }
+
+        public Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        {
+            return _repository.UpdateAsync(purchaseGoodReceipt);
+        }
+
+
+        public async Task DeleteAsync(int id)
+        {
+            await _repository.DeactivateAsync(id);
         }
     }
 }

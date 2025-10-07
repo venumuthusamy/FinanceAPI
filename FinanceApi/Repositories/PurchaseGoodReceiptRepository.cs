@@ -52,7 +52,7 @@ namespace FinanceApi.Repositories
         //    return await Connection.QueryFirstAsync<int>(query, goodReceiptItemsDTO);
         //}
 
-        public async Task<int> CreateAsync(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO)
+        public async Task<int> CreateAsync(PurchaseGoodReceiptItems goodReceiptItemsDTO)
         {
             // Step 1: Get the last GrnNo from the database
             const string getLastGRNQuery = @"SELECT TOP 1 GrnNo FROM PurchaseGoodReceipt ORDER BY Id DESC";
@@ -79,13 +79,88 @@ namespace FinanceApi.Repositories
             // Step 5: Insert new record with generated GRN number
             const string insertQuery = @"
         INSERT INTO PurchaseGoodReceipt 
-            (POID, ReceptionDate, OverReceiptTolerance, GRNJson, FlagIssuesID, GrnNo) 
+            (POID, ReceptionDate, OverReceiptTolerance, GRNJson, GrnNo, isActive) 
         OUTPUT INSERTED.Id 
-        VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson, @FlagIssuesID, @GrnNo)";
+        VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson, @GrnNo, @isActive)";
 
             return await Connection.QueryFirstAsync<int>(insertQuery, goodReceiptItemsDTO);
         }
 
 
+
+        public async Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllDetailsAsync()
+        {
+            const string query = @"    
+ SELECT 
+  pg.Id AS ID,
+  pg.ReceptionDate,
+  po.PurchaseOrderNo AS PONO,
+  pg.GrnNo,
+  gd.itemCode,
+  i.itemName AS ItemName,
+  gd.supplierId,
+  s.Name AS Name,
+  gd.storageType,
+  gd.surfaceTemp,
+  gd.expiry,
+  gd.pestSign,
+  gd.drySpillage,
+  gd.odor,
+  gd.plateNumber,
+  gd.defectLabels,
+  gd.damagedPackage,
+  gd.[time],
+  gd.initial,
+  gd.isFlagIssue
+FROM PurchaseGoodReceipt pg
+OUTER APPLY OPENJSON(pg.GRNJson)
+WITH (
+    itemCode       NVARCHAR(50)  '$.itemCode',
+    supplierId     INT           '$.supplierId',
+    storageType    NVARCHAR(50)  '$.storageType',
+    surfaceTemp    NVARCHAR(50)  '$.surfaceTemp',
+    expiry         DATE          '$.expiry',
+    pestSign       NVARCHAR(50)  '$.pestSign',
+    drySpillage    NVARCHAR(50)  '$.drySpillage',
+    odor           NVARCHAR(50)  '$.odor',
+    plateNumber    NVARCHAR(50)  '$.plateNumber',
+    defectLabels   NVARCHAR(100) '$.defectLabels',
+    damagedPackage NVARCHAR(50)  '$.damagedPackage',
+    [time]         DATETIME2     '$.time',
+    initial        NVARCHAR(Max) '$.initial',
+    isFlagIssue    BIT           '$.isFlagIssue'
+) AS gd
+LEFT JOIN item i ON gd.itemCode = i.itemCode
+LEFT JOIN Suppliers s ON gd.supplierId = s.Id
+LEFT JOIN PurchaseOrder PO ON pg.POID = PO.Id
+
+-- Only show active records
+WHERE pg.isActive = 1
+
+ORDER BY pg.Id DESC;";
+
+            return await Connection.QueryAsync<PurchaseGoodReceiptItemsViewInfo>(query);
+        }
+
+
+        public async Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        {
+            const string query = "UPDATE PurchaseGoodReceipt SET GRNJSON = @GRNJSON WHERE Id = @ID";
+            await Connection.ExecuteAsync(query, purchaseGoodReceipt);
+        }
+
+
+        public async Task UpdateGRN(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        {
+            const string query = "UPDATE PurchaseGoodReceipt SET GRNJSON = @GRNJSON WHERE Id = @ID";
+            await Connection.ExecuteAsync(query, purchaseGoodReceipt);
+        }
+
+
+        public async Task DeactivateAsync(int id)
+        {
+            const string query = "UPDATE PurchaseGoodReceipt SET IsActive = 0 WHERE ID = @id";
+            await Connection.ExecuteAsync(query, new { ID = id });
+        }
     }
 }

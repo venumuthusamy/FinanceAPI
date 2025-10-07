@@ -26,7 +26,9 @@ namespace FinanceApi.Repositories
                     IsActive,
                     FlagIssuesNames
                 FROM FlagIssues
-                ORDER BY ID";
+where isActive = 1
+                ORDER BY ID
+";
 
             return await Connection.QueryAsync<FlagIssuesDTO>(query);
         }
