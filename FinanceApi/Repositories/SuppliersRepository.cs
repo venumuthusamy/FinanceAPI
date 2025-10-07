@@ -58,7 +58,7 @@ ORDER BY CodeNumber DESC";
             // Step 5: Define insert query (FileID/FileName removed, DocumentDetails added)
             const string insertQuery = @"
 INSERT INTO Suppliers (
-    Name, Code, StatusId, LeadTime, TermsId, CurrencyId,
+    Name, Code, StatusId, LeadTime,CountryId, TermsId, CurrencyId,
     TaxReg, IncotermsId, Contact, Email, Phone, Address,
     BankName, BankAcc, BankSwift, BankBranch,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive,
@@ -66,7 +66,7 @@ INSERT INTO Suppliers (
 )
 OUTPUT INSERTED.Id
 VALUES (
-    @Name, @Code, @StatusId, @LeadTime, @TermsId, @CurrencyId,
+    @Name, @Code, @StatusId, @LeadTime,@CountryId, @TermsId, @CurrencyId,
     @TaxReg, @IncotermsId, @Contact, @Email, @Phone, @Address,
     @BankName, @BankAcc, @BankSwift, @BankBranch,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive,
@@ -89,6 +89,7 @@ VALUES (
         Code = @Code,
         StatusId = @StatusId,
         LeadTime = @LeadTime,
+        CountryId = @CountryId,
         TermsId = @TermsId,
         CurrencyId = @CurrencyId,
         TaxReg = @TaxReg,

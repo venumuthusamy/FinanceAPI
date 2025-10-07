@@ -15,6 +15,8 @@ namespace FinanceApi.Models
 
         public int? LeadTime { get; set; }
 
+        public int CountryId { get; set; }
+
         public int? TermsId { get; set; }
 
         public int CurrencyId { get; set; }

@@ -1,10 +1,9 @@
 ﻿namespace FinanceApi.Models
 {
-    public class Country : BaseEntity
+    public class TaxCode : BaseEntity
     {
         public int Id { get; set; }
-        public string CountryName { get; set; }
-        public decimal GSTPercentage { get; set; }
+        public string Name { get; set; }
         public string CreatedBy { get; set; }
 
         public DateTime? CreatedDate { get; set; }

@@ -86,6 +86,7 @@ CREATE TABLE PasswordResetToken (
 CREATE TABLE Country (
     Id INT IDENTITY(1,1) PRIMARY KEY,
     CountryName VARCHAR(100) NOT NULL,
+    GSTPercentage DECIMAL(10,6) DEFAULT 0,
     CreatedBy VARCHAR(100),
     CreatedDate DATETIME DEFAULT GETDATE(),
     UpdatedBy VARCHAR(100),
@@ -449,7 +450,7 @@ CREATE TABLE PurchaseOrder (
     PoDate DATETIME NOT NULL,
     DeliveryDate DATETIME NOT NULL,
     Remarks VARCHAR(50),
-    FxRate DECIMAL(18,2),
+    FxRate DECIMAL(10,6),
     Tax DECIMAL(18,2),
     Shipping DECIMAL(18,2),
     Discount DECIMAL(18,2),
@@ -461,4 +462,24 @@ CREATE TABLE PurchaseOrder (
     UpdatedDate DATETIME,
     IsActive BIT DEFAULT 1,
     PoLines NVARCHAR(max),
+);
+
+CREATE TABLE Recurring (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    RecurringName VARCHAR(100) NOT NULL,
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1
+);
+
+CREATE TABLE TaxCode (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL,
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1
 );

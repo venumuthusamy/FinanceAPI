@@ -38,14 +38,15 @@ namespace FinanceApi.Repositories
         {
             const string query = @"
         INSERT INTO Country 
-            (CountryName, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive) 
+            (CountryName, GSTPercentage , CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive) 
         OUTPUT INSERTED.Id 
         VALUES 
-            (@CountryName, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)
+            (@CountryName, @GSTPercentage, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)
     ";
 
             var parameters = new DynamicParameters();
             parameters.Add("@CountryName", country.CountryName);
+            parameters.Add("@GSTPercentage", country.GSTPercentage);
             parameters.Add("@CreatedBy", country.CreatedBy);
             parameters.Add("@CreatedDate", country.CreatedDate);
             parameters.Add("@UpdatedBy", country.UpdatedBy);
@@ -60,7 +61,7 @@ namespace FinanceApi.Repositories
 
         public async Task UpdateAsync(Country country)
         {
-            const string query = "UPDATE Country SET CountryName = @CountryName WHERE Id = @Id";
+            const string query = "UPDATE Country SET CountryName = @CountryName,GSTPercentage = @GSTPercentage WHERE Id = @Id";
             await Connection.ExecuteAsync(query, country);
         }
 
