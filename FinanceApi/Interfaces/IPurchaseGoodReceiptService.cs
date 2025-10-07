@@ -1,4 +1,5 @@
 ﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
 {
@@ -6,8 +7,14 @@ namespace FinanceApi.Interfaces
     {
         Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllAsync();
 
-        Task<int> CreateAsync(PurchaseGoodReceiptItemsDTO goodReceiptItemsDTO);
+        Task<int> CreateAsync(PurchaseGoodReceiptItems goodReceiptItemsDTO);
 
         Task<PurchaseGoodReceiptItemsDTO> GetById(long id);
+
+        Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllGRNDetailsAsync();
+
+        Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt);
+
+        Task DeleteAsync(int id);
     }
 }

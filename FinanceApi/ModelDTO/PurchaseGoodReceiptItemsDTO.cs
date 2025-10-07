@@ -13,6 +13,7 @@
         public int OverReceiptTolerance { get; set; }
 
         public string GRNJson { get; set; }
-        public int FlagIssuesID { get; set; }
+
+        public bool isActive { get; set; } = true;
     }
 }

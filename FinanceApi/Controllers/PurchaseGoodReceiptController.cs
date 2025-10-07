@@ -42,12 +42,42 @@ namespace FinanceApi.Controllers
         }
 
         [HttpPost("insertGRN")]
-        public async Task<ActionResult> insertGRN(PurchaseGoodReceiptItemsDTO purchaseGoodReceiptItems)
+        public async Task<ActionResult> insertGRN(PurchaseGoodReceiptItems purchaseGoodReceiptItems)
         {
             var id = await _service.CreateAsync(purchaseGoodReceiptItems);
             ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt created successfully", id);
             return Ok(data);
 
         }
+
+
+
+        [HttpGet("GetAllGRNDetails")]
+        public async Task<IActionResult> GetAllGRNDetails()
+        {
+            var list = await _service.GetAllGRNDetailsAsync();
+            ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt retrieved successfully", list);
+            return Ok(data);
+        }
+
+
+
+        [HttpPut("update")]
+        public async Task<IActionResult> Update(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        {
+            await _service.UpdateAsync(purchaseGoodReceipt);
+            ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
+            return Ok(data);
+        }
+
+
+        [HttpDelete("delete/{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            await _service.DeleteAsync(id);
+            ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt Deleted sucessfully", null);
+            return Ok(data);
+        }
+
     }
 }
