@@ -22,7 +22,7 @@ namespace FinanceApi.Repositories
             const string query = @"
                 SELECT p.*,d.DepartmentName from PurchaseRequest as p 
  inner join Department as d on
- p.DepartmentID=d.Id ";
+ p.DepartmentID=d.Id where p.IsActive=1 ";
 
             return await Connection.QueryAsync<PurchaseRequestDTO>(query);
         }
