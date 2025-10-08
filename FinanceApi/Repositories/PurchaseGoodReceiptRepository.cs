@@ -146,7 +146,7 @@ ORDER BY pg.Id DESC;";
         }
 
 
-        public async Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        public async Task UpdateAsync(PurchaseGoodReceiptItems purchaseGoodReceipt)
         {
             const string query = "UPDATE PurchaseGoodReceipt SET GRNJSON = @GRNJSON WHERE Id = @ID";
             await Connection.ExecuteAsync(query, purchaseGoodReceipt);

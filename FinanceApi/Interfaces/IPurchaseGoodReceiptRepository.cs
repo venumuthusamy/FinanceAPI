@@ -12,7 +12,7 @@ namespace FinanceApi.Interfaces
 
         Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllDetailsAsync();
 
-        Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt);
+        Task UpdateAsync(PurchaseGoodReceiptItems purchaseGoodReceipt);
 
         Task DeactivateAsync(int id);
     }
