@@ -36,7 +36,7 @@ namespace FinanceApi.Services
             return await _repository.GetAllDetailsAsync();
         }
 
-        public Task UpdateAsync(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        public Task UpdateAsync(PurchaseGoodReceiptItems purchaseGoodReceipt)
         {
             return _repository.UpdateAsync(purchaseGoodReceipt);
         }

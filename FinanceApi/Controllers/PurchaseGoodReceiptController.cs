@@ -63,7 +63,7 @@ namespace FinanceApi.Controllers
 
 
         [HttpPut("update")]
-        public async Task<IActionResult> Update(PurchaseGoodReceiptItemsDTO purchaseGoodReceipt)
+        public async Task<IActionResult> Update(PurchaseGoodReceiptItems purchaseGoodReceipt)
         {
             await _service.UpdateAsync(purchaseGoodReceipt);
             ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
