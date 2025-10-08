@@ -15,5 +15,7 @@
         public string GRNJson { get; set; }
 
         public bool isActive { get; set; } = true;
+        public string PoLines { get; set; }
+        public int CurrencyId { get; set; }
     }
 }

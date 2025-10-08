@@ -7,7 +7,7 @@
         public DateTime InvoiceDate { get; set; }
         public decimal Amount { get; set; }
         public decimal Tax { get; set; }
-        public string? Currency { get; set; }
+        public int CurrencyId { get; set; }
         public int Status { get; set; }            // 0 draft,1 hold,2 posted
         public string? LinesJson { get; set; }     // 👈 JSON from UI
         public bool IsActive { get; set; } = true;
