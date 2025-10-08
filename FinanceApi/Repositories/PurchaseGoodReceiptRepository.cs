@@ -20,17 +20,20 @@ namespace FinanceApi.Repositories
 
         public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllAsync()
         {
-            const string query = @"
-                SELECT 
-                    ID,
-                    POID,
-                    ReceptionDate,
-                    OverReceiptTolerance,
-                    GRNJson,
-                    FlagIssuesID,
-                    GrnNo
-                FROM PurchaseGoodReceipt
-                ORDER BY ID";
+            //const string query = @"
+            //    SELECT 
+            //        ID,
+            //        POID,
+            //        ReceptionDate,
+            //        OverReceiptTolerance,
+            //        GRNJson,
+            //        FlagIssuesID,
+            //        GrnNo
+            //    FROM PurchaseGoodReceipt
+            //    ORDER BY ID";
+
+            const string query = @"SELECT pg.*,po.PoLines,po.CurrencyId FROM PurchaseGoodReceipt as pg 
+                                   inner join PurchaseOrder as po on pg.POID=po.Id";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query); 
         }
@@ -161,6 +164,22 @@ ORDER BY pg.Id DESC;";
         {
             const string query = "UPDATE PurchaseGoodReceipt SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
+        }
+        public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllGRN()
+        {
+            const string query = @"
+                SELECT 
+                    ID,
+                    POID,
+                    ReceptionDate,
+                    OverReceiptTolerance,
+                    GRNJson,
+                    FlagIssuesID,
+                    GrnNo
+                FROM PurchaseGoodReceipt
+                ORDER BY ID";
+
+            return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }
     }
 }

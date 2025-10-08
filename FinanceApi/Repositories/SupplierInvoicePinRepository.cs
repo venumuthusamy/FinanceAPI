@@ -58,11 +58,11 @@ ORDER BY Id DESC;";
 
             const string insert = @"
 INSERT INTO dbo.SupplierInvoicePin
-(InvoiceNo, InvoiceDate, Amount, Tax, Currency, Status, LinesJson,
+(InvoiceNo, InvoiceDate, Amount, Tax, CurrencyId, Status, LinesJson,
  IsActive, CreatedDate, UpdatedDate, CreatedBy, UpdatedBy, GrnId)
 OUTPUT INSERTED.Id
 VALUES
-(@InvoiceNo, @InvoiceDate, @Amount, @Tax, @Currency, @Status, @LinesJson,
+(@InvoiceNo, @InvoiceDate, @Amount, @Tax, @CurrencyId, @Status, @LinesJson,
  1, @CreatedDate, @UpdatedDate, @CreatedBy, @UpdatedBy, @GrnId);";
 
             return await Connection.QueryFirstAsync<int>(insert, pin);
@@ -78,7 +78,7 @@ UPDATE dbo.SupplierInvoicePin SET
   InvoiceDate = @InvoiceDate,
   Amount      = @Amount,
   Tax         = @Tax,
-  Currency    = @Currency,
+  CurrencyId    = @CurrencyId,
   Status      = @Status,
   LinesJson   = @LinesJson,
   GrnId       = @GrnId,
