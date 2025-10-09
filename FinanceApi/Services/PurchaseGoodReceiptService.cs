@@ -46,5 +46,9 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id);
         }
+        public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllGRNByPoId()
+        {
+            return await _repository.GetAllGRNByPoId();
+        }
     }
 }

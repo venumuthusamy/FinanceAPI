@@ -17,5 +17,6 @@
         public string? UpdatedBy { get; set; }
         public int? GrnId { get; set; }
         public string GrnNo { get; set; }
+        
     }
 }

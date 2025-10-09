@@ -32,8 +32,20 @@ namespace FinanceApi.Repositories
             //    FROM PurchaseGoodReceipt
             //    ORDER BY ID";
 
-            const string query = @"SELECT pg.*,po.PoLines,po.CurrencyId FROM PurchaseGoodReceipt as pg 
-                                   inner join PurchaseOrder as po on pg.POID=po.Id";
+            const string query = @"SELECT
+  pg.*,
+  po.PoLines,
+  po.CurrencyId,
+  po.Tax
+FROM PurchaseGoodReceipt AS pg
+JOIN PurchaseOrder AS po ON po.Id = pg.POID
+WHERE pg.Id NOT IN (
+  SELECT GrnId
+  FROM SupplierInvoicePin
+  WHERE IsActive = 0
+    AND GrnId IS NOT NULL
+
+);";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query); 
         }
@@ -92,58 +104,108 @@ namespace FinanceApi.Repositories
 
 
         public async Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllDetailsAsync()
+
         {
+
             const string query = @"    
- SELECT 
+
+SELECT 
+
   pg.Id AS ID,
+
   pg.ReceptionDate,
+
   po.PurchaseOrderNo AS PONO,
+
   pg.GrnNo,
+
   gd.itemCode,
+
   i.itemName AS ItemName,
+
   gd.supplierId,
+
   s.Name AS Name,
+
   gd.storageType,
+
   gd.surfaceTemp,
+
   gd.expiry,
+
   gd.pestSign,
+
   gd.drySpillage,
+
   gd.odor,
+
   gd.plateNumber,
+
   gd.defectLabels,
+
   gd.damagedPackage,
+
   gd.[time],
+
   gd.initial,
-  gd.isFlagIssue
+
+  gd.isFlagIssue,
+
+  gd.isPostInventory
+
 FROM PurchaseGoodReceipt pg
+
 OUTER APPLY OPENJSON(pg.GRNJson)
+
 WITH (
+
     itemCode       NVARCHAR(50)  '$.itemCode',
+
     supplierId     INT           '$.supplierId',
+
     storageType    NVARCHAR(50)  '$.storageType',
+
     surfaceTemp    NVARCHAR(50)  '$.surfaceTemp',
+
     expiry         DATE          '$.expiry',
+
     pestSign       NVARCHAR(50)  '$.pestSign',
+
     drySpillage    NVARCHAR(50)  '$.drySpillage',
+
     odor           NVARCHAR(50)  '$.odor',
+
     plateNumber    NVARCHAR(50)  '$.plateNumber',
+
     defectLabels   NVARCHAR(100) '$.defectLabels',
+
     damagedPackage NVARCHAR(50)  '$.damagedPackage',
+
     [time]         DATETIME2     '$.time',
+
     initial        NVARCHAR(Max) '$.initial',
-    isFlagIssue    BIT           '$.isFlagIssue'
+
+    isFlagIssue    BIT           '$.isFlagIssue',
+
+	isPostInventory BIT '$.isPostInventory'
+
 ) AS gd
+
 LEFT JOIN item i ON gd.itemCode = i.itemCode
+
 LEFT JOIN Suppliers s ON gd.supplierId = s.Id
+
 LEFT JOIN PurchaseOrder PO ON pg.POID = PO.Id
 
--- Only show active records
-WHERE pg.isActive = 1
 
+WHERE pg.isActive = 1
+ 
 ORDER BY pg.Id DESC;";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsViewInfo>(query);
+
         }
+
 
 
         public async Task UpdateAsync(PurchaseGoodReceiptItems purchaseGoodReceipt)
@@ -178,6 +240,23 @@ ORDER BY pg.Id DESC;";
                     GrnNo
                 FROM PurchaseGoodReceipt
                 ORDER BY ID";
+
+            return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
+        }
+        public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllGRNByPoId()
+        {
+            const string query = @"
+                SELECT 
+     pgr.ID,
+     pgr.POID,
+     pgr.ReceptionDate,
+     pgr.OverReceiptTolerance,
+     pgr.GRNJson,
+    pgr.GrnNo,
+	po.Tax
+ FROM PurchaseGoodReceipt as pgr 
+ inner join PurchaseOrder as po on po.id= pgr.POID
+ ORDER BY pgr.ID";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }

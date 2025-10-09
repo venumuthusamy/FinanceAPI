@@ -17,5 +17,6 @@
         public bool isActive { get; set; } = true;
         public string PoLines { get; set; }
         public int CurrencyId { get; set; }
+        public decimal Tax { get; set; }
     }
 }

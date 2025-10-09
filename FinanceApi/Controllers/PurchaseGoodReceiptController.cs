@@ -78,6 +78,12 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt Deleted sucessfully", null);
             return Ok(data);
         }
-
+        [HttpGet("GetAllGRNByPoId")]
+        public async Task<IActionResult> GetAllGRNByPoId()
+        {
+            var list = await _service.GetAllGRNByPoId();
+            ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt retrieved successfully", list);
+            return Ok(data);
+        }
     }
 }
