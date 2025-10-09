@@ -7,6 +7,7 @@ namespace FinanceApi.InterfaceService
     {
         Task<IEnumerable<PurchaseRequestDTO>> GetAllAsync();
         Task<PurchaseRequestDTO> GetById(int id);
+        Task<IEnumerable<PurchaseRequestDTO>> GetAvailablePurchaseRequestsAsync();
         Task<int> CreateAsync(PurchaseRequest purchaseRequest);
         Task UpdateAsync(PurchaseRequest purchaseRequest);
         Task DeleteLicense(int id);

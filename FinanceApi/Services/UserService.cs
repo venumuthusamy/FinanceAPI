@@ -124,7 +124,7 @@ namespace FinanceApi.Services
                 await _repository.SaveResetTokenAsync(resetToken);
 
                 var resetLink = $"http://localhost:4200/pages/authentication/reset-password?token={token}&email={user.Email}";
-                await _emailService.SendResetPasswordEmail(user.Email, resetLink);
+                await _emailService.SendResetPasswordEmail(user, resetLink);
             }
 
             return "If the email exists, a reset link has been sent.";

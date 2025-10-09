@@ -30,6 +30,11 @@ namespace FinanceApi.Services
             return await _repository.GetByIdAsync(id);
         }
 
+        public async Task<IEnumerable<PurchaseRequestDTO>> GetAvailablePurchaseRequestsAsync()
+        {
+            return await _repository.GetAvailablePurchaseRequestsAsync();
+        }
+
         public Task UpdateAsync(PurchaseRequest purchaseRequest)
         {
             return _repository.UpdateAsync(purchaseRequest);
