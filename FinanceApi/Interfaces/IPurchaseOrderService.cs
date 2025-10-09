@@ -9,5 +9,7 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(PurchaseOrder purchaseOrder);
         Task UpdateAsync(PurchaseOrder purchaseOrder);
         Task DeleteLicense(int id);
+
+        Task<IEnumerable<PurchaseOrderDto>> GetAllDetailswithGRN();
     }
 }

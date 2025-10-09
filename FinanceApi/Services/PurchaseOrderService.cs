@@ -18,6 +18,11 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
+        public async Task<IEnumerable<PurchaseOrderDto>> GetAllDetailswithGRN()
+        {
+            return await _repository.GetAllDetailswithGRN();
+        }
+
         public async Task<PurchaseOrderDto?> GetByIdAsync(int id)
         {
             return await _repository.GetByIdAsync(id);

@@ -26,6 +26,14 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
+        [HttpGet("GetAllDetailswithGRN")]
+        public async Task<IActionResult> GetAllDetailswithGRN()
+        {
+            var list = await _service.GetAllDetailswithGRN();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
         [HttpGet("get/{id}")]
         public async Task<IActionResult> GetById(int id)
         {
