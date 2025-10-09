@@ -36,6 +36,23 @@ namespace FinanceApi.Repositories
             return await Connection.QuerySingleAsync<PurchaseRequestDTO>(query, new { Id = id });
         }
 
+        public async Task<IEnumerable<PurchaseRequestDTO>> GetAvailablePurchaseRequestsAsync()
+        {
+            
+            var sql = @"
+            SELECT pr.*
+            FROM PurchaseRequest pr
+            WHERE pr.IsActive = 1
+              AND pr.PurchaseRequestNo NOT IN (
+                SELECT DISTINCT JSON_VALUE(j.value, '$.prNo')
+                FROM PurchaseOrder po
+                CROSS APPLY OPENJSON(po.PoLines) AS j
+              )
+            ORDER BY pr.Id DESC;";
+            return await Connection.QueryAsync<PurchaseRequestDTO>(sql);
+        }
+
+
         public async Task<int> CreateAsync(PurchaseRequest pr)
         {
             // Step 1: Get the last PurchaseRequestNo from the database

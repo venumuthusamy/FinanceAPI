@@ -1,6 +1,7 @@
 ﻿using System.Net.Mail;
 using System.Net;
 using FinanceApi.Interfaces;
+using FinanceApi.Models;
 
 namespace FinanceApi.Services
 {
@@ -13,7 +14,7 @@ namespace FinanceApi.Services
             _config = config;
         }
 
-        public async Task SendResetPasswordEmail(string toEmail, string resetLink)
+        public async Task SendResetPasswordEmail(User user, string resetLink)
         {
             try
             {
@@ -25,13 +26,13 @@ namespace FinanceApi.Services
 
                 var subject = "Reset Your Password";
                 var body = $@"
-                    <p>Hello,</p>
+                    <p>Hello,{user.Username}</p>
                     <p>You requested a password reset. Click the link below to reset your password:</p>
                     <p><a href='{resetLink}'>Reset Password</a></p>
                     <p>This link will expire in 1 hour.</p>
                 ";
 
-                using var message = new MailMessage(fromEmail, toEmail, subject, body)
+                using var message = new MailMessage(fromEmail, user.Email, subject, body)
                 {
                     IsBodyHtml = true
                 };

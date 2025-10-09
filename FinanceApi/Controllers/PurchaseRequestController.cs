@@ -41,7 +41,12 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
-
+        [HttpGet("GetAvailablePurchaseRequests")]
+        public async Task<IActionResult> GetAvailablePurchaseRequests()
+        {
+            var result = await _service.GetAvailablePurchaseRequestsAsync();
+            return Ok(new { isSuccess = true, message = "Available PRs retrieved", data = result });
+        }
 
 
         [HttpPost("CreatePurchaseRequest")]

@@ -441,7 +441,7 @@ CREATE TABLE OpeningBalance (
 CREATE TABLE PurchaseOrder (
     Id INT IDENTITY(1,1) PRIMARY KEY,
     PurchaseOrderNo VARCHAR(100),
-    ApprovalStatus VARCHAR(100),
+    ApprovalStatus INT NOT NULL,
     SupplierId INT NOT NULL,
     ApproveLevelId INT NOT NULL,
     PaymentTermId INT NOT NULL,
