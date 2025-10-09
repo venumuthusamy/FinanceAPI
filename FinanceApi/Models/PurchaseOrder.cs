@@ -6,7 +6,7 @@ namespace FinanceApi.Models
     {
         public int Id { get; set; }
         public string PurchaseOrderNo { get; set; }
-        public string ApprovalStatus { get; set; }
+        public int ApprovalStatus { get; set; }
         public int SupplierId { get; set; }
         public int ApproveLevelId { get; set; }
         public int PaymentTermId { get; set; }
@@ -31,6 +31,7 @@ namespace FinanceApi.Models
         public decimal SubTotal { get; set; }
         public decimal NetTotal { get; set; }
         public string PoLines { get; set; }
+        public string? PurchaseRequestNo { get; set; }
     }
 
 
@@ -38,7 +39,7 @@ namespace FinanceApi.Models
     {
         public int Id { get; set; }
         public string PurchaseOrderNo { get; set; }
-        public string ApprovalStatus { get; set; }
+        public int ApprovalStatus { get; set; }
         public int SupplierId { get; set; }
         public string? SupplierName{ get; set; }
         public int ApproveLevelId { get; set; }
