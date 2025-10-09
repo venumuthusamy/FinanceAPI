@@ -96,6 +96,56 @@ namespace FinanceApi.Repositories
         }
 
 
+
+
+        public async Task<IEnumerable<PurchaseOrderDto>> GetAllDetailswithGRN()
+        {
+           
+            var query = @"
+                        SELECT
+    po.Id,
+    po.PurchaseOrderNo,
+    po.SupplierId,
+    ISNULL(s.Name, '') AS SupplierName,
+    po.ApproveLevelId,
+    po.ApprovalStatus,
+    po.PaymentTermId,
+    ISNULL(p.PaymentTermsName, '') AS PaymentTermName,
+    po.CurrencyId,
+    ISNULL(c.CurrencyName, '') AS CurrencyName,
+    po.IncotermsId,
+    po.PoDate,
+    po.DeliveryDate,
+    po.Remarks,
+    po.FxRate,
+    po.Tax,
+    po.Shipping,
+    po.Discount,
+    po.SubTotal,
+    po.NetTotal,
+    po.PoLines,
+    po.CreatedBy,
+    po.CreatedDate,
+    po.UpdatedBy,
+    po.UpdatedDate,
+    po.IsActive
+FROM PurchaseOrder po
+LEFT JOIN Suppliers s ON po.SupplierId = s.Id
+LEFT JOIN PaymentTerms p ON po.PaymentTermId = p.Id
+LEFT JOIN Currency c ON po.CurrencyId = c.Id
+WHERE po.IsActive = 1 
+  AND po.ApprovalStatus = 2
+  AND po.Id NOT IN (
+      SELECT POID FROM PurchaseGoodReceipt WHERE POID IS NOT NULL
+  )
+ORDER BY po.Id;
+";
+
+            var rows = await Connection.QueryAsync<PurchaseOrderDto>(query);
+            return rows.ToList();
+        }
+
+
         public async Task<PurchaseOrderDto?> GetByIdAsync(int id)
         {
             const string sql = @"

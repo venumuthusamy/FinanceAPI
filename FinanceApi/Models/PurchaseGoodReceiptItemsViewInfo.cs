@@ -27,5 +27,6 @@
         public string Initial { get; set; }
 
         public bool isFlagIssue { get; set; }
+        public bool isPostInventory { get; set; }
     }
 }
