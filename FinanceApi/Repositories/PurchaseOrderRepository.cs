@@ -140,29 +140,99 @@ namespace FinanceApi.Repositories
 
         public async Task<int> CreateAsync(PurchaseOrder purchaseOrder)
         {
-            // 1. Get the last Id
-            const string getLastIdQuery = @"SELECT ISNULL(MAX(Id), 0) FROM PurchaseOrder";
-            var lastId = await Connection.ExecuteScalarAsync<int>(getLastIdQuery);
+            if (purchaseOrder is null) throw new ArgumentNullException(nameof(purchaseOrder));
 
-            // 2. Generate next number
-            int nextNumber = lastId + 1;
+            // Ensure timestamps
+            if (purchaseOrder.CreatedDate == default) purchaseOrder.CreatedDate = DateTime.UtcNow;
+            if (purchaseOrder.UpdatedDate == default) purchaseOrder.UpdatedDate = DateTime.UtcNow;
+
+            // Generate the next PO number from last Id (simple approach)
+            const string getLastIdQuery = @"SELECT ISNULL(MAX(Id), 0) FROM PurchaseOrder WITH (HOLDLOCK, TABLOCKX)";
+            var lastId = await Connection.ExecuteScalarAsync<int>(getLastIdQuery);
+            var nextNumber = lastId + 1;
             purchaseOrder.PurchaseOrderNo = $"PO-{nextNumber:00000}"; // e.g., PO-00001
 
-            const string query = @"INSERT INTO PurchaseOrder (PurchaseOrderNo,SupplierId,ApproveLevelId,ApprovalStatus,PaymentTermId,CurrencyId,IncotermsId,PoDate,
-                                   DeliveryDate,Remarks,FxRate,Tax,Shipping,Discount,SubTotal,NetTotal,PoLines,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
-                               OUTPUT INSERTED.Id 
-                               VALUES (@PurchaseOrderNo,@SupplierId,@ApproveLevelId,@ApprovalStatus,@PaymentTermId,@CurrencyId,@IncotermsId,@PoDate,
-                                   @DeliveryDate,@Remarks,@FxRate,@Tax,@Shipping,@Discount,@SubTotal,@NetTotal,@PoLines,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
-            return await Connection.QueryFirstAsync<int>(query, purchaseOrder);
+            const string sql = @"
+INSERT INTO PurchaseOrder
+(
+    PurchaseOrderNo, SupplierId, ApproveLevelId, ApprovalStatus, PaymentTermId,
+    CurrencyId, IncotermsId, PoDate, DeliveryDate, Remarks, FxRate, Tax, Shipping,
+    Discount, SubTotal, NetTotal, PoLines, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
+)
+OUTPUT INSERTED.Id
+VALUES
+(
+    @PurchaseOrderNo, @SupplierId, @ApproveLevelId, @ApprovalStatus, @PaymentTermId,
+    @CurrencyId, @IncotermsId, @PoDate, @DeliveryDate, @Remarks, @FxRate, @Tax, @Shipping,
+    @Discount, @SubTotal, @NetTotal, @PoLines, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
+);
+
+
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (prNo nvarchar(100) '$.prNo')
+    WHERE ISNULL(prNo, '') <> ''
+)
+UPDATE PR
+SET PR.Status = @ApprovalStatus,     
+    PR.UpdatedDate = SYSUTCDATETIME()
+FROM PurchaseRequest PR
+JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo;
+";
+
+
+            // Returns the new PO Id
+            var newId = await Connection.ExecuteScalarAsync<int>(sql, purchaseOrder);
+            return newId;
         }
+
 
         public async Task UpdateAsync(PurchaseOrder updatedPurchaseOrder)
         {
-            const string query = "UPDATE PurchaseOrder SET PurchaseOrderNo = @PurchaseOrderNo,SupplierId = @SupplierId,ApproveLevelId = @ApproveLevelId,ApprovalStatus = @ApprovalStatus,PaymentTermId = @PaymentTermId," +
-                "CurrencyId = @CurrencyId,IncotermsId = @IncotermsId,PoDate = @PoDate,DeliveryDate = @DeliveryDate,Remarks = @Remarks,FxRate = @FxRate,Tax = @Tax,Shipping = @Shipping,Discount = @Discount," +
-                "SubTotal = @SubTotal,NetTotal = @NetTotal,PoLines = @PoLines,UpdatedBy = @UpdatedBy ,UpdatedDate = @UpdatedDate,IsActive = @IsActive WHERE Id = @Id";
+            const string query = @"
+UPDATE PurchaseOrder 
+SET 
+    PurchaseOrderNo = @PurchaseOrderNo,
+    SupplierId = @SupplierId,
+    ApproveLevelId = @ApproveLevelId,
+    ApprovalStatus = @ApprovalStatus,
+    PaymentTermId = @PaymentTermId,
+    CurrencyId = @CurrencyId,
+    IncotermsId = @IncotermsId,
+    PoDate = @PoDate,
+    DeliveryDate = @DeliveryDate,
+    Remarks = @Remarks,
+    FxRate = @FxRate,
+    Tax = @Tax,
+    Shipping = @Shipping,
+    Discount = @Discount,
+    SubTotal = @SubTotal,
+    NetTotal = @NetTotal,
+    PoLines = @PoLines,
+    UpdatedBy = @UpdatedBy,
+    UpdatedDate = @UpdatedDate,
+    IsActive = @IsActive
+WHERE Id = @Id;
+
+
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (prNo nvarchar(100) '$.prNo')
+    WHERE ISNULL(prNo, '') <> ''
+)
+UPDATE PR
+SET PR.Status = @ApprovalStatus,       
+    PR.UpdatedDate = SYSUTCDATETIME()
+FROM PurchaseRequest PR
+JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo;
+";
+
+
             await Connection.ExecuteAsync(query, updatedPurchaseOrder);
         }
+
 
 
         public async Task DeactivateAsync(int id)
