@@ -19,7 +19,7 @@ namespace FinanceApi.Repositories
             const string sql = @"
 SELECT *
 FROM dbo.SupplierInvoicePin
-WHERE IsActive = 1
+WHERE IsActive = 0
 ORDER BY Id DESC;";
 
             return await Connection.QueryAsync<SupplierInvoicePin>(sql);
@@ -28,9 +28,10 @@ ORDER BY Id DESC;";
         public async Task<SupplierInvoicePinDTO> GetByIdAsync(int id)
         {
             const string sql = @"
-  SELECT si.*,grp.GrnNo FROM SupplierInvoicePin as si
-  inner join PurchaseGoodReceipt as grp on grp.Id = si.grnid
-  WHERE si.Id = @Id;";
+    SELECT si.*,grp.GrnNo,po.Tax FROM SupplierInvoicePin as si
+inner join PurchaseGoodReceipt as grp on grp.Id = si.grnid
+inner join PurchaseOrder as po on po.Id= grp.POID
+WHERE si.Id = @Id;";
             return await Connection.QuerySingleAsync<SupplierInvoicePinDTO>(sql, new { Id = id });
         }
 
@@ -63,7 +64,7 @@ INSERT INTO dbo.SupplierInvoicePin
 OUTPUT INSERTED.Id
 VALUES
 (@InvoiceNo, @InvoiceDate, @Amount, @Tax, @CurrencyId, @Status, @LinesJson,
- 1, @CreatedDate, @UpdatedDate, @CreatedBy, @UpdatedBy, @GrnId);";
+ 0, @CreatedDate, @UpdatedDate, @CreatedBy, @UpdatedBy, @GrnId);";
 
             return await Connection.QueryFirstAsync<int>(insert, pin);
         }
@@ -92,7 +93,7 @@ WHERE Id = @Id;";
         // ---------- DEACTIVATE ----------
         public async Task DeactivateAsync(int id)
         {
-            const string sql = @"UPDATE dbo.SupplierInvoicePin SET IsActive = 0 WHERE Id = @Id;";
+            const string sql = @"UPDATE dbo.SupplierInvoicePin SET IsActive = 1 WHERE Id = @Id;";
             await Connection.ExecuteAsync(sql, new { Id = id });
         }
     }
