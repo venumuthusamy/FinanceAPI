@@ -51,5 +51,44 @@ namespace FinanceApi.Services
                 throw;
             }
         }
+
+
+        public async Task SendUsernameEmail(User user)
+        {
+            try
+            {
+                var fromEmail = _config["EmailSettings:From"];
+                var smtpHost = _config["EmailSettings:SmtpHost"];
+                var smtpPort = int.Parse(_config["EmailSettings:SmtpPort"]);
+                var smtpUser = _config["EmailSettings:SmtpUser"];
+                var smtpPass = _config["EmailSettings:SmtpPass"];
+
+                var subject = "Your Username";
+                var body = $@"
+                    <p>Hello</p>
+                    <p>You requested your Unity_ERP username. Use the username to proceed further:</p>
+                    <p> Your username: {user.Username}</p>
+                    <p>If you didn’t request this, you can ignore this email.</p>
+                ";
+
+                using var message = new MailMessage(fromEmail, user.Email, subject, body)
+                {
+                    IsBodyHtml = true
+                };
+
+                using var client = new SmtpClient(smtpHost, smtpPort)
+                {
+                    Credentials = new NetworkCredential(smtpUser, smtpPass),
+                    EnableSsl = true
+                };
+
+                await client.SendMailAsync(message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Email sending failed: {ex.Message}");
+                throw;
+            }
+        }
     }
 }

@@ -158,6 +158,7 @@ CREATE TABLE Location (
     CountryId INT NOT NULL,
     StateId INT NOT NULL,
     CityId INT NOT NULL,
+    ContactNumber VARCHAR(30),
     Address VARCHAR(255),
     Latitude VARCHAR(20),
     Longitude VARCHAR(20),
@@ -483,3 +484,17 @@ CREATE TABLE TaxCode (
     UpdatedDate DATETIME,
     IsActive BIT DEFAULT 1
 );
+
+CREATE TABLE [PasswordHistory] (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    UserId INT NOT NULL,
+    PasswordHash VARCHAR(200) NOT NULL,
+    ChangedAtUtc DATETIME DEFAULT GETDATE(),
+    CONSTRAINT FK_PasswordHistory_User FOREIGN KEY (UserId) REFERENCES [User](Id) ON DELETE CASCADE
+);
+GO
+
+CREATE INDEX IX_PasswordHistory_User_ChangedAt
+ON [PasswordHistory](UserId, ChangedAtUtc DESC);
+GO
+

@@ -135,6 +135,27 @@ namespace FinanceApi.Repositories
             return await _context.PasswordResetToken
                 .FirstOrDefaultAsync(t => t.UserId == userId && t.Token == decodedToken);
         }
+        public async Task<List<string>> GetRecentPasswordHashesAsync(int userId, int take)
+        {
+            return await _context.PasswordHistory
+                .Where(p => p.UserId == userId)
+                .OrderByDescending(p => p.ChangedAtUtc)
+                .Take(take)
+                .Select(p => p.PasswordHash)
+                .ToListAsync();
+        }
+
+        public async Task SavePasswordHistoryAsync(int userId, string newHash)
+        {
+            var history = new PasswordHistory
+            {
+                UserId = userId,
+                PasswordHash = newHash,
+                ChangedAtUtc = DateTime.UtcNow
+            };
+            _context.PasswordHistory.Add(history);
+            await _context.SaveChangesAsync();
+        }
         public async Task<bool> UpdatePasswordAsync(int userId, string hashedPassword)
         {
             var user = await _context.User.FirstOrDefaultAsync(u => u.Id == userId);
