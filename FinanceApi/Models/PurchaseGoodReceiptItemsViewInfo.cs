@@ -28,5 +28,11 @@
 
         public bool isFlagIssue { get; set; }
         public bool isPostInventory { get; set; }
+
+        public int qtyReceived { get; set; }
+
+        public string qualityCheck { get; set; }
+
+        public string batchSerial { get; set; }
     }
 }

@@ -110,97 +110,57 @@ WHERE pg.Id NOT IN (
             const string query = @"    
 
 SELECT 
-
   pg.Id AS ID,
-
   pg.ReceptionDate,
-
   po.PurchaseOrderNo AS PONO,
-
   pg.GrnNo,
-
   gd.itemCode,
-
   i.itemName AS ItemName,
-
   gd.supplierId,
-
   s.Name AS Name,
-
   gd.storageType,
-
   gd.surfaceTemp,
-
   gd.expiry,
-
   gd.pestSign,
-
   gd.drySpillage,
-
   gd.odor,
-
   gd.plateNumber,
-
   gd.defectLabels,
-
   gd.damagedPackage,
-
   gd.[time],
-
   gd.initial,
-
   gd.isFlagIssue,
-
-  gd.isPostInventory
-
+  gd.isPostInventory,
+  gd.qtyReceived,
+  gd.qualityCheck,
+  gd.batchSerial
 FROM PurchaseGoodReceipt pg
-
 OUTER APPLY OPENJSON(pg.GRNJson)
-
 WITH (
-
-    itemCode       NVARCHAR(50)  '$.itemCode',
-
-    supplierId     INT           '$.supplierId',
-
-    storageType    NVARCHAR(50)  '$.storageType',
-
-    surfaceTemp    NVARCHAR(50)  '$.surfaceTemp',
-
-    expiry         DATE          '$.expiry',
-
-    pestSign       NVARCHAR(50)  '$.pestSign',
-
-    drySpillage    NVARCHAR(50)  '$.drySpillage',
-
-    odor           NVARCHAR(50)  '$.odor',
-
-    plateNumber    NVARCHAR(50)  '$.plateNumber',
-
-    defectLabels   NVARCHAR(100) '$.defectLabels',
-
-    damagedPackage NVARCHAR(50)  '$.damagedPackage',
-
-    [time]         DATETIME2     '$.time',
-
-    initial        NVARCHAR(Max) '$.initial',
-
-    isFlagIssue    BIT           '$.isFlagIssue',
-
-	isPostInventory BIT '$.isPostInventory'
-
+    itemCode        NVARCHAR(50)  '$.itemCode',
+    supplierId      INT           '$.supplierId',
+    storageType     NVARCHAR(50)  '$.storageType',
+    surfaceTemp     NVARCHAR(50)  '$.surfaceTemp',
+    expiry          DATE          '$.expiry',
+    pestSign        NVARCHAR(50)  '$.pestSign',
+    drySpillage     NVARCHAR(50)  '$.drySpillage',
+    odor            NVARCHAR(50)  '$.odor',
+    plateNumber     NVARCHAR(50)  '$.plateNumber',
+    defectLabels    NVARCHAR(100) '$.defectLabels',
+    damagedPackage  NVARCHAR(50)  '$.damagedPackage',
+    [time]          DATETIME2     '$.time',
+    initial         NVARCHAR(MAX) '$.initial',
+    isFlagIssue     BIT           '$.isFlagIssue',
+    isPostInventory BIT           '$.isPostInventory',
+    qtyReceived     int '$.qtyReceived',
+    qualityCheck    NVARCHAR(MAX) '$.qualityCheck',
+    batchSerial     NVARCHAR(MAX) '$.batchSerial'
 ) AS gd
-
 LEFT JOIN item i ON gd.itemCode = i.itemCode
-
 LEFT JOIN Suppliers s ON gd.supplierId = s.Id
-
 LEFT JOIN PurchaseOrder PO ON pg.POID = PO.Id
-
-
-WHERE pg.isActive = 1
- 
-ORDER BY pg.Id DESC;";
+ORDER BY pg.Id DESC;
+";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsViewInfo>(query);
 
