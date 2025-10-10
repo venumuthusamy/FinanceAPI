@@ -13,6 +13,7 @@ namespace FinanceApi.Data
         // Add DbSet properties for each entity
 
         public DbSet<User> User { get; set; }
+        public DbSet<PasswordHistory> PasswordHistory { get; set; }
         public DbSet<Country> Country { get; set; }
         public DbSet<State> State { get; set; }
         public DbSet<City> City { get; set; }

@@ -5,5 +5,6 @@ namespace FinanceApi.Interfaces
     public interface IEmailService
     {
         Task SendResetPasswordEmail(User toEmail, string resetLink);
+        Task SendUsernameEmail(User user);
     }
 }

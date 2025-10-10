@@ -99,6 +99,14 @@ namespace FinanceApi.Services
             if (isSameAsCurrent)
                 throw new ArgumentException("New password cannot be the same as the current password.");
 
+            // 3) Block reuse of up to last 3 passwords (0..3 rows depending on history)
+            var recent = await _repository.GetRecentPasswordHashesAsync(userId, 3);
+            foreach (var oldHash in recent)
+            {
+                if (BCrypt.Net.BCrypt.Verify(changePasswordDto.NewPassword, oldHash))
+                    throw new ArgumentException("You cannot reuse your last 3 passwords.");
+            }
+
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(changePasswordDto.NewPassword);
             user.UpdatedDate = DateTime.UtcNow;
 
@@ -108,9 +116,18 @@ namespace FinanceApi.Services
 
         public async Task<string> ForgotPasswordAsync(ForgotPasswordRequestDto request)
         {
+            var mode = (request.Mode ?? "").Trim().ToLowerInvariant();
+
             var user = await _repository.GetUserByEmailAsync(request.Email);
             if (user == null) return null;
-            if (user != null)
+
+            
+            if(mode == "username")
+            {
+                    await _emailService.SendUsernameEmail(user);
+            }
+
+            if (mode == "password")
             {
                 var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(64));
 
@@ -140,12 +157,24 @@ namespace FinanceApi.Services
             if (token == null || token.Expiration < DateTime.UtcNow)
                 return (false, "Invalid or expired token.");
 
+            //  Pull last 3 password hashes (includes current if you seeded history)
+            var recentHashes = await _repository.GetRecentPasswordHashesAsync(user.Id, take: 3);
+
+            // Block reuse of any of the last 3
+            foreach (var oldHash in recentHashes)
+            {
+                if (BCrypt.Net.BCrypt.Verify(request.NewPassword, oldHash))
+                    return (false, "You cannot reuse your last 3 passwords. Please choose a different one.");
+            }
+
             // Hash the new password
             string newPasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
 
             var success = await _repository.UpdatePasswordAsync(user.Id, newPasswordHash);
             if (!success)
                 return (false, "Failed to update password.");
+
+            await _repository.SavePasswordHistoryAsync(user.Id, newPasswordHash);
 
             await _repository.DeleteTokenAsync(token); // Invalidate token
 

@@ -8,7 +8,7 @@ using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace FinanceApi.Repositories
 {
-    public class PurchaseRequestRepository :DynamicRepository,IPurchaseRequestRepository
+    public class PurchaseRequestRepository : DynamicRepository, IPurchaseRequestRepository
     {
         private readonly ApplicationDbContext _context;
 
@@ -20,9 +20,11 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<PurchaseRequestDTO>> GetAllAsync()
         {
             const string query = @"
-                SELECT p.*,d.DepartmentName from PurchaseRequest as p 
+                SELECT p.*,d.DepartmentName
+ from PurchaseRequest as p 
  inner join Department as d on
- p.DepartmentID=d.Id where p.IsActive=1 ";
+ p.DepartmentID=d.Id  
+ where p.IsActive=1";
 
             return await Connection.QueryAsync<PurchaseRequestDTO>(query);
         }
@@ -38,18 +40,119 @@ namespace FinanceApi.Repositories
 
         public async Task<IEnumerable<PurchaseRequestDTO>> GetAvailablePurchaseRequestsAsync()
         {
-            
+
+            //var sql = @"
+            //SELECT pr.*
+            //FROM PurchaseRequest pr
+            //WHERE pr.IsActive = 1
+            //  AND pr.PurchaseRequestNo NOT IN (
+            //    SELECT DISTINCT JSON_VALUE(j.value, '$.prNo')
+            //    FROM PurchaseOrder po
+            //    CROSS APPLY OPENJSON(po.PoLines) AS j
+            //  )
+            //ORDER BY pr.Id DESC;";
+
             var sql = @"
-            SELECT pr.*
-            FROM PurchaseRequest pr
-            WHERE pr.IsActive = 1
-              AND pr.PurchaseRequestNo NOT IN (
-                SELECT DISTINCT JSON_VALUE(j.value, '$.prNo')
-                FROM PurchaseOrder po
-                CROSS APPLY OPENJSON(po.PoLines) AS j
-              )
-            ORDER BY pr.Id DESC;";
+                      -- Get PRs with ONLY their remaining (unused) lines
+-- Match key: PRNo + ItemCode + ItemName (case-insensitive, trimmed)
+WITH UsedLines AS (
+    SELECT
+        JSON_VALUE(j.value, '$.prNo') AS prNo,
+        -- Split ""CODE - NAME"" safely (handles missing delimiter)
+        LTRIM(RTRIM(
+            CASE 
+                WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
+                    THEN LEFT(JSON_VALUE(j.value,'$.item'), CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) - 1)
+                ELSE JSON_VALUE(j.value,'$.item')
+            END
+        )) AS itemCode,
+        LTRIM(RTRIM(
+            CASE 
+                WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
+                    THEN SUBSTRING(
+                            JSON_VALUE(j.value,'$.item'),
+                            CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) + 3,
+                            4000
+                         )
+                ELSE ''
+            END
+        )) AS itemName
+    FROM PurchaseOrder po
+    CROSS APPLY OPENJSON(po.PoLines) AS j
+)
+
+SELECT
+    pr.Id,
+    pr.PurchaseRequestNo,
+    pr.Requester,
+    pr.DepartmentID,
+    pr.DeliveryDate,
+    pr.Description,
+    pr.MultiLoc,
+    pr.Oversea,
+    pr.CreatedDate,
+    pr.UpdatedDate,
+    pr.CreatedBy,
+    pr.UpdatedBy,
+    pr.IsActive,
+    pr.Status,
+    ISNULL(d.DepartmentName,'') AS DepartmentName,
+
+    -- Rebuild prLines as JSON of ONLY the unused lines
+    (
+        SELECT
+            prj.itemSearch,
+            prj.itemCode,
+            prj.qty,
+            prj.uomSearch,
+            prj.uom,
+            prj.locationSearch,
+            prj.location,
+            prj.budget,
+            prj.remarks
+        FROM OPENJSON(pr.prLines)
+        WITH (
+            itemSearch      NVARCHAR(200) '$.itemSearch',
+            itemCode        NVARCHAR(100) '$.itemCode',
+            qty             DECIMAL(18,4) '$.qty',
+            uomSearch       NVARCHAR(100) '$.uomSearch',
+            uom             NVARCHAR(100) '$.uom',
+            locationSearch  NVARCHAR(200) '$.locationSearch',
+            location        NVARCHAR(200) '$.location',
+            budget          NVARCHAR(400) '$.budget',
+            remarks         NVARCHAR(400) '$.remarks'
+        ) AS prj
+        LEFT JOIN UsedLines u
+            ON UPPER(LTRIM(RTRIM(u.prNo)))      = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
+           AND UPPER(LTRIM(RTRIM(u.itemCode)))  = UPPER(LTRIM(RTRIM(ISNULL(prj.itemCode, ''))))
+           AND UPPER(LTRIM(RTRIM(u.itemName)))  = UPPER(LTRIM(RTRIM(ISNULL(prj.itemSearch, ''))))
+        WHERE u.prNo IS NULL
+        FOR JSON PATH
+    ) AS prLines
+FROM PurchaseRequest pr
+LEFT JOIN Department d ON d.Id = pr.DepartmentID
+WHERE
+    pr.IsActive = 1
+    -- Keep only PRs that still have at least one unused line
+    AND EXISTS (
+        SELECT 1
+        FROM OPENJSON(pr.prLines)
+        WITH (
+            itemSearch NVARCHAR(200) '$.itemSearch',
+            itemCode   NVARCHAR(100) '$.itemCode'
+        ) AS prj2
+        LEFT JOIN UsedLines u2
+            ON UPPER(LTRIM(RTRIM(u2.prNo)))     = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
+           AND UPPER(LTRIM(RTRIM(u2.itemCode))) = UPPER(LTRIM(RTRIM(ISNULL(prj2.itemCode, ''))))
+           AND UPPER(LTRIM(RTRIM(u2.itemName))) = UPPER(LTRIM(RTRIM(ISNULL(prj2.itemSearch, ''))))
+        WHERE u2.prNo IS NULL
+    )
+ORDER BY pr.Id DESC;
+
+                            ";
+
             return await Connection.QueryAsync<PurchaseRequestDTO>(sql);
+
         }
 
 

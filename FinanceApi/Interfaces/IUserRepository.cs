@@ -14,6 +14,8 @@ namespace FinanceApi.Interfaces
         Task<User?> GetUserByEmailAsync(string email);
         Task SaveResetTokenAsync(PasswordResetToken token);
         Task<PasswordResetToken?> GetValidTokenAsync(int userId, string token);
+        Task<List<string>> GetRecentPasswordHashesAsync(int userId, int take);
+        Task SavePasswordHistoryAsync(int userId, string passwordHash);
         Task<bool> UpdatePasswordAsync(int userId, string hashedPassword);
         Task DeleteTokenAsync(PasswordResetToken token);
 
