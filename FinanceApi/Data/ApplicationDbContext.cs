@@ -40,7 +40,7 @@ namespace FinanceApi.Data
         public DbSet<OpeningBalance> OpeningBalance { get; set; }
 
         public DbSet<PurchaseRequest> PurchaseRequests { get; set; }
-
+        public DbSet<PurchaseRequestTemp> PurchaseRequestsTemp { get; set; }
         public DbSet<PurchaseOrder> PurchaseOrder { get; set; }
 
         public DbSet<ApprovalLevel> ApprovalLevels { get; set; }
