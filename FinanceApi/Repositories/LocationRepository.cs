@@ -48,16 +48,16 @@ namespace FinanceApi.Repositories
 
         public async Task<int> CreateAsync(Location location)
         {
-            const string query = @"INSERT INTO Location (Name,CountryId,StateId,CityId,ContactNumber,Address,Latitude,Longitude,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+            const string query = @"INSERT INTO Location (Name,CountryId,StateId,CityId,ContactNumber,Latitude,Longitude,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
                                OUTPUT INSERTED.Id 
-                               VALUES (@Name,@CountryId,@StateId,@CityId,@ContactNumber,@Address,@Latitude,@Longitude,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+                               VALUES (@Name,@CountryId,@StateId,@CityId,@ContactNumber,@Latitude,@Longitude,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
             return await Connection.QueryFirstAsync<int>(query, location);
         }
 
 
         public async Task UpdateAsync(Location location)
         {
-            const string query = "UPDATE Location SET Name = @Name, CountryId = @CountryId, StateId = @StateId,CityId = @CityId,ContactNumber = @ContactNumber,Address = @Address,Latitude = @Latitude,Longitude = @Longitude WHERE Id = @Id";
+            const string query = "UPDATE Location SET Name = @Name, CountryId = @CountryId, StateId = @StateId,CityId = @CityId,ContactNumber = @ContactNumber,Latitude = @Latitude,Longitude = @Longitude WHERE Id = @Id";
             await Connection.ExecuteAsync(query, location);
         }
 

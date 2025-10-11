@@ -10,7 +10,6 @@ namespace FinanceApi.Models
         public int? StateId { get; set; }
         public int? CityId { get; set; }
         public string ContactNumber { get; set; }
-        public string? Address { get; set; }
         public string? Latitude { get; set; }
         public string? Longitude { get; set; }
   
@@ -38,7 +37,6 @@ namespace FinanceApi.Models
         public int? CountryId { get; set; }
         public string? CountryName { get; set; }
         public string ContactNumber { get; set; }
-        public string? Address { get; set; }
         public string? Latitude { get; set; }
         public string? Longitude { get; set; }
 
