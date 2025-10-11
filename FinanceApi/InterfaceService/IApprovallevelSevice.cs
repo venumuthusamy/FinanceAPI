@@ -10,5 +10,7 @@ namespace FinanceApi.InterfaceService
         Task<ApprovalLevelDTO> GetById(int id);
         Task UpdateAsync(ApprovalLevel approvalLevel);
         Task DeleteLicense(int id);
+        Task<ApprovalLevelDTO> GetByName(string name);
+        Task<bool> NameExistsAsync(string name, int excludeId);
     }
 }

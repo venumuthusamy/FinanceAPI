@@ -54,6 +54,24 @@ namespace FinanceApi.Repositories
             const string query = "UPDATE ApprovalLevel SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
         }
+        public async Task<ApprovalLevelDTO> GetByNameAsync(string name)
+        {
 
+            const string query = "SELECT * FROM ApprovalLevel WHERE Name = @name and IsActive=1";
+
+            return await Connection.QuerySingleOrDefaultAsync<ApprovalLevelDTO>(query, new {Name = name });
+        }
+        public async Task<bool> NameExistsAsync(string name, int excludeId)
+        {
+            const string sql = @"
+        SELECT 1
+        FROM ApprovalLevel
+        WHERE IsActive = 1
+          AND Id <> @excludeId
+          AND UPPER(LTRIM(RTRIM(Name))) = UPPER(LTRIM(RTRIM(@name)))";
+
+            var found = await Connection.QueryFirstOrDefaultAsync<int?>(sql, new { name, excludeId });
+            return found.HasValue;
+        }
     }
 }
