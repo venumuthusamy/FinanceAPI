@@ -10,5 +10,7 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(ApprovalLevel approvalLevel);
         Task UpdateAsync(ApprovalLevel approvalLevel);
         Task DeactivateAsync(int id);
+        Task<ApprovalLevelDTO> GetByNameAsync(string name);
+        Task<bool> NameExistsAsync(string name, int excludeId);
     }
 }
