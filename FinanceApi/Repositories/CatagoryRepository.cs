@@ -37,7 +37,7 @@ namespace FinanceApi.Repositories
                                OUTPUT INSERTED.Id 
                                VALUES (@CatagoryName,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
             return await Connection.QueryFirstAsync<int>(query, catagoryDTO);
-        }
+        } 
 
 
         public async Task UpdateAsync(CatagoryDTO catagoryDTO)
