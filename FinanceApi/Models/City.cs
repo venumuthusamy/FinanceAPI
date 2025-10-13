@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace FinanceApi.Models
 {
@@ -10,6 +11,7 @@ namespace FinanceApi.Models
 
         [ForeignKey("StateId")]
         public State? State { get; set; }
+        [JsonPropertyName("countryId")]
         public int CountryId { get; set; }
 
         [ForeignKey("CountryId")]

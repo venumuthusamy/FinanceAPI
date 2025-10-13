@@ -35,23 +35,50 @@ namespace FinanceApi.Controllers
 
 
         [HttpPost("CreateCities")]
-        public async Task<ActionResult> CreateCities(City city)
+        public async Task<ActionResult> CreateCities([FromBody] City city)
         {
+            var name = city?.CityName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return BadRequest(new ResponseResult(false, "City name is required.", null));
 
+            if (city.CountryId <= 0)
+                return BadRequest(new ResponseResult(false, "Country is required.", null));
+
+            // Debug guard: ensure we see what we're sending
+            // _logger.LogInformation("CreateCities name={Name}, countryId={CountryId}", name, city.CountryId);
+
+            var existsInCountry = await _service.NameExistsAsync(name, city.CountryId, excludeId: 0);
+            if (existsInCountry)
+                return Ok(new ResponseResult(false, "City name already exists in this country.", null));
+
+            city.CityName = name;
             var id = await _service.CreateAsync(city);
-            ResponseResult data = new ResponseResult(true, "City created sucessfully", id);
-            return Ok(data);
-
+            return Ok(new ResponseResult(true, "City created successfully.", id));
         }
 
         [HttpPut("updateCities")]
-        public async Task<IActionResult> updateCities(City city)
+        public async Task<IActionResult> updateCities([FromBody] City city)
         {
-            await _service.UpdateAsync(city);
-            ResponseResult data = new ResponseResult(true, "City updated successfully.", null);
-            return Ok(data);
-        }
+            if (city == null || city.Id <= 0)
+                return BadRequest(new ResponseResult(false, "Invalid city id.", null));
 
+            var name = city.CityName?.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+                return BadRequest(new ResponseResult(false, "City name is required.", null));
+
+            if (city.CountryId <= 0)
+                return BadRequest(new ResponseResult(false, "Country is required.", null));
+
+            // _logger.LogInformation("UpdateCities id={Id}, name={Name}, countryId={CountryId}", city.Id, name, city.CountryId);
+
+            var existsInCountry = await _service.NameExistsAsync(name, city.CountryId, excludeId: city.Id);
+            if (existsInCountry)
+                return Ok(new ResponseResult(false, "City name already exists in this country.", null));
+
+            city.CityName = name;
+            await _service.UpdateAsync(city);
+            return Ok(new ResponseResult(true, "City updated successfully.", null));
+        }
 
 
         [HttpDelete("deleteCities/{id}")]

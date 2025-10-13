@@ -78,8 +78,8 @@ namespace FinanceApi.Data
                 .HasForeignKey(t => t.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
             modelBuilder.Entity<OpeningBalance>()
-            .Property(e => e.Date)
-            .HasColumnType("timestamp without time zone");
+     .Property(e => e.Date)
+     .HasColumnType("datetime2");
 
         }
 
