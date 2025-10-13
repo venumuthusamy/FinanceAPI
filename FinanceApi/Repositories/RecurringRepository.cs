@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Repositories
@@ -64,6 +65,14 @@ namespace FinanceApi.Repositories
         {
             const string query = "UPDATE Recurring SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
+        }
+
+        public async Task<RecurringDTO> GetByNameAsync(string name)
+        {
+
+            const string query = "SELECT * FROM Recurring WHERE RecurringName = @RecurringName and IsActive=1";
+
+            return await Connection.QuerySingleOrDefaultAsync<RecurringDTO>(query, new { RecurringName = name });
         }
     }
 }

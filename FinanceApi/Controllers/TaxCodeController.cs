@@ -2,6 +2,7 @@
 using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel;
 
 namespace FinanceApi.Controllers
 {
@@ -28,10 +29,18 @@ namespace FinanceApi.Controllers
         [HttpPost("insert")]
         public async Task<ActionResult> Create(TaxCode taxCode)
         {
-
-            var id = await _service.CreateAsync(taxCode);
-            ResponseResult data = new ResponseResult(true, "TaxCode created sucessfully", id);
-            return Ok(data);
+            var taxCodeName = await _service.GetByName(taxCode.Name);
+            if (taxCodeName == null)
+            {
+                var id = await _service.CreateAsync(taxCode);
+                ResponseResult data = new ResponseResult(true, "TaxCode created sucessfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "TaxCode  Already Exist.", null);
+                return Ok(data);
+            }
 
         }
 
@@ -48,9 +57,20 @@ namespace FinanceApi.Controllers
         [HttpPut("update")]
         public async Task<IActionResult> Update(TaxCode taxCode)
         {
+            var isTaxCodeExist = await _service.GetByName(taxCode.Name);
+            if (isTaxCodeExist != null && isTaxCodeExist.Id!= taxCode.Id) 
+            {
+                ResponseResult responseResult = new ResponseResult(false, "TaxCode Already Exists", taxCode);
+                return Ok(responseResult);
+
+            }
+
+
+
             await _service.UpdateAsync(taxCode);
             ResponseResult data = new ResponseResult(true, "TaxCode updated successfully.", null);
             return Ok(data);
+
         }
 
 
@@ -60,6 +80,20 @@ namespace FinanceApi.Controllers
         {
             await _service.DeleteLicense(id);
             ResponseResult data = new ResponseResult(true, "TaxCode Deleted sucessfully", null);
+            return Ok(data);
+        }
+
+
+        [HttpGet("GetTaxCodeByName/{name}")]
+        public async Task<IActionResult> GetByName(string name)
+        {
+            var approvalLevel = await _service.GetByName(name);
+            if (approvalLevel == null)
+            {
+                ResponseResult data1 = new ResponseResult(false, "TaxCode level not found", null);
+                return Ok(data1);
+            }
+            ResponseResult data = new ResponseResult(true, "Success", approvalLevel);
             return Ok(data);
         }
     }

@@ -1,4 +1,5 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Services
@@ -37,6 +38,11 @@ namespace FinanceApi.Services
         public async Task DeleteLicense(int id)
         {
             await _repository.DeactivateAsync(id);
+        }
+
+        public async Task<TaxCodeDTO> GetByName(string name)
+        {
+            return await _repository.GetByNameAsync(name);
         }
     }
 }
