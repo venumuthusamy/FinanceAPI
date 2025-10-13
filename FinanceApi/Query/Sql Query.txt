@@ -498,3 +498,28 @@ CREATE INDEX IX_PasswordHistory_User_ChangedAt
 ON [PasswordHistory](UserId, ChangedAtUtc DESC);
 GO
 
+CREATE TABLE PurchaseOrderTemp (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    PurchaseOrderNo VARCHAR(100),
+    ApprovalStatus INT NOT NULL,
+    SupplierId INT NOT NULL,
+    ApproveLevelId INT NOT NULL,
+    PaymentTermId INT NOT NULL,
+    CurrencyId INT NOT NULL,
+    IncotermsId INT NOT NULL,
+    PoDate DATETIME NOT NULL,
+    DeliveryDate DATETIME NOT NULL,
+    Remarks VARCHAR(50),
+    FxRate DECIMAL(10,6),
+    Tax DECIMAL(18,2),
+    Shipping DECIMAL(18,2),
+    Discount DECIMAL(18,2),
+    SubTotal DECIMAL(18,2),
+    NetTotal DECIMAL(18,2),  
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1,
+    PoLines NVARCHAR(max),
+);

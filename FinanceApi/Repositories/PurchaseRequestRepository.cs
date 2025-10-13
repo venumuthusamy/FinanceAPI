@@ -53,32 +53,50 @@ namespace FinanceApi.Repositories
             //ORDER BY pr.Id DESC;";
 
             var sql = @"
-                      -- Get PRs with ONLY their remaining (unused) lines
+                      -- Get PRs with ONLY their remaining (unused) lines and also in potemp tables checked
 -- Match key: PRNo + ItemCode + ItemName (case-insensitive, trimmed)
-WITH UsedLines AS (
+;WITH UsedLines AS (
+    /* Lines used by FINAL POs */
     SELECT
         JSON_VALUE(j.value, '$.prNo') AS prNo,
-        -- Split ""CODE - NAME"" safely (handles missing delimiter)
         LTRIM(RTRIM(
-            CASE 
-                WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
-                    THEN LEFT(JSON_VALUE(j.value,'$.item'), CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) - 1)
-                ELSE JSON_VALUE(j.value,'$.item')
+            CASE WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
+                 THEN LEFT(JSON_VALUE(j.value,'$.item'), CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) - 1)
+                 ELSE JSON_VALUE(j.value,'$.item')
             END
         )) AS itemCode,
         LTRIM(RTRIM(
-            CASE 
-                WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
-                    THEN SUBSTRING(
-                            JSON_VALUE(j.value,'$.item'),
-                            CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) + 3,
-                            4000
-                         )
-                ELSE ''
+            CASE WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
+                 THEN SUBSTRING(JSON_VALUE(j.value,'$.item'),
+                                CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) + 3, 4000)
+                 ELSE ''
             END
         )) AS itemName
     FROM PurchaseOrder po
     CROSS APPLY OPENJSON(po.PoLines) AS j
+
+    UNION ALL
+
+    /* Lines used by ACTIVE DRAFTs */
+    SELECT
+        JSON_VALUE(j.value, '$.prNo') AS prNo,
+        LTRIM(RTRIM(
+            CASE WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
+                 THEN LEFT(JSON_VALUE(j.value,'$.item'), CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) - 1)
+                 ELSE JSON_VALUE(j.value,'$.item')
+            END
+        )) AS itemCode,
+        LTRIM(RTRIM(
+            CASE WHEN CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) > 0
+                 THEN SUBSTRING(JSON_VALUE(j.value,'$.item'),
+                                CHARINDEX(' - ', JSON_VALUE(j.value,'$.item')) + 3, 4000)
+                 ELSE ''
+            END
+        )) AS itemName
+    FROM PurchaseOrderTemp pot
+    CROSS APPLY OPENJSON(pot.PoLines) AS j
+    WHERE ISNULL(pot.IsActive,1) = 1
+          -- OR: pot.Status IN ('Draft','Saved')
 )
 
 SELECT
@@ -98,7 +116,7 @@ SELECT
     pr.Status,
     ISNULL(d.DepartmentName,'') AS DepartmentName,
 
-    -- Rebuild prLines as JSON of ONLY the unused lines
+    /* Only UNUSED lines per PR */
     (
         SELECT
             prj.itemSearch,
@@ -123,18 +141,16 @@ SELECT
             remarks         NVARCHAR(400) '$.remarks'
         ) AS prj
         LEFT JOIN UsedLines u
-            ON UPPER(LTRIM(RTRIM(u.prNo)))      = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
-           AND UPPER(LTRIM(RTRIM(u.itemCode)))  = UPPER(LTRIM(RTRIM(ISNULL(prj.itemCode, ''))))
-           AND UPPER(LTRIM(RTRIM(u.itemName)))  = UPPER(LTRIM(RTRIM(ISNULL(prj.itemSearch, ''))))
+          ON UPPER(LTRIM(RTRIM(u.prNo)))     = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
+         AND UPPER(LTRIM(RTRIM(u.itemCode))) = UPPER(LTRIM(RTRIM(ISNULL(prj.itemCode, ''))))
+         AND UPPER(LTRIM(RTRIM(u.itemName))) = UPPER(LTRIM(RTRIM(ISNULL(prj.itemSearch, ''))))
         WHERE u.prNo IS NULL
         FOR JSON PATH
     ) AS prLines
 FROM PurchaseRequest pr
 LEFT JOIN Department d ON d.Id = pr.DepartmentID
-WHERE
-    pr.IsActive = 1
-    -- Keep only PRs that still have at least one unused line
-    AND EXISTS (
+WHERE pr.IsActive = 1
+  AND EXISTS (
         SELECT 1
         FROM OPENJSON(pr.prLines)
         WITH (
@@ -142,12 +158,14 @@ WHERE
             itemCode   NVARCHAR(100) '$.itemCode'
         ) AS prj2
         LEFT JOIN UsedLines u2
-            ON UPPER(LTRIM(RTRIM(u2.prNo)))     = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
-           AND UPPER(LTRIM(RTRIM(u2.itemCode))) = UPPER(LTRIM(RTRIM(ISNULL(prj2.itemCode, ''))))
-           AND UPPER(LTRIM(RTRIM(u2.itemName))) = UPPER(LTRIM(RTRIM(ISNULL(prj2.itemSearch, ''))))
+          ON UPPER(LTRIM(RTRIM(u2.prNo)))     = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
+         AND UPPER(LTRIM(RTRIM(u2.itemCode))) = UPPER(LTRIM(RTRIM(ISNULL(prj2.itemCode, ''))))
+         AND UPPER(LTRIM(RTRIM(u2.itemName))) = UPPER(LTRIM(RTRIM(ISNULL(prj2.itemSearch, ''))))
         WHERE u2.prNo IS NULL
-    )
+  )
 ORDER BY pr.Id DESC;
+
+
 
                             ";
 
