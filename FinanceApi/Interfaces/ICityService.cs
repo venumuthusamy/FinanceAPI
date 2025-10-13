@@ -11,5 +11,7 @@ namespace FinanceApi.Interfaces
         Task DeleteAsync(int id);
         Task<IEnumerable<CityDto>> GetStateWithCountryId(int id);
         Task<IEnumerable<CityDto>> GetCityWithStateId(int id);
+        Task<bool> NameExistsAsync(string name, int countryId, int excludeId);
+        Task<CityDto> GetByNameInCountryAsync(string name, int countryId);
     }
 }

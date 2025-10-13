@@ -1,4 +1,5 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Services
@@ -52,6 +53,14 @@ namespace FinanceApi.Services
         {
             return await _repository.GetCityWithStateId(id);
         }
+        public async Task<CityDto> GetByNameInCountryAsync(string name, int countryId)
+        {
+            return await _repository.GetByNameInCountryAsync(name,countryId);
+        }
 
+        public async Task<bool> NameExistsAsync(string name, int countryId, int excludeId)
+        {
+            return await _repository.NameExistsAsync(name, countryId, excludeId);
+        }
     }
 }

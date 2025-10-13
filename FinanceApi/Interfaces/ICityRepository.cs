@@ -13,5 +13,7 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<CityDto>> GetStateWithCountryId(int id);
 
         Task<IEnumerable<CityDto>> GetCityWithStateId(int id);
+        Task<CityDto?> GetByNameInCountryAsync(string name, int countryId);
+        Task<bool> NameExistsAsync(string name, int countryId, int excludeId);
     }
 }
