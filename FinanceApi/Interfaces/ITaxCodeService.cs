@@ -1,4 +1,5 @@
-﻿using FinanceApi.Models;
+﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
 {
@@ -9,5 +10,7 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(TaxCode taxCode);
         Task UpdateAsync(TaxCode taxCode);
         Task DeleteLicense(int id);
+
+        Task<TaxCodeDTO> GetByName(string name);
     }
 }

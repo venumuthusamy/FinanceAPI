@@ -1,4 +1,5 @@
-﻿using FinanceApi.Models;
+﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
 {
@@ -9,5 +10,7 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(Recurring recurring);
         Task UpdateAsync(Recurring recurring);
         Task DeleteLicense(int id);
+
+        Task<RecurringDTO> GetByName(string name);
     }
 }

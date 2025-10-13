@@ -2,6 +2,7 @@
 using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel;
 
 namespace FinanceApi.Controllers
 {
@@ -28,11 +29,18 @@ namespace FinanceApi.Controllers
         [HttpPost("insert")]
         public async Task<ActionResult> Create(Recurring recurring)
         {
-
-            var id = await _service.CreateAsync(recurring);
-            ResponseResult data = new ResponseResult(true, "Recurring created sucessfully", id);
-            return Ok(data);
-
+            var recurringName = await _service.GetByName(recurring.RecurringName);
+            if (recurringName == null)
+            {
+                var id = await _service.CreateAsync(recurring);
+                ResponseResult data = new ResponseResult(true, "Recurring created sucessfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(true, "Recurring  Already Exist", null);
+                return Ok(data);
+            }
         }
 
 
@@ -48,6 +56,13 @@ namespace FinanceApi.Controllers
         [HttpPut("update")]
         public async Task<IActionResult> Update(Recurring recurring)
         {
+            var isRecurringExist = await _service.GetByName(recurring.RecurringName);
+            if (isRecurringExist != null && isRecurringExist.Id != recurring.Id)
+            {
+                ResponseResult responseResult = new ResponseResult(false, "Recurring Already Exists", recurring);
+                return Ok(responseResult);
+
+            }
             await _service.UpdateAsync(recurring);
             ResponseResult data = new ResponseResult(true, "Recurring updated successfully.", null);
             return Ok(data);

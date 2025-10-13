@@ -1,6 +1,7 @@
 ﻿using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Repositories
@@ -64,6 +65,14 @@ namespace FinanceApi.Repositories
         {
             const string query = "UPDATE TaxCode SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
+        }
+
+        public async Task<TaxCodeDTO> GetByNameAsync(string name)
+        {
+
+            const string query = "SELECT * FROM TaxCode WHERE Name = @name and IsActive=1";
+
+            return await Connection.QuerySingleOrDefaultAsync<TaxCodeDTO>(query, new { Name = name });
         }
     }
 }
