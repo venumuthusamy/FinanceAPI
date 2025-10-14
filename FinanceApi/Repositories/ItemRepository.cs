@@ -65,10 +65,10 @@ WHERE   i.Id = @Id AND i.IsActive = 1;";
 
             const string sql = @"
 INSERT INTO Item
-    (ItemCode, ItemName, UomId, BudgetLineId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+    (ItemCode, ItemName,CategoryId, UomId, BudgetLineId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
 OUTPUT INSERTED.Id
 VALUES
-    (@ItemCode, @ItemName, @UomId, @BudgetLineId, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive);";
+    (@ItemCode, @ItemName,@CategoryId, @UomId, @BudgetLineId, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive);";
 
             return await Connection.QueryFirstAsync<int>(sql, item);
         }
@@ -80,6 +80,7 @@ VALUES
 UPDATE Item
 SET ItemCode      = @ItemCode,
     ItemName      = @ItemName,
+    CategoryId    = @CategoryId
     UomId         = @UomId,
     BudgetLineId  = @BudgetLineId,
     UpdatedBy     = @UpdatedBy,

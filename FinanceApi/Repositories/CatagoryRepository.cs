@@ -31,7 +31,7 @@ namespace FinanceApi.Repositories
             return await Connection.QuerySingleAsync<CatagoryDTO>(query, new { Id = id });
         }
 
-        public async Task<int> CreateAsync(CatagoryDTO catagoryDTO)
+        public async Task<int> CreateAsync(Catagory catagoryDTO)
         {
             const string query = @"INSERT INTO Catagory (CatagoryName,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
                                OUTPUT INSERTED.Id 
