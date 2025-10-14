@@ -1,6 +1,7 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -29,7 +30,7 @@ namespace FinanceApi.Controllers
 
 
         [HttpPost("createCatagory")]
-        public async Task<ActionResult> Create(CatagoryDTO catagoryDTO)
+        public async Task<ActionResult> Create(Catagory catagoryDTO)
         {
 
             var id = await _service.CreateAsync(catagoryDTO);

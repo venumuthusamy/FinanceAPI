@@ -1,6 +1,7 @@
 ﻿using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Services
 {
@@ -18,7 +19,7 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
-        public async Task<int> CreateAsync(CatagoryDTO catagoryDTO)
+        public async Task<int> CreateAsync(Catagory catagoryDTO)
         {
             return await _repository.CreateAsync(catagoryDTO);
 

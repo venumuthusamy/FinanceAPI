@@ -1,4 +1,5 @@
 ﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
 {
@@ -6,7 +7,7 @@ namespace FinanceApi.Interfaces
     {
         Task<IEnumerable<CatagoryDTO>> GetAllAsync();
         Task<CatagoryDTO> GetByIdAsync(long id);
-        Task<int> CreateAsync(CatagoryDTO catagoryDTO);
+        Task<int> CreateAsync(Catagory catagoryDTO);
         Task UpdateAsync(CatagoryDTO catagoryDTO);
         Task DeactivateAsync(int id);
     }
