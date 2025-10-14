@@ -45,10 +45,10 @@ WHERE i.Id = @Id;";
 
             const string sql = @"
 INSERT INTO ItemMaster
- (Sku,Name,Category,Uom,Barcode,Costing,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,TaxClass,Specs,PictureUrl,IsActive,CreatedDate,UpdatedDate)
+ (Sku,Name,Category,Uom,Barcode,WareHouse,Costing,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,TaxClass,Specs,PictureUrl,IsActive,CreatedDate,UpdatedDate)
 OUTPUT INSERTED.Id
 VALUES
- (@Sku,@Name,@Category,@Uom,@Barcode,@Costing,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@TaxClass,@Specs,@PictureUrl,@IsActive,@CreatedDate,@UpdatedDate);";
+ (@Sku,@Name,@Category,@Uom,@Barcode,@WareHouse,@Costing,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@TaxClass,@Specs,@PictureUrl,@IsActive,@CreatedDate,@UpdatedDate);";
 
             return await Connection.ExecuteScalarAsync<int>(sql, new
             {
@@ -58,6 +58,7 @@ VALUES
                 item.Uom,
                 item.Barcode,
                 item.Costing,
+                item.WareHouse,
                 MinQty = item.MinQty,
                 MaxQty = item.MaxQty,
                 ReorderQty = item.ReorderQty,
