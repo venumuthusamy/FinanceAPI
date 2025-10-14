@@ -1,5 +1,8 @@
-﻿namespace FinanceApi.Models
+﻿using System.ComponentModel.DataAnnotations.Schema;
+
+namespace FinanceApi.Models
 {
+    [Table("Catagory")]
     public class Catagory
     {
         public long ID { get; set; }

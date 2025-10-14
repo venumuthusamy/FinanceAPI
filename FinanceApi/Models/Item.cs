@@ -7,6 +7,7 @@ namespace FinanceApi.Models
         public int Id { get; set; }
         public string ItemCode { get; set; }
         public string ItemName { get; set; }
+        public int CategoryId {  get; set; }
         public int UomId { get; set; }
 
         [ForeignKey("UomId")]
@@ -31,5 +32,7 @@ namespace FinanceApi.Models
         public string? UpdatedBy { get; set; }
         public DateTime? UpdatedDate { get; set; }
         public bool IsActive { get; set; }
+        public int CategoryId { get; set; }
+        public string CategoryName { get; set; }
     }
 }

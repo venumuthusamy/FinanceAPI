@@ -49,12 +49,14 @@ builder.Services.AddScoped<IIncotermsRepository, IncotermsRepository>();
 builder.Services.AddScoped<IFlagIssuesRepository, FlagIssuesRepository>();
 builder.Services.AddScoped<ISupplierInvoicePinRepository, SupplierInvoicePinRepository>();
 builder.Services.AddScoped<IPurchaseRequestTempRepository, PurchaseRequestTempRepository>();
+builder.Services.AddScoped<ICatagoryRepository, CatagoryRepository>();
 
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
 builder.Services.AddScoped<IIncotermsService, IncotermsService>();
 builder.Services.AddScoped<IflagIssuesServices, FlagIssuesServices>();
 builder.Services.AddScoped<ISupplierInvoicePinService, SupplierInvoicePinService>();
 builder.Services.AddScoped<IPurchaseRequestTempService, PurchaseRequestTempService>();
+builder.Services.AddScoped<ICatagoryService, CatagoryServices>();
 
 builder.Services.AddHttpContextAccessor();
 
