@@ -33,6 +33,6 @@ namespace FinanceApi.Models
         public DateTime? UpdatedDate { get; set; }
         public bool IsActive { get; set; }
         public int CategoryId { get; set; }
-        public string CategoryName { get; set; }
+        public string CatagoryName { get; set; }
     }
 }

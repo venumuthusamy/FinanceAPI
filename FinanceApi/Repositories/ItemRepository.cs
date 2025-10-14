@@ -21,6 +21,8 @@ SELECT  i.Id,
         COALESCE(u.Name,'')           AS UomName,
         i.BudgetLineId,
         COALESCE(coa.HeadName,'')     AS BudgetLineName,
+		c.CatagoryName,
+i.CategoryId,
         i.CreatedBy,
         i.CreatedDate,
         i.UpdatedBy,
@@ -29,6 +31,7 @@ SELECT  i.Id,
 FROM    Item i
 LEFT JOIN Uom u            ON u.Id  = i.UomId
 LEFT JOIN ChartOfAccount coa ON coa.Id = i.BudgetLineId
+inner join Catagory as c on c.ID=i.CategoryId
 WHERE   i.IsActive = 1
 ORDER BY i.Id;";
             return await Connection.QueryAsync<ItemDto>(sql);
