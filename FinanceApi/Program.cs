@@ -45,11 +45,14 @@ builder.Services.Scan(scan => scan
 
 // Explicit registrations (keep the ones you actually use)
 builder.Services.AddScoped<IPurchaseGoodReceiptRepository, PurchaseGoodReceiptRepository>();
+builder.Services.AddScoped<ICatagoryRepository, CatagoryRepository>();
+builder.Services.AddScoped<IcostingMethodRepository, CostingMethodRepository>();
 builder.Services.AddScoped<IIncotermsRepository, IncotermsRepository>();
 builder.Services.AddScoped<IFlagIssuesRepository, FlagIssuesRepository>();
 builder.Services.AddScoped<ISupplierInvoicePinRepository, SupplierInvoicePinRepository>();
 builder.Services.AddScoped<IPurchaseRequestTempRepository, PurchaseRequestTempRepository>();
-builder.Services.AddScoped<ICatagoryRepository, CatagoryRepository>();
+builder.Services.AddScoped<IStockIssuesRepository, StockIssuesRepository>();
+builder.Services.AddScoped<IBinRepository, BinRepository>();
 
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
 builder.Services.AddScoped<IIncotermsService, IncotermsService>();
@@ -57,6 +60,8 @@ builder.Services.AddScoped<IflagIssuesServices, FlagIssuesServices>();
 builder.Services.AddScoped<ISupplierInvoicePinService, SupplierInvoicePinService>();
 builder.Services.AddScoped<IPurchaseRequestTempService, PurchaseRequestTempService>();
 builder.Services.AddScoped<ICatagoryService, CatagoryServices>();
+builder.Services.AddScoped<IStockIssueServices, StockIssuesServices>();
+builder.Services.AddScoped<IBinServices, BinServices>();
 
 builder.Services.AddHttpContextAccessor();
 
