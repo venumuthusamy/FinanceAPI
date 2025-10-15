@@ -81,9 +81,9 @@ namespace FinanceApi.Repositories
 
         public async Task<int> CreateAsync(Warehouse warehouse)
         {
-            const string query = @"INSERT INTO Warehouse (Name,CountryId,StateId,CityId,Phone,Address,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
+            const string query = @"INSERT INTO Warehouse (Name,BinID,CountryId,StateId,CityId,Phone,Address,Description,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
                                OUTPUT INSERTED.Id 
-                               VALUES (@Name,@CountryId,@StateId,@CityId,@Phone,@Address,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
+                               VALUES (@Name,@BinID,@CountryId,@StateId,@CityId,@Phone,@Address,@Description,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
             return await Connection.QueryFirstAsync<int>(query, warehouse);
         }
 
