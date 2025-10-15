@@ -523,3 +523,14 @@ CREATE TABLE PurchaseOrderTemp (
     IsActive BIT DEFAULT 1,
     PoLines NVARCHAR(max),
 );
+
+
+CREATE TABLE Strategy (
+    Id INT IDENTITY(1,1) PRIMARY KEY,
+    StrategyName VARCHAR(100) NOT NULL,
+    CreatedBy VARCHAR(100),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    UpdatedBy VARCHAR(100),
+    UpdatedDate DATETIME,
+    IsActive BIT DEFAULT 1
+);
