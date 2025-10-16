@@ -1,14 +1,13 @@
 ﻿using FinanceApi.ModelDTO;
-using FinanceApi.Models;
 
-namespace FinanceApi.Interfaces
+namespace Interfaces
 {
     public interface IItemMasterRepository
     {
         Task<IEnumerable<ItemMasterDTO>> GetAllAsync();
         Task<ItemMasterDTO?> GetByIdAsync(int id);
-        Task<int> CreateAsync(ItemMaster item);      // Item is your EF/POCO model for table Items
-        Task UpdateAsync(ItemMaster item);
+        Task<long> CreateAsync(ItemMasterUpsertDto dto);
+        Task UpdateAsync(ItemMasterUpsertDto dto);
         Task DeactivateAsync(int id);
     }
 }
