@@ -98,7 +98,9 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
                 dto.CostingMethodId,
                 dto.TaxCodeId,
                 dto.Specs,
-                dto.PictureUrl
+                dto.PictureUrl,
+                dto.CreatedBy,
+                dto.UpdatedBy
             });
 
             // 2) Insert prices (if any)

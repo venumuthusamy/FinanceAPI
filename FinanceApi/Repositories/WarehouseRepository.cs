@@ -105,7 +105,7 @@ namespace FinanceApi.Repositories
                         SELECT
     w.Id   AS WarehouseId,
     w.Name AS WarehouseName,
-    b.ID   AS BinId,
+    b.ID   AS BinID,
     b.BinName
 FROM Warehouse AS w
 CROSS APPLY STRING_SPLIT(w.BinId, ',') AS s

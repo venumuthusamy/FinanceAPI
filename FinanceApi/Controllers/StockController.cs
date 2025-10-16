@@ -30,14 +30,17 @@ namespace FinanceApi.Controllers
 
 
         [HttpPost("createStock")]
-        public async Task<ActionResult> Create(Stock stock)
+        public async Task<ActionResult> InsertStock([FromBody] List<Stock> stocks)
         {
+            if (stocks == null || !stocks.Any())
+                return BadRequest(new ResponseResult(false, "No stock data received", null));
 
-            var id = await _service.CreateAsync(stock);
-            ResponseResult data = new ResponseResult(true, "Stock created sucessfully", id);
-            return Ok(data);
+            var inserted = await _service.InsertBulkAsync(stocks);
 
+            var result = new ResponseResult(true, $"{inserted} stock record(s) inserted successfully.", inserted);
+            return Ok(result);
         }
+
 
 
         [HttpGet("getStockById/{id}")]

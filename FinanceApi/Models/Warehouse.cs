@@ -49,6 +49,6 @@ namespace FinanceApi.Models
         public DateTime? UpdatedDate { get; set; }
         public bool IsActive { get; set; }
         public string BinName { get; set; }
-        public string BinId { get; set; }
+        
     }
 }
