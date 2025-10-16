@@ -107,10 +107,10 @@ namespace FinanceApi.Repositories
     w.Name AS WarehouseName,
     b.ID   AS BinId,
     b.BinName
-FROM [Finance].[dbo].[Warehouse] AS w
+FROM Warehouse AS w
 CROSS APPLY STRING_SPLIT(w.BinId, ',') AS s
 CROSS APPLY (SELECT TRY_CONVERT(bigint, LTRIM(RTRIM(s.value))) AS BinIdVal) AS x
-INNER JOIN [dbo].[BIN] AS b
+INNER JOIN BIN AS b
     ON b.ID = x.BinIdVal
 WHERE
     x.BinIdVal IS NOT NULL
