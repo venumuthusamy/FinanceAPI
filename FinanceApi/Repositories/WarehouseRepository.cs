@@ -99,5 +99,26 @@ namespace FinanceApi.Repositories
             const string query = "UPDATE Warehouse SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
         }
+        public async Task<IEnumerable<WarehouseDto>> GetBinNameByIdAsync(int id)
+        {
+            var query = @"
+                        SELECT
+    w.Id   AS WarehouseId,
+    w.Name AS WarehouseName,
+    b.ID   AS BinId,
+    b.BinName
+FROM [Finance].[dbo].[Warehouse] AS w
+CROSS APPLY STRING_SPLIT(w.BinId, ',') AS s
+CROSS APPLY (SELECT TRY_CONVERT(bigint, LTRIM(RTRIM(s.value))) AS BinIdVal) AS x
+INNER JOIN [dbo].[BIN] AS b
+    ON b.ID = x.BinIdVal
+WHERE
+    x.BinIdVal IS NOT NULL
+    AND b.IsActive = 1
+    AND w.Id = @Id;";
+
+            var rows = await Connection.QueryAsync<WarehouseDto>(query, new { Id = id });
+            return rows.ToList();
+        }
     }
 }
