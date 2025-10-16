@@ -1,60 +1,91 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
+using FinanceApi.ModelDTO; // ItemMasterDTO, ItemMasterUpsertDto
 using FinanceApi.Models;
-using Microsoft.AspNetCore.Http;
+using InterfaceService;
 using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Threading.Tasks;
 
 namespace FinanceApi.Controllers
 {
-    [Route("api/[controller]")]
     [ApiController]
+    [Route("api/[controller]")] // -> api/ItemMaster/...
     public class ItemMasterController : ControllerBase
     {
         private readonly IItemMasterService _service;
-        public ItemMasterController(IItemMasterService service) { _service = service; }
+        public ItemMasterController(IItemMasterService service) => _service = service;
 
-        [HttpGet("GetItemMaster")]
+        [HttpGet("GetItems")]
         public async Task<IActionResult> GetAll()
         {
             var list = await _service.GetAllAsync();
-            var data = new ResponseResult(true, "ItemMaster list retrieved successfully", list);
-            return Ok(data);
+            return Ok(new ResponseResult(true, "Items retrieved successfully", list));
         }
 
-        [HttpGet("GetItemMasterById/{id:int}")]
-        public async Task<IActionResult> GetById([FromRoute] int id)
+        [HttpGet("GetItemById/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
             var item = await _service.GetByIdAsync(id);
             if (item == null)
-                return Ok(new ResponseResult(false, "ItemMaster not found", null));
+                return Ok(new ResponseResult(false, "Item not found", null));
+
             return Ok(new ResponseResult(true, "Success", item));
         }
 
-        [HttpPost("CreateItemMaster")]
-        public async Task<IActionResult> Create([FromBody] ItemMaster item)
+        [HttpPost("CreateItem")]
+        public async Task<IActionResult> Create([FromBody] ItemMasterUpsertDto dto)
         {
-            // minimal validation
-            if (string.IsNullOrWhiteSpace(item.Sku) || string.IsNullOrWhiteSpace(item.Name))
-                return BadRequest(new ResponseResult(false, "SKU and Name are required", null));
+            if (dto == null)
+                return Ok(new ResponseResult(false, "Request body is required", null));
+            if (string.IsNullOrWhiteSpace(dto.Sku) || string.IsNullOrWhiteSpace(dto.Name))
+                return Ok(new ResponseResult(false, "SKU and Name are required", null));
 
-            var id = await _service.CreateAsync(item);
-            return Ok(new ResponseResult(true, "ItemMaster created successfully", id));
+            try
+            {
+                var id = await _service.CreateAsync(dto);
+                return Ok(new ResponseResult(true, "Item created successfully", id));
+            }
+            catch (Exception ex)
+            {
+                return Ok(new ResponseResult(false, "Create failed", ex.Message));
+            }
         }
 
-        [HttpPut("UpdateItemMasterById/{id:int}")]
-        public async Task<IActionResult> Update([FromRoute] int id, [FromBody] ItemMaster item)
+        [HttpPut("UpdateItemById/{id}")]
+        public async Task<IActionResult> Update(int id, [FromBody] ItemMasterUpsertDto dto)
         {
-            if (id != item.Id) item.Id = id;
-            await _service.UpdateAsync(item);
-            return Ok(new ResponseResult(true, "ItemMaster updated successfully.", null));
+            if (dto == null)
+                return Ok(new ResponseResult(false, "Request body is required", null));
+            if (string.IsNullOrWhiteSpace(dto.Sku) || string.IsNullOrWhiteSpace(dto.Name))
+                return Ok(new ResponseResult(false, "SKU and Name are required", null));
+
+            try
+            {
+                dto.Id = id;
+                await _service.UpdateAsync(dto);
+                return Ok(new ResponseResult(true, "Item updated successfully", null));
+            }
+            catch (Exception ex)
+            {
+                return Ok(new ResponseResult(false, "Update failed", ex.Message));
+            }
         }
 
-        [HttpDelete("DeleteItemMasterById/{id:int}")]
-        public async Task<IActionResult> Delete([FromRoute] int id)
+        [HttpDelete("DeleteItemById/{id}")]
+        public async Task<IActionResult> Delete(int id)
         {
-            await _service.DeleteAsync(id);
-            return Ok(new ResponseResult(true, "ItemMaster deleted successfully", null));
+            try
+            {
+                await _service.DeleteAsync(id);
+                return Ok(new ResponseResult(true, "Item deleted successfully", null));
+            }
+            catch (Exception ex)
+            {
+                return Ok(new ResponseResult(false, "Delete failed", ex.Message));
+            }
         }
     }
 }
+

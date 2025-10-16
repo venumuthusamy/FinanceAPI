@@ -56,5 +56,12 @@ namespace FinanceApi.Controllers
             return Ok(data);
 
         }
+        [HttpGet("getBinNameByIdAsync/{id}")]
+        public async Task<IActionResult> GetBinNameByIdAsync(int id)
+        {
+            var binList = await _service.GetBinNameByIdAsync(id);
+            ResponseResult data = new ResponseResult(true, "Success", binList);
+            return Ok(data);
+        }
     }
 }

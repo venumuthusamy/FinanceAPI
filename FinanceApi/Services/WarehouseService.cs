@@ -36,5 +36,9 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id);
         }
+        public async Task<IEnumerable<WarehouseDto>> GetBinNameByIdAsync(int id)
+        {
+            return await _repository.GetBinNameByIdAsync(id);
+        }
     }
 }
