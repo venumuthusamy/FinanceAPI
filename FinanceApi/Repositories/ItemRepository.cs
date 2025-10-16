@@ -83,7 +83,7 @@ VALUES
 UPDATE Item
 SET ItemCode      = @ItemCode,
     ItemName      = @ItemName,
-    CategoryId    = @CategoryId
+    CategoryId    = @CategoryId,
     UomId         = @UomId,
     BudgetLineId  = @BudgetLineId,
     UpdatedBy     = @UpdatedBy,

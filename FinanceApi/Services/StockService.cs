@@ -19,11 +19,11 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
-        public async Task<int> CreateAsync(Stock stock)
+        public async Task<int> InsertBulkAsync(IEnumerable<Stock> stocks)
         {
-            return await _repository.CreateAsync(stock);
-
+            return await _repository.InsertBulkAsync(stocks);
         }
+
 
         public async Task<StockDTO> GetById(long id)
         {
