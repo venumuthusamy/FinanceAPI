@@ -17,5 +17,7 @@ namespace FinanceApi.Models
         public int? LeadTimeDays { get; set; }
         public bool BatchFlag { get; set; }
         public bool SerialFlag { get; set; }
+        public bool IsApproved { get; set; }
+        public bool IsTransfer {  get; set; }
     }
 }

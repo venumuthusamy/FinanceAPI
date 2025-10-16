@@ -125,8 +125,8 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -143,7 +143,9 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.LeadTimeDays,
                         s.BatchFlag,
                         s.SerialFlag,
-                        s.Available
+                        s.Available,
+                        s.IsApproved,
+                        s.IsTransfered
                     });
                 }
             }
@@ -216,7 +218,7 @@ WHERE Id=@Id;";
 
             // Replace child rows (simple and safe, same style as your other repos)
             await Connection.ExecuteAsync("DELETE FROM dbo.ItemPrice WHERE ItemId=@Id;", new { dto.Id });
-            await Connection.ExecuteAsync("DELETE FROM dbo.ItemWarehouse WHERE ItemId=@Id;", new { dto.Id });
+            await Connection.ExecuteAsync("DELETE FROM dbo.ItemWarehouseStock WHERE ItemId=@Id;", new { dto.Id });
 
             if (dto.Prices is not null && dto.Prices.Count > 0)
             {
@@ -236,8 +238,8 @@ WHERE Id=@Id;";
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -254,7 +256,9 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.LeadTimeDays,
                         s.BatchFlag,
                         s.SerialFlag,
-                        s.Available
+                        s.Available,
+                        s.IsApproved,
+                        s.IsTransfered
                     });
                 }
             }

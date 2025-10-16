@@ -15,5 +15,7 @@
         public bool BatchFlag { get; set; }
         public bool SerialFlag { get; set; }
         public int Available { get; set; }
+        public bool IsApproved { get; set; }
+        public bool IsTransfered { get; set; }
     }
 }
