@@ -32,13 +32,44 @@ namespace FinanceApi.Repositories
             return await Connection.QuerySingleAsync<StockDTO>(query, new { Id = id });
         }
 
-        public async Task<int> CreateAsync(Stock stock)
+        public async Task<int> InsertBulkAsync(IEnumerable<Stock> stocks)
         {
-            const string query = @"INSERT INTO Stock (ItemID,WareHouseID,Available,OnHand,Reserved,Min,Expiry,isTransfer,CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsActive) 
-                               OUTPUT INSERTED.Id 
-                               VALUES (@ItemID,@WareHouseID,@Available,@OnHand,@Reserved,@Min,@Expiry,@isTransfer,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate,@IsActive)";
-            return await Connection.QueryFirstAsync<int>(query, stock);
+            const string query = @"
+        INSERT INTO Stock (
+            ItemID,
+            FromWarehouseID,
+            ToWarehouseID,
+            Available,
+            OnHand,
+            Reserved,
+            Min,
+            Expiry,
+            isApproved,
+            CreatedBy,
+            CreatedDate,
+            UpdatedBy,
+            UpdatedDate
+        )
+        VALUES (
+            @ItemID,
+            @FromWarehouseID,
+            @ToWarehouseID,
+            @Available,
+            @OnHand,
+            @Reserved,
+            @Min,
+            @Expiry,
+            @isApproved,
+            @CreatedBy,
+            @CreatedDate,
+            @UpdatedBy,
+            @UpdatedDate
+        );";
+
+            // ExecuteAsync returns total affected rows
+            return await Connection.ExecuteAsync(query, stocks);
         }
+
 
 
         public async Task UpdateAsync(Stock stock)

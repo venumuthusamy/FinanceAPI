@@ -7,7 +7,7 @@ namespace FinanceApi.Interfaces
     {
         Task<IEnumerable<StockDTO>> GetAllAsync();
         Task<StockDTO> GetByIdAsync(long id);
-        Task<int> CreateAsync(Stock stock);
+        Task<int> InsertBulkAsync(IEnumerable<Stock> stocks);
         Task UpdateAsync(Stock stock);
         Task DeactivateAsync(int id);
     }
