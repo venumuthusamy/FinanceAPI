@@ -14,5 +14,6 @@
         public int? LeadTimeDays { get; set; }
         public bool BatchFlag { get; set; }
         public bool SerialFlag { get; set; }
+        public int Available { get; set; }
     }
 }

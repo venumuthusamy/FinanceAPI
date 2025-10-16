@@ -84,9 +84,9 @@ VALUES
             // 1) Insert parent
             const string ins = @"
 INSERT INTO dbo.ItemMaster
- (Sku,Name,Category,Uom,Barcode,CostingMethodId,TaxCodeId,Specs,PictureUrl,IsActive,CreatedBy,CreatedDate,UpdatedBy,UpdatedDate)
+ (Sku,Name,Category,Uom,Barcode,CostingMethodId,TaxCodeId,Specs,PictureUrl,IsActive,CreatedBy,CreatedDate,UpdatedBy,UpdatedDate,ExpiryDate)
 OUTPUT INSERTED.Id
-VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@PictureUrl,1,@CreatedBy,SYSUTCDATETIME(),@UpdatedBy,SYSUTCDATETIME());";
+VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@PictureUrl,1,@CreatedBy,SYSUTCDATETIME(),@UpdatedBy,SYSUTCDATETIME(),@ExpiryDate);";
 
             var itemId = await Connection.QueryFirstAsync<long>(ins, new
             {
@@ -100,7 +100,9 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
                 dto.Specs,
                 dto.PictureUrl,
                 dto.CreatedBy,
-                dto.UpdatedBy
+                dto.UpdatedBy,
+                dto.ExpiryDate
+
             });
 
             // 2) Insert prices (if any)
@@ -123,8 +125,8 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -140,7 +142,8 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.ReorderQty,
                         s.LeadTimeDays,
                         s.BatchFlag,
-                        s.SerialFlag
+                        s.SerialFlag,
+                        s.Available
                     });
                 }
             }
@@ -164,7 +167,8 @@ UPDATE dbo.ItemMaster SET
     Specs=@Specs,
     PictureUrl=@PictureUrl,
     IsActive=@IsActive,
-    UpdatedDate=@UpdatedDate
+    UpdatedDate=@UpdatedDate,
+    ExpiryDate=@ExpiryDate
 WHERE Id=@Id;";
 
             await Connection.ExecuteAsync(sql, new
@@ -180,7 +184,8 @@ WHERE Id=@Id;";
                 item.Specs,
                 item.PictureUrl,
                 item.IsActive,
-                item.UpdatedDate
+                item.UpdatedDate,
+                item.ExpiryDate
             });
         }
 
@@ -191,7 +196,7 @@ WHERE Id=@Id;";
 UPDATE dbo.ItemMaster SET
   Sku=@Sku, Name=@Name, Category=@Category, Uom=@Uom, Barcode=@Barcode,
   CostingMethodId=@CostingMethodId, TaxCodeId=@TaxCodeId, Specs=@Specs,
-  PictureUrl=@PictureUrl, IsActive=@IsActive, UpdatedDate=SYSUTCDATETIME()
+  PictureUrl=@PictureUrl, IsActive=@IsActive, UpdatedDate=SYSUTCDATETIME(),ExpiryDate=@ExpiryDate 
 WHERE Id=@Id;";
             await Connection.ExecuteAsync(up, new
             {
@@ -205,7 +210,8 @@ WHERE Id=@Id;";
                 dto.TaxCodeId,
                 dto.Specs,
                 dto.PictureUrl,
-                dto.IsActive
+                dto.IsActive,
+                dto.ExpiryDate
             });
 
             // Replace child rows (simple and safe, same style as your other repos)
@@ -229,9 +235,9 @@ WHERE Id=@Id;";
             if (dto.ItemStocks is not null && dto.ItemStocks.Count > 0)
             {
                 const string iw = @"
-INSERT INTO dbo.ItemWarehouse
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag);";
+INSERT INTO dbo.ItemWarehouseStock
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -247,7 +253,8 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.ReorderQty,
                         s.LeadTimeDays,
                         s.BatchFlag,
-                        s.SerialFlag
+                        s.SerialFlag,
+                        s.Available
                     });
                 }
             }

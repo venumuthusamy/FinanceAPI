@@ -15,6 +15,7 @@
         public bool IsActive { get; set; } = true;
         public string? CreatedBy { get; set; }
         public string? UpdatedBy { get; set; }
+        public DateTime ExpiryDate { get; set; }
 
         public List<ItemPriceDto> Prices { get; set; } = new();
         public List<ItemStockDto> ItemStocks { get; set; } = new();
