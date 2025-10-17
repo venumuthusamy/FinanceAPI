@@ -19,6 +19,16 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
+        public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
+                        long warehouseId, long binId, byte takeTypeId, long? strategyId)
+        {
+            // (Optional) defensive check; your controller already validates this.
+            if (takeTypeId == 2 && strategyId is null)
+                throw new ArgumentException("strategyId is required when takeTypeId = 2 (Cycle).", nameof(strategyId));
+
+            return await _repository.GetWarehouseItemsAsync(warehouseId, binId, takeTypeId, strategyId);
+        }
+
         public async Task<StockTakeDTO?> GetByIdAsync(int id)
         {
             return await _repository.GetByIdAsync(id);
@@ -38,9 +48,9 @@ namespace FinanceApi.Services
             await _repository.UpdateAsync(stockTake);
         }
 
-        public async Task DeleteLicense(int id)
+        public async Task DeleteLicense(int id, int updatedBy)
         {
-            await _repository.DeactivateAsync(id);
+            await _repository.DeactivateAsync(id, updatedBy);
         }
     }
 }

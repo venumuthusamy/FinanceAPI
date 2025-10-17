@@ -4,6 +4,7 @@ using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using Microsoft.Data.SqlClient;
 
 namespace FinanceApi.Repositories
 {
@@ -26,7 +27,7 @@ namespace FinanceApi.Repositories
             st.WarehouseTypeId,
             ISNULL(w.Name,'') AS WarehouseName,
             st.LocationId,
-            ISNULL(l.Name,'') AS LocationName,
+            ISNULL(B.BinName,'') AS LocationName,
             st.StrategyId,
             ISNULL(s.StrategyName,'') AS StrategyName,
             st.Freeze,
@@ -38,7 +39,7 @@ namespace FinanceApi.Repositories
             st.IsActive
         FROM StockTake st
         LEFT JOIN Warehouse w ON st.WarehouseTypeId = w.Id
-        LEFT JOIN Location  l ON st.LocationId      = l.Id
+        LEFT JOIN BIN  B ON st.LocationId      = B.Id
         LEFT JOIN Strategy  s ON st.StrategyId      = s.Id
         WHERE st.IsActive = 1
         ORDER BY st.Id;";
@@ -54,7 +55,7 @@ namespace FinanceApi.Repositories
             Id,
             StockTakeId,
             ItemId,
-            AvailableQty,
+            OnHand,
             CountedQty,
             VarianceQty,
             Barcode,
@@ -80,6 +81,42 @@ namespace FinanceApi.Repositories
             return headers;
         }
 
+        public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
+    long warehouseId, long binId, byte takeTypeId, long? strategyId)
+        {
+            const string sql = @"
+SELECT
+    im.Id   AS ItemId,
+    im.Sku  AS Sku,
+    im.Name AS ItemName,
+    iws.WarehouseId,
+    iws.BinId,
+    iws.OnHand,
+    iws.Reserved,
+    (iws.OnHand - iws.Reserved) AS AvailableQty,
+    iws.MinQty,
+    iws.MaxQty,
+    iws.ReorderQty
+FROM dbo.ItemWarehouseStock iws
+JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+WHERE
+    iws.WarehouseId = @WarehouseId
+    AND (@BinId IS NULL OR iws.BinId = @BinId)
+    AND (
+         @TakeTypeId = 1
+         OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId)
+    )
+ORDER BY im.Sku, im.Name;
+
+";
+
+            // binId is required per your rule; if you ever support “All bins”, pass NULL from controller
+            long? binParam = binId; // keep as-is; set to null in controller for "All"
+
+            return await Connection.QueryAsync<StockTakeWarehouseItem>(
+                sql,
+                new { WarehouseId = warehouseId, BinId = binParam, TakeTypeId = takeTypeId, StrategyId = strategyId });
+        }
 
 
         public async Task<StockTakeDTO?> GetByIdAsync(int id)
@@ -91,7 +128,7 @@ namespace FinanceApi.Repositories
             st.WarehouseTypeId,
             ISNULL(w.Name,'') AS WarehouseName,
             st.LocationId,
-            ISNULL(l.Name,'') AS LocationName,
+            ISNULL(B.BinName,'') AS LocationName,
             st.StrategyId,
             ISNULL(s.StrategyName,'') AS StrategyName,
             st.Freeze,
@@ -103,7 +140,7 @@ namespace FinanceApi.Repositories
             st.IsActive
         FROM StockTake st
         LEFT JOIN Warehouse w ON st.WarehouseTypeId = w.Id
-        LEFT JOIN Location  l ON st.LocationId      = l.Id
+        LEFT JOIN BIN  B ON st.LocationId      = B.Id
         LEFT JOIN Strategy  s ON st.StrategyId      = s.Id
         WHERE st.Id = @Id AND st.IsActive = 1;";
 
@@ -116,7 +153,7 @@ namespace FinanceApi.Repositories
             Id,
             StockTakeId,
             ItemId,
-            AvailableQty,
+            OnHand,
             CountedQty,
             VarianceQty,
             Barcode,
@@ -143,12 +180,10 @@ namespace FinanceApi.Repositories
         {
             if (stockTake is null) throw new ArgumentNullException(nameof(stockTake));
 
-            // Timestamps (use UTC to be consistent; DB has defaults, but we pass explicitly)
             var now = DateTime.UtcNow;
             if (stockTake.CreatedDate == default) stockTake.CreatedDate = now;
             if (stockTake.UpdatedDate == default) stockTake.UpdatedDate = now;
 
-            // IMPORTANT: Your table does NOT have PoLines. Removed.
             const string insertHeaderSql = @"
 INSERT INTO StockTake
 (
@@ -165,54 +200,54 @@ VALUES
             const string insertLinesSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId, AvailableQty, CountedQty, VarianceQty,
+    StockTakeId, ItemId, OnHand, CountedQty, VarianceQty,
     Barcode, Remarks, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId, @AvailableQty, @CountedQty, @VarianceQty,
+    @StockTakeId, @ItemId, @OnHand, @CountedQty, @VarianceQty,
     @Barcode, @Remarks, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
-            // Make sure connection is open if your factory doesn’t do it for you.
-            if (Connection.State != ConnectionState.Open) Connection.Open();
+            // ✅ HOLD the same connection instance for the whole method
+            var conn = Connection;                             // capture once
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();    // or conn.Open() if you prefer sync
 
-            using var tx = Connection.BeginTransaction();
+            using var tx = conn.BeginTransaction();            // ✅ same instance
 
             try
             {
                 // 1) Insert header
-                var newId = await Connection.ExecuteScalarAsync<int>(
-                    insertHeaderSql, new
+                var newId = await conn.ExecuteScalarAsync<int>(
+                    insertHeaderSql,
+                    new
                     {
                         stockTake.WarehouseTypeId,
                         stockTake.LocationId,
                         stockTake.TakeTypeId,
-                        stockTake.StrategyId,                // can be null
+                        stockTake.StrategyId,
                         stockTake.Freeze,
-                        stockTake.Status,                    // consider byte/enum to match TINYINT
+                        stockTake.Status,
                         stockTake.CreatedBy,
                         stockTake.CreatedDate,
                         stockTake.UpdatedBy,
                         stockTake.UpdatedDate,
-                        IsActive = stockTake.IsActive        // default true via model/base
+                        IsActive = stockTake.IsActive
                     },
                     transaction: tx
                 );
 
                 // 2) Insert lines (if any)
-                if (stockTake.LineItems != null && stockTake.LineItems.Count > 0)
+                if (stockTake.LineItems?.Count > 0)
                 {
-                    // Shape params for Dapper (one exec across IEnumerable)
                     var lineParams = stockTake.LineItems.Select(l => new
                     {
                         StockTakeId = newId,
                         l.ItemId,
-                        l.AvailableQty,
-                        CountedQty = l.CountedQty,                // can be null at plan stage
-                        VarianceQty = l.CountedQty.HasValue
-                                       ? (decimal?)(l.CountedQty.Value - l.AvailableQty)
-                                       : null,
+                        l.OnHand,
+                        CountedQty = l.CountedQty,
+                        VarianceQty = l.CountedQty.HasValue ? (decimal?)(l.CountedQty.Value - l.OnHand) : null,
                         l.Barcode,
                         l.Remarks,
                         CreatedBy = stockTake.CreatedBy,
@@ -222,10 +257,9 @@ VALUES
                         IsActive = true
                     });
 
-                    await Connection.ExecuteAsync(insertLinesSql, lineParams, transaction: tx);
+                    await conn.ExecuteAsync(insertLinesSql, lineParams, transaction: tx);
                 }
 
-                // 3) Commit
                 tx.Commit();
                 return newId;
             }
@@ -238,10 +272,10 @@ VALUES
 
 
 
+
         public async Task UpdateAsync(StockTake updatedStockTake)
         {
             if (updatedStockTake is null) throw new ArgumentNullException(nameof(updatedStockTake));
-            if (Connection.State != ConnectionState.Open) Connection.Open();
 
             var now = DateTime.UtcNow;
             updatedStockTake.UpdatedDate = now;
@@ -251,7 +285,7 @@ UPDATE StockTake
 SET
     WarehouseTypeId = @WarehouseTypeId,
     LocationId      = @LocationId,
-    TakeTypeId      = @TakeTypeId,
+    TakeTypeId      = @TakeTypeId,   -- if you renamed: TakeType
     StrategyId      = @StrategyId,
     Freeze          = @Freeze,
     Status          = @Status,
@@ -262,26 +296,26 @@ WHERE Id = @Id;";
             const string updateLineSql = @"
 UPDATE StockTakeLines
 SET
-    ItemId       = @ItemId,
-    AvailableQty = @AvailableQty,
-    CountedQty   = @CountedQty,
-    VarianceQty  = @VarianceQty,
-    Barcode      = @Barcode,
-    Remarks      = @Remarks,
-    UpdatedBy    = @UpdatedBy,
-    UpdatedDate  = @UpdatedDate,
-    IsActive     = 1
+    ItemId      = @ItemId,
+    OnHand      = @OnHand,
+    CountedQty  = @CountedQty,
+    VarianceQty = @VarianceQty,
+    Barcode     = @Barcode,
+    Remarks     = @Remarks,
+    UpdatedBy   = @UpdatedBy,
+    UpdatedDate = @UpdatedDate,
+    IsActive    = 1
 WHERE Id = @Id AND StockTakeId = @StockTakeId;";
 
             const string insertLineSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId, AvailableQty, CountedQty, VarianceQty,
+    StockTakeId, ItemId, OnHand, CountedQty, VarianceQty,
     Barcode, Remarks, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId, @AvailableQty, @CountedQty, @VarianceQty,
+    @StockTakeId, @ItemId, @OnHand, @CountedQty, @VarianceQty,
     @Barcode, @Remarks, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -293,18 +327,24 @@ WHERE StockTakeId = @StockTakeId
   AND IsActive = 1
   AND (@KeepIdsCount = 0 OR Id NOT IN @KeepIds);";
 
-            using var tx = Connection.BeginTransaction();
+            // ✅ Capture the SAME connection instance and open it
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
+
+            using var tx = conn.BeginTransaction();
+
             try
             {
                 // 1) Update header
-                await Connection.ExecuteAsync(updateHeaderSql, new
+                await conn.ExecuteAsync(updateHeaderSql, new
                 {
                     updatedStockTake.WarehouseTypeId,
                     updatedStockTake.LocationId,
-                    updatedStockTake.TakeTypeId,
+                    updatedStockTake.TakeTypeId,   // if renamed -> TakeType
                     updatedStockTake.StrategyId,
                     updatedStockTake.Freeze,
-                    updatedStockTake.Status,     // byte/enum recommended
+                    updatedStockTake.Status,
                     updatedStockTake.UpdatedBy,
                     updatedStockTake.UpdatedDate,
                     updatedStockTake.Id
@@ -312,20 +352,21 @@ WHERE StockTakeId = @StockTakeId
 
                 // 2) Upsert lines
                 var keepIds = new List<int>();
-                if (updatedStockTake.LineItems != null && updatedStockTake.LineItems.Count > 0)
+
+                if (updatedStockTake.LineItems?.Count > 0)
                 {
                     foreach (var l in updatedStockTake.LineItems)
                     {
-                        decimal? variance = l.CountedQty is null ? (decimal?)null : (l.CountedQty - l.AvailableQty);
+                        var variance = l.CountedQty is null ? (decimal?)null : (l.CountedQty - l.OnHand);
 
-                        if (l.Id > 0) // UPDATE existing
+                        if (l.Id > 0)
                         {
-                            await Connection.ExecuteAsync(updateLineSql, new
+                            await conn.ExecuteAsync(updateLineSql, new
                             {
                                 Id = l.Id,
                                 StockTakeId = updatedStockTake.Id,
                                 l.ItemId,
-                                l.AvailableQty,
+                                l.OnHand,
                                 CountedQty = l.CountedQty,
                                 VarianceQty = variance,
                                 l.Barcode,
@@ -336,19 +377,19 @@ WHERE StockTakeId = @StockTakeId
 
                             keepIds.Add(l.Id);
                         }
-                        else // INSERT new
+                        else
                         {
-                            var newLineId = await Connection.ExecuteScalarAsync<int>(insertLineSql, new
+                            var newLineId = await conn.ExecuteScalarAsync<int>(insertLineSql, new
                             {
                                 StockTakeId = updatedStockTake.Id,
                                 l.ItemId,
-                                l.AvailableQty,
+                                l.OnHand,
                                 CountedQty = l.CountedQty,
                                 VarianceQty = variance,
                                 l.Barcode,
                                 l.Remarks,
-                                CreatedBy = updatedStockTake.UpdatedBy ?? updatedStockTake.CreatedBy, // ← current user preferred
-                                CreatedDate = now,                                                     // ← use now
+                                CreatedBy = updatedStockTake.UpdatedBy ?? updatedStockTake.CreatedBy,
+                                CreatedDate = now,
                                 UpdatedBy = updatedStockTake.UpdatedBy,
                                 UpdatedDate = now
                             }, tx);
@@ -358,13 +399,13 @@ WHERE StockTakeId = @StockTakeId
                     }
                 }
 
-                // 3) Soft-delete missing lines
-                var keepIdsParam = keepIds.Count == 0 ? new int[] { -1 } : keepIds.ToArray();
+                // 3) Soft delete lines not sent from UI
+                var keepIdsParam = keepIds.Count == 0 ? new[] { -1 } : keepIds.ToArray();
 
-                await Connection.ExecuteAsync(softDeleteMissingSql, new
+                await conn.ExecuteAsync(softDeleteMissingSql, new
                 {
                     StockTakeId = updatedStockTake.Id,
-                    KeepIds = keepIdsParam,
+                    KeepIds = keepIdsParam,       // Dapper expands for IN (@KeepIds)
                     KeepIdsCount = keepIds.Count,
                     UpdatedBy = updatedStockTake.UpdatedBy,
                     UpdatedDate = now
@@ -383,10 +424,46 @@ WHERE StockTakeId = @StockTakeId
 
 
 
-        public async Task DeactivateAsync(int id)
+
+        public async Task DeactivateAsync(int id, int updatedBy)
         {
-            const string query = "UPDATE StockTake SET IsActive = 0 WHERE ID = @id";
-            await Connection.ExecuteAsync(query, new { ID = id });
+            const string sqlHeader = @"
+UPDATE StockTake
+SET IsActive = 0, UpdatedBy = @UpdatedBy, UpdatedDate = SYSUTCDATETIME()
+WHERE Id = @Id;";
+
+            const string sqlLines = @"
+UPDATE StockTakeLines
+SET IsActive = 0, UpdatedBy = @UpdatedBy, UpdatedDate = SYSUTCDATETIME()
+WHERE StockTakeId = @Id AND IsActive = 1;";
+
+            // capture the same connection instance
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
+
+            using var tx = conn.BeginTransaction();
+
+            try
+            {
+                // optional: block if already posted/final
+                // var status = await conn.ExecuteScalarAsync<int>("SELECT Status FROM StockTake WHERE Id=@Id", new { Id = id }, tx);
+                // if (status == (int)StockTakeStatus.Posted) throw new InvalidOperationException("Cannot deactivate a posted stock take.");
+
+                var affectedHeader = await conn.ExecuteAsync(sqlHeader, new { Id = id, UpdatedBy = updatedBy }, tx);
+                if (affectedHeader == 0)
+                    throw new KeyNotFoundException("StockTake not found.");
+
+                await conn.ExecuteAsync(sqlLines, new { Id = id, UpdatedBy = updatedBy }, tx);
+
+                tx.Commit();
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
         }
+
     }
 }
