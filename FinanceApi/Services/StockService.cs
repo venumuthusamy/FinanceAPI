@@ -40,5 +40,33 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id);
         }
+
+        public async Task<IEnumerable<StockListViewInfo>> GetAllStockList()
+        {
+            return await _repository.GetAllStockList();
+        }
+
+        public async Task<IEnumerable<StockListViewInfo>> GetAllItemStockList()
+        {
+            return await _repository.GetAllItemStockList();
+        }
+
+        public async Task<int> MarkAsTransferredBulkAsync(IEnumerable<MarkAsTransferredRequest> requests)
+        {
+            return await _repository.MarkAsTransferredBulkAsync(requests);
+        }
+
+        public async Task<IEnumerable<StockListViewInfo>> GetAllStockTransferedList()
+        {
+            return await _repository.GetAllStockTransferedList();
+        }
+
+
+        public Task<int> AdjustOnHandAsync(AdjustOnHandRequest request)
+        {
+            return _repository.AdjustOnHandAsync(request);
+        }
+
+
     }
 }

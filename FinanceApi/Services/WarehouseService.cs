@@ -40,5 +40,10 @@ namespace FinanceApi.Services
         {
             return await _repository.GetBinNameByIdAsync(id);
         }
+
+        public async Task<IEnumerable<WarehouseDto>> GetNameByWarehouseAsync(string name)
+        {
+            return await _repository.GetNameByWarehouseAsync(name);
+        }
     }
 }

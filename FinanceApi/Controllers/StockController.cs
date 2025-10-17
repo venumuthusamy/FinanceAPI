@@ -68,5 +68,80 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Stock Deleted sucessfully", null);
             return Ok(data);
         }
+
+
+        [HttpGet("GetAllStockList")]
+        public async Task<IActionResult> GetAllStockList()
+        {
+            var list = await _service.GetAllStockList();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
+
+        [HttpGet("GetAllItemStockList")]
+        public async Task<IActionResult> GetAllItemStockList()
+        {
+            var list = await _service.GetAllItemStockList();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
+        [HttpPost("markAsTransferredBulk")]
+        public async Task<IActionResult> MarkAsTransferredBulk([FromBody] List<MarkAsTransferredRequest> requests)
+        {
+            if (requests == null || requests.Count == 0)
+            {
+                return BadRequest(new ResponseResult(false, "No transfer requests received.", null));
+            }
+
+            // Optional: basic validation check
+            if (requests.Any(r => r.ItemId <= 0 || r.WarehouseId <= 0))
+            {
+                return BadRequest(new ResponseResult(false, "Invalid ItemId or WarehouseId in one or more entries.", null));
+            }
+
+            var affectedRows = await _service.MarkAsTransferredBulkAsync(requests);
+
+            if (affectedRows > 0)
+            {
+                return Ok(new ResponseResult(true, $"{affectedRows} record(s) marked as transferred.", affectedRows));
+            }
+
+            return NotFound(new ResponseResult(false, "No matching records found to update.", 0));
+        }
+
+
+        [HttpGet("GetAllStockTransferedList")]
+        public async Task<IActionResult> GetAllStockTransferedList()
+        {
+            var list = await _service.GetAllStockTransferedList();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
+
+        [HttpPost("AdjustOnHand")]
+        public async Task<IActionResult> AdjustOnHand([FromBody] AdjustOnHandRequest request)
+        {
+            if (request == null)
+                return BadRequest("Invalid request data.");
+
+            try
+            {
+                var result = await _service.AdjustOnHandAsync(request);
+
+                if (result > 0)
+                    return Ok(new { success = true, message = "Stock on-hand adjusted successfully." });
+                else
+                    return NotFound(new { success = false, message = "Item or warehouse not found." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { success = false, message = "An error occurred while adjusting stock.", error = ex.Message });
+            }
+        }
+
+
     }
 }

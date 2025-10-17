@@ -121,5 +121,22 @@ WHERE
             var rows = await Connection.QueryAsync<WarehouseDto>(query, new { Id = id });
             return rows.ToList();
         }
+
+
+
+        public async Task<IEnumerable<WarehouseDto>> GetNameByWarehouseAsync(string name)
+        {
+            const string sql = @"
+        SELECT *
+        FROM Warehouse
+        WHERE Name <> @name
+          AND IsActive = 1;
+    ";
+
+            var result = await Connection.QueryAsync<WarehouseDto>(sql, new { name });
+            return result;
+        }
+
+
     }
 }

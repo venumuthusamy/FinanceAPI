@@ -63,5 +63,13 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Success", binList);
             return Ok(data);
         }
+
+        [HttpGet("GetNameByWarehouseAsync/{name}")]
+        public async Task<IActionResult> GetNameByWarehouseAsync(string name)
+        {
+            var licenseObj = await _service.GetNameByWarehouseAsync(name);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
     }
 }
