@@ -3,6 +3,7 @@ using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO; // ItemMasterDTO, ItemMasterUpsertDto
 using FinanceApi.Models;
+using FinanceApi.Repositories;
 using InterfaceService;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -85,6 +86,36 @@ namespace FinanceApi.Controllers
             {
                 return Ok(new ResponseResult(false, "Delete failed", ex.Message));
             }
+        }
+        [HttpGet("Audit/{itemId}")]
+        public async Task<IActionResult> GetAudits(int itemId)
+        {
+       
+            var item = await _service.getAuditByItemId(itemId);
+            if (item == null)
+                return Ok(new ResponseResult(false, "ItemAudit not found", null));
+
+            return Ok(new ResponseResult(true, "Success", item));
+        }
+        [HttpGet("GetWarehouse/{itemId}")]
+        public async Task<IActionResult> GetWarehouse(int itemId)
+        {
+         
+            var item = await _service.getStockByItemId(itemId);
+            if (item == null)
+                return Ok(new ResponseResult(false, "ItemWareHouse not found", null));
+
+            return Ok(new ResponseResult(true, "Success", item));
+        }
+        [HttpGet("GetSupplier/{itemId}")]
+        public async Task<IActionResult> GetSupplier(int itemId)
+        {
+         
+            var item = await _service.getPriceByItemId(itemId);
+            if (item == null)
+                return Ok(new ResponseResult(false, "ItemPrice not found", null));
+
+            return Ok(new ResponseResult(true, "Success", item));
         }
     }
 }

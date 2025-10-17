@@ -17,5 +17,6 @@
         public int Available { get; set; }
         public bool IsApproved { get; set; }
         public bool IsTransfered { get; set; }
+        public int StockIssueID {  get; set; }
     }
 }

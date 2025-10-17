@@ -4,6 +4,8 @@ using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Interfaces;
+using Microsoft.AspNetCore.Connections;
+using System.Data;
 
 namespace FinanceApi.Repositories
 {
@@ -102,7 +104,6 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
                 dto.CreatedBy,
                 dto.UpdatedBy,
                 dto.ExpiryDate
-
             });
 
             // 2) Insert prices (if any)
@@ -125,8 +126,8 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -145,13 +146,22 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.SerialFlag,
                         s.Available,
                         s.IsApproved,
-                        s.IsTransfered
+                        s.IsTransfered,
+                        s.StockIssueID
                     });
                 }
             }
 
+            // 4) 🟢 CREATE audit (no triggers)
+            long? userId = null;
+            if (long.TryParse(dto.CreatedBy, out var uid)) userId = uid;
+
+            var newJson = await GetItemSnapshotJsonAsync(itemId);      // AFTER create snapshot
+            await AddAuditAsync(itemId, "CREATE", userId, null, newJson, null);
+
             return itemId;
         }
+
 
         public async Task UpdateAsync(ItemMaster item)
         {
@@ -194,11 +204,15 @@ WHERE Id=@Id;";
         // Overload that replaces children, matching your UI DTO shape.
         public async Task UpdateAsync(ItemMasterUpsertDto dto)
         {
+            // 0) snapshot BEFORE update
+            var oldJson = await GetItemSnapshotJsonAsync(dto.Id);
+
+            // 1) Update parent
             const string up = @"
 UPDATE dbo.ItemMaster SET
   Sku=@Sku, Name=@Name, Category=@Category, Uom=@Uom, Barcode=@Barcode,
   CostingMethodId=@CostingMethodId, TaxCodeId=@TaxCodeId, Specs=@Specs,
-  PictureUrl=@PictureUrl, IsActive=@IsActive, UpdatedDate=SYSUTCDATETIME(),ExpiryDate=@ExpiryDate 
+  PictureUrl=@PictureUrl, IsActive=@IsActive, UpdatedDate=SYSUTCDATETIME(), ExpiryDate=@ExpiryDate
 WHERE Id=@Id;";
             await Connection.ExecuteAsync(up, new
             {
@@ -216,7 +230,7 @@ WHERE Id=@Id;";
                 dto.ExpiryDate
             });
 
-            // Replace child rows (simple and safe, same style as your other repos)
+            // 2) Replace children (your existing logic)
             await Connection.ExecuteAsync("DELETE FROM dbo.ItemPrice WHERE ItemId=@Id;", new { dto.Id });
             await Connection.ExecuteAsync("DELETE FROM dbo.ItemWarehouseStock WHERE ItemId=@Id;", new { dto.Id });
 
@@ -238,8 +252,8 @@ WHERE Id=@Id;";
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -258,16 +272,113 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.SerialFlag,
                         s.Available,
                         s.IsApproved,
-                        s.IsTransfered
+                        s.IsTransfered,
+                        s.StockIssueID
                     });
                 }
             }
+
+            // 3) 🟡 UPDATE audit (diff-friendly: before & after)
+            long? userId = null;
+            if (long.TryParse(dto.UpdatedBy, out var uid)) userId = uid;
+
+            var newJson = await GetItemSnapshotJsonAsync(dto.Id);      // AFTER update snapshot
+            await AddAuditAsync(dto.Id, "UPDATE", userId, oldJson, newJson, null);
         }
+
 
         public async Task DeactivateAsync(int id)
         {
             const string sql = @"UPDATE dbo.ItemMaster SET IsActive = 0, UpdatedDate = SYSUTCDATETIME() WHERE Id = @Id;";
             await Connection.ExecuteAsync(sql, new { Id = id });
         }
+        private Task<string?> GetItemSnapshotJsonAsync(long id)
+        {
+            const string sql = @"
+SELECT i.*
+FROM dbo.ItemMaster i
+WHERE i.Id = @Id
+FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES;";
+            return Connection.QueryFirstOrDefaultAsync<string>(sql, new { Id = id });
+        }
+
+        private Task AddAuditAsync(long itemId, string action, long? userId, string? oldJson, string? newJson, string? remarks = null)
+        {
+            const string insAudit = @"
+INSERT INTO dbo.ItemMasterAudit (ItemId, Action, UserId, OldValuesJson, NewValuesJson, Remarks)
+VALUES (@ItemId, @Action, @UserId, @OldValuesJson, @NewValuesJson, @Remarks);";
+            return Connection.ExecuteAsync(insAudit, new
+            {
+                ItemId = itemId,
+                Action = action,
+                UserId = userId,
+                OldValuesJson = oldJson,
+                NewValuesJson = newJson,
+                Remarks = remarks
+            });
+        }
+        public async Task<IEnumerable<ItemMasterAuditDTO>> GetAuditsByItemAsync(int itemId)
+        {
+            const string sql = @"
+SELECT  AuditId,
+        ItemId,
+        Action,
+        OccurredAtUtc,
+        UserId,
+        OldValuesJson,
+        NewValuesJson,
+        Remarks
+FROM dbo.ItemMasterAudit
+WHERE ItemId = @ItemId
+ORDER BY OccurredAtUtc DESC, AuditId DESC;";
+
+            return await Connection.QueryAsync<ItemMasterAuditDTO>(sql, new { ItemId = itemId });
+        }
+        public async Task<IEnumerable<ItemStockDto>> GetWarehouseStockByItemAsync(int itemId)
+        {
+            const string sql = @"
+SELECT 
+    iws.Id,
+    iws.ItemId,
+    iws.WarehouseId,
+    w.Name       AS WarehouseName,
+    iws.BinId,
+    b.Name       AS BinName,
+    iws.StrategyId,
+    iws.OnHand,
+    iws.Reserved,
+    iws.MinQty,
+    iws.MaxQty,
+    iws.ReorderQty,
+    iws.LeadTimeDays,
+    iws.BatchFlag,
+    iws.SerialFlag,
+    /* if Available column is NULL in DB, Angular computes it anyway */
+    iws.Available
+FROM dbo.ItemWarehouseStock iws
+LEFT JOIN dbo.Warehouse w ON w.Id = iws.WarehouseId
+LEFT JOIN dbo.Bin b       ON b.Id = iws.BinId
+WHERE iws.ItemId = @ItemId
+ORDER BY w.Name, b.Name";
+            return await Connection.QueryAsync<ItemStockDto>(sql, new { ItemId = itemId });
+        }
+
+        public async Task<IEnumerable<ItemPriceDto>> GetSupplierPricesByItemAsync(int itemId)
+        {
+            const string sql = @"
+SELECT 
+    ip.Id,
+    ip.ItemId,
+    ip.SupplierId,
+    s.Name AS SupplierName,
+    ip.Price
+FROM dbo.ItemPrice ip
+LEFT JOIN dbo.Supplier s ON s.Id = ip.SupplierId
+WHERE ip.ItemId = @ItemId
+ORDER BY s.Name";
+           
+            return await Connection.QueryAsync<ItemPriceDto>(sql, new { ItemId = itemId });
+        }
+
     }
 }
