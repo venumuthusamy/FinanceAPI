@@ -10,5 +10,7 @@ namespace FinanceApi.Interfaces
         Task UpdateAsync(Warehouse warehouse);
         Task DeleteLicense(int id);
         Task<IEnumerable<WarehouseDto>> GetBinNameByIdAsync(int id);
+
+        Task<IEnumerable<WarehouseDto>> GetNameByWarehouseAsync(string name);
     }
 }

@@ -10,5 +10,14 @@ namespace FinanceApi.Interfaces
         Task<int> InsertBulkAsync(IEnumerable<Stock> stocks);
         Task UpdateAsync(Stock stock);
         Task DeactivateAsync(int id);
+
+        Task<IEnumerable<StockListViewInfo>> GetAllStockList();
+
+        Task<int> MarkAsTransferredBulkAsync(IEnumerable<MarkAsTransferredRequest> requests);
+        Task<IEnumerable<StockListViewInfo>> GetAllStockTransferedList();
+
+        Task<int> AdjustOnHandAsync(AdjustOnHandRequest request);
+
+        Task<IEnumerable<StockListViewInfo>> GetAllItemStockList();
     }
 }
