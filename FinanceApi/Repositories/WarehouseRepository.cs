@@ -29,6 +29,7 @@ namespace FinanceApi.Repositories
                             ISNULL(s.StateName, '') AS StateName,
                             w.CountryId,
                             ISNULL(co.CountryName, '') AS CountryName,
+                            w.BinID,
                             w.Address,
                             w.Description,
                             w.Phone,
@@ -89,7 +90,7 @@ namespace FinanceApi.Repositories
 
         public async Task UpdateAsync(Warehouse updatedWarehouse)
         {
-            const string query = "UPDATE Warehouse SET Name = @Name,CountryId = @CountryId,StateId = @StateId,CityId = @CityId,Phone = @Phone,Address = @Address,Description = @Description WHERE Id = @Id";
+            const string query = "UPDATE Warehouse SET Name = @Name,BinID = @BinID,CountryId = @CountryId,StateId = @StateId,CityId = @CityId,Phone = @Phone,Address = @Address,Description = @Description WHERE Id = @Id";
             await Connection.ExecuteAsync(query, updatedWarehouse);
         }
 
