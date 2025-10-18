@@ -68,8 +68,7 @@ VALUES
                 item.Name,
                 item.Category,
                 item.Uom,
-                item.Barcode,
-                item.CostingMethodId,
+               item.CostingMethodId,
                 item.TaxCodeId,
                 item.Specs,
                 item.PictureUrl,
@@ -86,9 +85,9 @@ VALUES
             // 1) Insert parent
             const string ins = @"
 INSERT INTO dbo.ItemMaster
- (Sku,Name,Category,Uom,Barcode,CostingMethodId,TaxCodeId,Specs,PictureUrl,IsActive,CreatedBy,CreatedDate,UpdatedBy,UpdatedDate,ExpiryDate)
+ (Sku,Name,Category,Uom,CostingMethodId,TaxCodeId,Specs,PictureUrl,IsActive,CreatedBy,CreatedDate,UpdatedBy,UpdatedDate,ExpiryDate)
 OUTPUT INSERTED.Id
-VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@PictureUrl,1,@CreatedBy,SYSUTCDATETIME(),@UpdatedBy,SYSUTCDATETIME(),@ExpiryDate);";
+VALUES(@Sku,@Name,@Category,@Uom,@CostingMethodId,@TaxCodeId,@Specs,@PictureUrl,1,@CreatedBy,SYSUTCDATETIME(),@UpdatedBy,SYSUTCDATETIME(),@ExpiryDate);";
 
             var itemId = await Connection.QueryFirstAsync<long>(ins, new
             {
@@ -96,7 +95,6 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
                 dto.Name,
                 dto.Category,
                 dto.Uom,
-                dto.Barcode,
                 dto.CostingMethodId,
                 dto.TaxCodeId,
                 dto.Specs,
@@ -109,14 +107,15 @@ VALUES(@Sku,@Name,@Category,@Uom,@Barcode,@CostingMethodId,@TaxCodeId,@Specs,@Pi
             // 2) Insert prices (if any)
             if (dto.Prices is not null && dto.Prices.Count > 0)
             {
-                const string ip = @"INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price) VALUES (@ItemId,@SupplierId,@Price);";
+                const string ip = @"INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price,Barcode) VALUES (@ItemId,@SupplierId,@Price,@Barcode);";
                 foreach (var p in dto.Prices)
                 {
                     await Connection.ExecuteAsync(ip, new
                     {
                         ItemId = itemId,
                         SupplierId = p.SupplierId,
-                        Price = p.Price
+                        Price = p.Price,
+                        Barcode = p.Barcode
                     });
                 }
             }
@@ -173,7 +172,7 @@ UPDATE dbo.ItemMaster SET
     Name=@Name,
     Category=@Category,
     Uom=@Uom,
-    Barcode=@Barcode,
+   
     CostingMethodId=@CostingMethodId,
     TaxCodeId=@TaxCodeId,
     Specs=@Specs,
@@ -190,7 +189,6 @@ WHERE Id=@Id;";
                 item.Name,
                 item.Category,
                 item.Uom,
-                item.Barcode,
                 item.CostingMethodId,
                 item.TaxCodeId,
                 item.Specs,
@@ -210,7 +208,7 @@ WHERE Id=@Id;";
             // 1) Update parent
             const string up = @"
 UPDATE dbo.ItemMaster SET
-  Sku=@Sku, Name=@Name, Category=@Category, Uom=@Uom, Barcode=@Barcode,
+  Sku=@Sku, Name=@Name, Category=@Category, Uom=@Uom, 
   CostingMethodId=@CostingMethodId, TaxCodeId=@TaxCodeId, Specs=@Specs,
   PictureUrl=@PictureUrl, IsActive=@IsActive, UpdatedDate=SYSUTCDATETIME(), ExpiryDate=@ExpiryDate
 WHERE Id=@Id;";
@@ -221,7 +219,6 @@ WHERE Id=@Id;";
                 dto.Name,
                 dto.Category,
                 dto.Uom,
-                dto.Barcode,
                 dto.CostingMethodId,
                 dto.TaxCodeId,
                 dto.Specs,
@@ -236,14 +233,15 @@ WHERE Id=@Id;";
 
             if (dto.Prices is not null && dto.Prices.Count > 0)
             {
-                const string ip = @"INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price) VALUES (@ItemId,@SupplierId,@Price);";
+                const string ip = @"INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price,Barcode) VALUES (@ItemId,@SupplierId,@Price,@Barcode);";
                 foreach (var p in dto.Prices)
                 {
                     await Connection.ExecuteAsync(ip, new
                     {
                         ItemId = dto.Id,
                         SupplierId = p.SupplierId,
-                        Price = p.Price
+                        Price = p.Price,
+                        Barcode=p.Barcode
                     });
                 }
             }
@@ -317,24 +315,27 @@ VALUES (@ItemId, @Action, @UserId, @OldValuesJson, @NewValuesJson, @Remarks);";
                 Remarks = remarks
             });
         }
-        public async Task<IEnumerable<ItemMasterAuditDTO>> GetAuditsByItemAsync(int itemId)
+        public async Task<IEnumerable<ItemWarehouseStockDTO>> GetAuditsByItemAsync(int itemId)
         {
             const string sql = @"
-SELECT  AuditId,
-        ItemId,
-        Action,
-        OccurredAtUtc,
-        UserId,
-        OldValuesJson,
-        NewValuesJson,
-        Remarks
-FROM dbo.ItemMasterAudit
-WHERE ItemId = @ItemId
-ORDER BY OccurredAtUtc DESC, AuditId DESC;";
+SELECT
+    a.AuditId,
+    a.ItemId,
+    a.Action,
+    a.OccurredAtUtc,
+    a.UserId,
+    u.UserName,
+    a.OldValuesJson,
+    a.NewValuesJson,
+    a.Remarks
+FROM dbo.ItemMasterAudit AS a
+LEFT JOIN dbo.[User]     AS u ON u.Id = a.UserId
+WHERE a.ItemId = @ItemId
+ORDER BY a.OccurredAtUtc DESC, a.AuditId DESC;";
 
-            return await Connection.QueryAsync<ItemMasterAuditDTO>(sql, new { ItemId = itemId });
+            return await Connection.QueryAsync<ItemWarehouseStockDTO>(sql, new { ItemId = itemId });
         }
-        public async Task<IEnumerable<ItemStockDto>> GetWarehouseStockByItemAsync(int itemId)
+        public async Task<IEnumerable<ItemWarehouseStockDTO>> GetWarehouseStockByItemAsync(int itemId)
         {
             const string sql = @"
 SELECT 
@@ -343,7 +344,7 @@ SELECT
     iws.WarehouseId,
     w.Name       AS WarehouseName,
     iws.BinId,
-    b.Name       AS BinName,
+    b.BinName,
     iws.StrategyId,
     iws.OnHand,
     iws.Reserved,
@@ -353,31 +354,32 @@ SELECT
     iws.LeadTimeDays,
     iws.BatchFlag,
     iws.SerialFlag,
-    /* if Available column is NULL in DB, Angular computes it anyway */
+   
     iws.Available
 FROM dbo.ItemWarehouseStock iws
 LEFT JOIN dbo.Warehouse w ON w.Id = iws.WarehouseId
 LEFT JOIN dbo.Bin b       ON b.Id = iws.BinId
 WHERE iws.ItemId = @ItemId
-ORDER BY w.Name, b.Name";
-            return await Connection.QueryAsync<ItemStockDto>(sql, new { ItemId = itemId });
+ORDER BY w.Name, b.BinName";
+            return await Connection.QueryAsync<ItemWarehouseStockDTO>(sql, new { ItemId = itemId });
         }
 
-        public async Task<IEnumerable<ItemPriceDto>> GetSupplierPricesByItemAsync(int itemId)
+        public async Task<IEnumerable<ItemWarehouseStockDTO>> GetSupplierPricesByItemAsync(int itemId)
         {
             const string sql = @"
 SELECT 
     ip.Id,
     ip.ItemId,
     ip.SupplierId,
+ip.Barcode,
     s.Name AS SupplierName,
     ip.Price
 FROM dbo.ItemPrice ip
-LEFT JOIN dbo.Supplier s ON s.Id = ip.SupplierId
+LEFT JOIN dbo.Suppliers s ON s.Id = ip.SupplierId
 WHERE ip.ItemId = @ItemId
 ORDER BY s.Name";
            
-            return await Connection.QueryAsync<ItemPriceDto>(sql, new { ItemId = itemId });
+            return await Connection.QueryAsync<ItemWarehouseStockDTO>(sql, new { ItemId = itemId });
         }
 
     }

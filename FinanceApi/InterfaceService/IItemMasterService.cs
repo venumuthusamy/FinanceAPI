@@ -9,8 +9,8 @@ namespace InterfaceService
         Task<long> CreateAsync(ItemMasterUpsertDto dto);
         Task UpdateAsync(ItemMasterUpsertDto dto);
         Task DeleteAsync(int id);
-        Task<IEnumerable<ItemStockDto?>> getStockByItemId(int itemId);
-        Task<IEnumerable<ItemPriceDto?>> getPriceByItemId(int itemId);
-        Task<IEnumerable<ItemMasterAuditDTO?>> getAuditByItemId(int itemId);
+        Task<IEnumerable<ItemWarehouseStockDTO?>> getStockByItemId(int itemId);
+        Task<IEnumerable<ItemWarehouseStockDTO?>> getPriceByItemId(int itemId);
+        Task<IEnumerable<ItemWarehouseStockDTO?>> getAuditByItemId(int itemId);
     }
 }
