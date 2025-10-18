@@ -10,7 +10,7 @@ namespace FinanceApi.Models
         public string Name { get; set; } = "";
         public string? Category { get; set; }
         public string? Uom { get; set; }
-        public string? Barcode { get; set; }
+       
         public long? CostingMethodId { get; set; }
         public long? TaxCodeId { get; set; }
         public string? Specs { get; set; }
