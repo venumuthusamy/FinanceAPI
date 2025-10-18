@@ -57,9 +57,12 @@ namespace FinanceApi.Repositories
             ItemId,
             OnHand,
             CountedQty,
+            BadCountedQty,
             VarianceQty,
             Barcode,
+            ReasonId,
             Remarks,
+            Selected,
             CreatedBy,
             CreatedDate,
             UpdatedBy,
@@ -89,6 +92,7 @@ SELECT
     im.Id   AS ItemId,
     im.Sku  AS Sku,
     im.Name AS ItemName,
+    im.Barcode,
     iws.WarehouseId,
     iws.BinId,
     iws.OnHand,
@@ -155,9 +159,12 @@ ORDER BY im.Sku, im.Name;
             ItemId,
             OnHand,
             CountedQty,
+            BadCountedQty,
             VarianceQty,
             Barcode,
+            ReasonId,
             Remarks,
+            Selected,
             CreatedBy,
             CreatedDate,
             UpdatedBy,
@@ -200,13 +207,13 @@ VALUES
             const string insertLinesSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId, OnHand, CountedQty, VarianceQty,
-    Barcode, Remarks, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
+    StockTakeId, ItemId, OnHand, CountedQty,BadCountedQty, VarianceQty,ReasonId,
+    Barcode, Remarks,Selected, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId, @OnHand, @CountedQty, @VarianceQty,
-    @Barcode, @Remarks, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
+    @StockTakeId, @ItemId, @OnHand, @CountedQty,@BadCountedQty, @VarianceQty,@ReasonId,
+    @Barcode, @Remarks,@Selected, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
             // ✅ HOLD the same connection instance for the whole method
@@ -247,9 +254,14 @@ VALUES
                         l.ItemId,
                         l.OnHand,
                         CountedQty = l.CountedQty,
-                        VarianceQty = l.CountedQty.HasValue ? (decimal?)(l.CountedQty.Value - l.OnHand) : null,
+                        BadCountedQty = l.BadCountedQty,
+                        VarianceQty = (l.CountedQty.HasValue || l.BadCountedQty.HasValue)
+    ? ((l.CountedQty ?? 0m) + (l.BadCountedQty ?? 0m)) - l.OnHand
+    : (decimal?)null,
+                        l.ReasonId,
                         l.Barcode,
                         l.Remarks,
+                        l.Selected,
                         CreatedBy = stockTake.CreatedBy,
                         CreatedDate = stockTake.CreatedDate,
                         UpdatedBy = stockTake.UpdatedBy,
@@ -299,9 +311,12 @@ SET
     ItemId      = @ItemId,
     OnHand      = @OnHand,
     CountedQty  = @CountedQty,
+    BadCountedQty  = @BadCountedQty,
     VarianceQty = @VarianceQty,
+    ReasonId = @ReasonId,
     Barcode     = @Barcode,
     Remarks     = @Remarks,
+    Selected = @Selected,
     UpdatedBy   = @UpdatedBy,
     UpdatedDate = @UpdatedDate,
     IsActive    = 1
@@ -310,13 +325,13 @@ WHERE Id = @Id AND StockTakeId = @StockTakeId;";
             const string insertLineSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId, OnHand, CountedQty, VarianceQty,
-    Barcode, Remarks, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
+    StockTakeId, ItemId, OnHand, CountedQty, BadCountedQty,VarianceQty,ReasonId
+    Barcode, Remarks,Selected, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId, @OnHand, @CountedQty, @VarianceQty,
-    @Barcode, @Remarks, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
+    @StockTakeId, @ItemId, @OnHand, @CountedQty, @BadCountedQty,@VarianceQty,@ReasonId
+    @Barcode, @Remarks,@Selected, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -357,7 +372,10 @@ WHERE StockTakeId = @StockTakeId
                 {
                     foreach (var l in updatedStockTake.LineItems)
                     {
-                        var variance = l.CountedQty is null ? (decimal?)null : (l.CountedQty - l.OnHand);
+                        decimal? variance =
+    (l.CountedQty.HasValue || l.BadCountedQty.HasValue)
+        ? ((l.CountedQty ?? 0m) + (l.BadCountedQty ?? 0m)) - l.OnHand
+        : (decimal?)null;
 
                         if (l.Id > 0)
                         {
@@ -368,9 +386,12 @@ WHERE StockTakeId = @StockTakeId
                                 l.ItemId,
                                 l.OnHand,
                                 CountedQty = l.CountedQty,
+                                BadCountedQty = l.BadCountedQty,
                                 VarianceQty = variance,
+                                l.ReasonId,
                                 l.Barcode,
                                 l.Remarks,
+                                l.Selected,
                                 UpdatedBy = updatedStockTake.UpdatedBy,
                                 UpdatedDate = now
                             }, tx);
@@ -385,9 +406,12 @@ WHERE StockTakeId = @StockTakeId
                                 l.ItemId,
                                 l.OnHand,
                                 CountedQty = l.CountedQty,
+                                BadCountedQty = l.BadCountedQty,
                                 VarianceQty = variance,
+                                l.ReasonId,
                                 l.Barcode,
                                 l.Remarks,
+                                l.Selected,
                                 CreatedBy = updatedStockTake.UpdatedBy ?? updatedStockTake.CreatedBy,
                                 CreatedDate = now,
                                 UpdatedBy = updatedStockTake.UpdatedBy,

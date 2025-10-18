@@ -23,7 +23,7 @@ namespace FinanceApi.Models
 
         public List<StockTakeLines> LineItems { get; set; } = new();
         public bool Freeze { get; set; }
-        public string? Status { get; set; }
+        public int Status { get; set; }
      
     }
 }
