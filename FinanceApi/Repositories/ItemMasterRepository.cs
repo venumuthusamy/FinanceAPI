@@ -156,7 +156,7 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
             if (long.TryParse(dto.CreatedBy, out var uid)) userId = uid;
 
             var newJson = await GetItemSnapshotJsonAsync(itemId);      // AFTER create snapshot
-            await AddAuditAsync(itemId, "CREATE", userId, null, newJson, null);
+            await AddAuditAsync(itemId, "CREATE", DateTime.Now, userId, null, newJson, null);
 
             return itemId;
         }
@@ -281,7 +281,7 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
             if (long.TryParse(dto.UpdatedBy, out var uid)) userId = uid;
 
             var newJson = await GetItemSnapshotJsonAsync(dto.Id);      // AFTER update snapshot
-            await AddAuditAsync(dto.Id, "UPDATE", userId, oldJson, newJson, null);
+            await AddAuditAsync(dto.Id, "UPDATE", DateTime.Now, userId, oldJson, newJson, oldJson);
         }
 
 
@@ -300,15 +300,16 @@ FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES;";
             return Connection.QueryFirstOrDefaultAsync<string>(sql, new { Id = id });
         }
 
-        private Task AddAuditAsync(long itemId, string action, long? userId, string? oldJson, string? newJson, string? remarks = null)
+        private Task AddAuditAsync(long itemId, string action,DateTime OccurredAtUtc, long? userId, string? oldJson, string? newJson, string? remarks = null)
         {
             const string insAudit = @"
-INSERT INTO dbo.ItemMasterAudit (ItemId, Action, UserId, OldValuesJson, NewValuesJson, Remarks)
-VALUES (@ItemId, @Action, @UserId, @OldValuesJson, @NewValuesJson, @Remarks);";
+INSERT INTO dbo.ItemMasterAudit (ItemId, Action,OccurredAtUtc, UserId, OldValuesJson, NewValuesJson, Remarks)
+VALUES (@ItemId, @Action,SYSUTCDATETIME(), @UserId, @OldValuesJson, @NewValuesJson, @Remarks);";
             return Connection.ExecuteAsync(insAudit, new
             {
                 ItemId = itemId,
                 Action = action,
+                OccurredAtUtc= OccurredAtUtc,
                 UserId = userId,
                 OldValuesJson = oldJson,
                 NewValuesJson = newJson,
