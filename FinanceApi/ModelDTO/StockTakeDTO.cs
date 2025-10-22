@@ -13,6 +13,11 @@ namespace FinanceApi.ModelDTO
 
         public int LocationId { get; set; }
 
+        public int? SupplierId { get; set; }
+
+        public string? SupplierName { get; set; }
+
+
         public string? LocationName { get; set; }
 
         public int? StrategyId { get; set; }

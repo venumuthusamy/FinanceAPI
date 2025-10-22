@@ -540,6 +540,7 @@ CREATE TABLE StockTake (
     Id               INT IDENTITY(1,1) PRIMARY KEY,
     WarehouseTypeId  INT           NOT NULL,
     LocationId       INT           NOT NULL,
+    SupplierId       INT           NOT NULL,
     TakeTypeId       TINYINT       NOT NULL,     
     StrategyId       INT           NULL,         
     Freeze           BIT           NOT NULL DEFAULT 0,
@@ -552,6 +553,7 @@ CREATE TABLE StockTake (
     FOREIGN KEY (WarehouseTypeId) REFERENCES Warehouse(Id),
     FOREIGN KEY (LocationId) REFERENCES Location(Id),
     FOREIGN KEY (StrategyId) REFERENCES Strategy(Id)
+    FOREIGN KEY (SupplierId) REFERENCES Suppliers(Id)
 );
 ALTER TABLE StockTake
 ADD CONSTRAINT CK_StockTake_TakeType CHECK (TakeTypeId IN (1,2));
@@ -565,7 +567,7 @@ CREATE TABLE StockTakeLines (
     CountedQty       DECIMAL(18,3)  NULL,   
     BadCountedQty    DECIMAL(18,3)  NULL,      
     VarianceQty      DECIMAL(18,3)  NULL, 
-    ReasonId         INT            NULL,
+    Reason          VARCHAR(100),
     Barcode          VARCHAR(100),
     Remarks          VARCHAR(255),
     Selected BIT NULL, 
@@ -586,30 +588,31 @@ CREATE INDEX IX_StockTakeLines_ItemId      ON StockTakeLines(ItemId);
 
 
 
-CREATE TABLE InventoryAdjustment (
+CREATE TABLE dbo.StockTakeInventoryAdjustment (
     Id               BIGINT IDENTITY(1,1) PRIMARY KEY,
 
     -- What & where
     ItemId           INT            NOT NULL,
     WarehouseTypeId  INT            NOT NULL,
     LocationId       INT            NOT NULL,
+    SupplierId       INT            NOT NULL,
     -- BinId         INT            NULL, -- add later if needed
 
     -- When
-    TxnDate          DATETIME       NOT NULL DEFAULT GETDATE(),
+    TxnDate          DATETIME2(3)   NOT NULL CONSTRAINT DF_STIA_TxnDate DEFAULT SYSUTCDATETIME(),
 
     -- Why
-    ReasonId         INT            NULL,        -- FK to AdjustmentReason
-    Remarks          VARCHAR(255),
+    Reason         VARCHAR(50)            NULL,        -- FK to AdjustmentReason (optional)
+    Remarks          NVARCHAR(255)  NULL,
 
     -- Source (document lineage)
-    SourceType       VARCHAR(40)    NOT NULL,    -- 'StockTake'
+    SourceType       VARCHAR(40)    NOT NULL,    -- e.g. 'StockTake'
     SourceId         INT            NOT NULL,    -- StockTake.Id
     SourceLineId     INT            NULL,        -- StockTakeLines.Id
 
     -- Quantities (one direction per row)
-    QtyIn            DECIMAL(18,3)  NOT NULL DEFAULT 0,
-    QtyOut           DECIMAL(18,3)  NOT NULL DEFAULT 0,
+    QtyIn            DECIMAL(18,3)  NOT NULL CONSTRAINT DF_STIA_QtyIn  DEFAULT (0),
+    QtyOut           DECIMAL(18,3)  NOT NULL CONSTRAINT DF_STIA_QtyOut DEFAULT (0),
 
     -- Optional audit snapshot
     QtyBefore        DECIMAL(18,3)  NULL,
@@ -619,24 +622,29 @@ CREATE TABLE InventoryAdjustment (
     UnitCost         DECIMAL(18,6)  NULL,        -- if costing later
     ExtCost          DECIMAL(18,6)  NULL,        -- UnitCost * (QtyIn - QtyOut)
 
-    CreatedBy        VARCHAR(100),
-    CreatedDate      DATETIME       DEFAULT GETDATE(),
-    UpdatedBy        VARCHAR(100),
-    UpdatedDate      DATETIME,
-    IsActive         BIT            DEFAULT 1,
-
-   
+    CreatedBy        NVARCHAR(100)  NULL,
+    CreatedDate      DATETIME2(3)   CONSTRAINT DF_STIA_CreatedDate DEFAULT SYSUTCDATETIME(),
+    UpdatedBy        NVARCHAR(100)  NULL,
+    UpdatedDate      DATETIME2(3)   NULL,
+    IsActive         BIT            NOT NULL CONSTRAINT DF_STIA_IsActive DEFAULT (1)
 );
+GO
 
--- One-direction sanity (comment out if you prefer fully free-form)
-ALTER TABLE InventoryAdjustment
-  ADD CONSTRAINT CK_InventoryAdjustment_OneDirection
+-- One-direction, non-zero sanity:
+-- Ensures exactly one side is > 0, the other side = 0 (blocks 0/0 no-op rows)
+ALTER TABLE dbo.StockTakeInventoryAdjustment
+  ADD CONSTRAINT CK_STIA_OneDirection
   CHECK (
-       (QtyIn >= 0 AND QtyOut = 0)
-    OR (QtyOut >= 0 AND QtyIn  = 0)
+        (QtyIn  > 0 AND QtyOut = 0)
+     OR (QtyOut > 0 AND QtyIn  = 0)
   );
+GO
 
 -- Helpful indexes
-CREATE INDEX IX_InvAdj_Item_Loc_Date ON InventoryAdjustment(ItemId, WarehouseTypeId, LocationId, TxnDate DESC);
-CREATE INDEX IX_InvAdj_Source        ON InventoryAdjustment(SourceType, SourceId, SourceLineId);
+CREATE INDEX IX_STIA_Item_Loc_Date
+  ON dbo.StockTakeInventoryAdjustment(ItemId, WarehouseTypeId, LocationId,SupplierId, TxnDate DESC);
+GO
 
+CREATE INDEX IX_STIA_Source
+  ON dbo.StockTakeInventoryAdjustment(SourceType, SourceId, SourceLineId);
+GO

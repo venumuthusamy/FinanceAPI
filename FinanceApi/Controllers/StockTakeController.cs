@@ -28,6 +28,7 @@ namespace FinanceApi.Controllers
         [HttpGet("warehouse-items")]
         public async Task<IActionResult> GetWarehouseItems(
         [FromQuery] long warehouseId,
+        [FromQuery] long supplierId,
         [FromQuery] long binId,
         [FromQuery] byte takeTypeId,             // 1 = Full, 2 = Cycle  (required)
         [FromQuery] long? strategyId = null)    // strategyid is optional
@@ -41,7 +42,7 @@ namespace FinanceApi.Controllers
             if (takeTypeId == 2 && strategyId is null)
                 return BadRequest(new ResponseResult(false, "strategyId is required when takeTypeId = 2 (Cycle).", null));
 
-            var items = await _service.GetWarehouseItemsAsync(warehouseId, binId, takeTypeId, strategyId);
+            var items = await _service.GetWarehouseItemsAsync(warehouseId, supplierId, binId, takeTypeId, strategyId);
             return Ok(new ResponseResult(true, "Success", items));
         }
 
@@ -76,6 +77,26 @@ namespace FinanceApi.Controllers
             await _service.DeleteLicense(id, updatedBy);
             ResponseResult data = new ResponseResult(true, "StockTake Deleted sucessfully", null);
             return Ok(data);
+        }
+
+        [HttpPost("{id:int}/post")]
+        public async Task<IActionResult> PostInventory(int id, [FromBody] PostStockTakeRequest req)
+        {
+            var user = User?.Identity?.Name ?? "system";
+
+            var count = await _service.CreateInventoryAdjustmentsFromStockTakeAsync(
+                stockTakeId: id,
+                reason: req?.Reason,
+                remarks: req?.Remarks,
+                userName: user,
+                applyToStock: req?.ApplyToStock ?? true,
+                markPosted: req?.MarkPosted ?? true,
+                txnDateOverride: req?.TxnDate,
+                onlySelected: req?.OnlySelected ?? true
+            );
+
+            var msg = count == 0 ? "No variances to post." : $"Posted {count} adjustment line(s).";
+            return Ok(new ResponseResult(true, msg, new { Adjustments = count, StockTakeId = id }));
         }
     }
 }
