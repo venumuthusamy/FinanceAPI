@@ -9,7 +9,7 @@
         public decimal? CountedQty { get; set; }
         public decimal? BadCountedQty { get; set; }
         public decimal? VarianceQty { get; set; }
-        public int ReasonId { get; set; }
+        public string? Reason { get; set; }
         public string? Remarks { get; set; }
         public string? Barcode { get; set; }
 
