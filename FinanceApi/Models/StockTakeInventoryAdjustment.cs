@@ -7,7 +7,7 @@
         // What & Where
         public int ItemId { get; set; }
         public int WarehouseTypeId { get; set; }
-        public int LocationId { get; set; }
+        public int BinId { get; set; }
         // public int? BinId { get; set; } // Optional if you later support bins
 
         // When

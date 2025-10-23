@@ -4,7 +4,8 @@
     {
         public int Id { get; set; }
         public int StockTakeId { get; set; }
-        public int ItemId { get; set; }
+        public long ItemId { get; set; }
+        public long BinId { get; set; }
         public decimal OnHand { get; set; }
         public decimal? CountedQty { get; set; }
         public decimal? BadCountedQty { get; set; }

@@ -539,7 +539,6 @@ CREATE TABLE Strategy (
 CREATE TABLE StockTake (
     Id               INT IDENTITY(1,1) PRIMARY KEY,
     WarehouseTypeId  INT           NOT NULL,
-    LocationId       INT           NOT NULL,
     SupplierId       INT           NOT NULL,
     TakeTypeId       TINYINT       NOT NULL,     
     StrategyId       INT           NULL,         
@@ -550,10 +549,7 @@ CREATE TABLE StockTake (
     UpdatedBy        VARCHAR(100),
     UpdatedDate      DATETIME,
     IsActive         BIT           DEFAULT 1
-    FOREIGN KEY (WarehouseTypeId) REFERENCES Warehouse(Id),
-    FOREIGN KEY (LocationId) REFERENCES Location(Id),
-    FOREIGN KEY (StrategyId) REFERENCES Strategy(Id)
-    FOREIGN KEY (SupplierId) REFERENCES Suppliers(Id)
+ 
 );
 ALTER TABLE StockTake
 ADD CONSTRAINT CK_StockTake_TakeType CHECK (TakeTypeId IN (1,2));
@@ -562,7 +558,8 @@ ADD CONSTRAINT CK_StockTake_TakeType CHECK (TakeTypeId IN (1,2));
 CREATE TABLE StockTakeLines (
     Id               INT IDENTITY(1,1) PRIMARY KEY,
     StockTakeId      INT            NOT NULL,
-    ItemId           INT            NOT NULL,
+    ItemId           bigint            NOT NULL,
+    BinId           bigint            NOT NULL,
     OnHand     DECIMAL(18,3)  NOT NULL,     
     CountedQty       DECIMAL(18,3)  NULL,   
     BadCountedQty    DECIMAL(18,3)  NULL,      
@@ -577,14 +574,10 @@ CREATE TABLE StockTakeLines (
     UpdatedBy        VARCHAR(100),
     UpdatedDate      DATETIME,
     IsActive         BIT            DEFAULT 1,
-
-    FOREIGN KEY (StockTakeId) REFERENCES StockTake(Id),
-    FOREIGN KEY (ItemId) REFERENCES ItemMaster(Id)
 );
 
 
-CREATE INDEX IX_StockTakeLines_StockTakeId ON StockTakeLines(StockTakeId);
-CREATE INDEX IX_StockTakeLines_ItemId      ON StockTakeLines(ItemId);
+
 
 
 
@@ -594,9 +587,9 @@ CREATE TABLE dbo.StockTakeInventoryAdjustment (
     -- What & where
     ItemId           INT            NOT NULL,
     WarehouseTypeId  INT            NOT NULL,
-    LocationId       INT            NOT NULL,
+    BinId       INT            NOT NULL,
     SupplierId       INT            NOT NULL,
-    -- BinId         INT            NULL, -- add later if needed
+    
 
     -- When
     TxnDate          DATETIME2(3)   NOT NULL CONSTRAINT DF_STIA_TxnDate DEFAULT SYSUTCDATETIME(),
@@ -628,23 +621,7 @@ CREATE TABLE dbo.StockTakeInventoryAdjustment (
     UpdatedDate      DATETIME2(3)   NULL,
     IsActive         BIT            NOT NULL CONSTRAINT DF_STIA_IsActive DEFAULT (1)
 );
-GO
 
--- One-direction, non-zero sanity:
--- Ensures exactly one side is > 0, the other side = 0 (blocks 0/0 no-op rows)
-ALTER TABLE dbo.StockTakeInventoryAdjustment
-  ADD CONSTRAINT CK_STIA_OneDirection
-  CHECK (
-        (QtyIn  > 0 AND QtyOut = 0)
-     OR (QtyOut > 0 AND QtyIn  = 0)
-  );
-GO
 
--- Helpful indexes
-CREATE INDEX IX_STIA_Item_Loc_Date
-  ON dbo.StockTakeInventoryAdjustment(ItemId, WarehouseTypeId, LocationId,SupplierId, TxnDate DESC);
-GO
 
-CREATE INDEX IX_STIA_Source
-  ON dbo.StockTakeInventoryAdjustment(SourceType, SourceId, SourceLineId);
-GO
+
