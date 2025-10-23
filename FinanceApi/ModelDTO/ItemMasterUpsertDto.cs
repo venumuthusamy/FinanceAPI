@@ -19,5 +19,6 @@
 
         public List<ItemPriceDto> Prices { get; set; } = new();
         public List<ItemStockDto> ItemStocks { get; set; } = new();
+        public List<ItemBomUpsertDto>? BomLines { get; set; }
     }
 }
