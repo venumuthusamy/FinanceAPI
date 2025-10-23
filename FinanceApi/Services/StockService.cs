@@ -56,7 +56,7 @@ namespace FinanceApi.Services
             return await _repository.MarkAsTransferredBulkAsync(requests);
         }
 
-        public async Task<IEnumerable<StockListViewInfo>> GetAllStockTransferedList()
+        public async Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList()
         {
             return await _repository.GetAllStockTransferedList();
         }
@@ -67,6 +67,14 @@ namespace FinanceApi.Services
             return _repository.AdjustOnHandAsync(request);
         }
 
+        public async Task<ApproveBulkResult> ApproveTransfersBulkAsync(IEnumerable<ApproveTransferRequest> requests)
+        {
+            return await _repository.ApproveTransfersBulkAsync(requests);
+        }
 
+        public async Task<StockHistoryViewInfo> GetByIdStockHistory(long id)
+        {
+            return await _repository.GetByIdStockHistory(id);
+        }
     }
 }

@@ -26,5 +26,6 @@
         public string Uom {  get; set; }
 
         public int Available {  get; set; }
+
     }
 }
