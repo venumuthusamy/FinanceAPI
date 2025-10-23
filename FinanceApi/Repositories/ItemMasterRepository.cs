@@ -125,8 +125,8 @@ VALUES(@Sku,@Name,@Category,@Uom,@CostingMethodId,@TaxCodeId,@Specs,@PictureUrl,
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID,IsFullTransfer,IsPartialTransfer)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID,@IsFullTransfer,@IsPartialTransfer);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -146,7 +146,9 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.Available,
                         s.IsApproved,
                         s.IsTransfered,
-                        s.StockIssueID
+                        s.StockIssueID,
+                        s.IsFullTransfer,
+                        s.IsPartialTransfer
                     });
                 }
             }
@@ -250,8 +252,8 @@ WHERE Id=@Id;";
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID,IsFullTransfer,IsPartialTransfer)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID,@IsFullTransfer,@IsPartialTransfer);";
                 foreach (var s in dto.ItemStocks)
                 {
                     await Connection.ExecuteAsync(iw, new
@@ -271,7 +273,9 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.Available,
                         s.IsApproved,
                         s.IsTransfered,
-                        s.StockIssueID
+                        s.StockIssueID,
+                        s.IsFullTransfer,
+                        s.IsPartialTransfer
                     });
                 }
             }

@@ -143,5 +143,31 @@ namespace FinanceApi.Controllers
         }
 
 
+
+        [HttpPost("ApproveTransfersBulk")]
+        public async Task<IActionResult> ApproveTransfersBulk([FromBody] IEnumerable<ApproveTransferRequest> requests)
+        {
+            if (requests == null || !requests.Any())
+                return BadRequest("Invalid request data.");
+
+            var result = await _service.ApproveTransfersBulkAsync(requests);
+            return Ok(new
+            {
+                success = true,
+                message = "Transfers approved successfully.",
+                updatedItemWarehouseStock = result.UpdatedItemWarehouseStock,
+                updatedStock = result.UpdatedStock
+            });
+        }
+
+
+        [HttpGet("GetByIdStockHistory/{id}")]
+        public async Task<IActionResult> GetByIdStockHistory(int id)
+        {
+            var licenseObj = await _service.GetByIdStockHistory(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
+
     }
 }
