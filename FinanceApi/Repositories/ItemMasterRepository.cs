@@ -151,12 +151,33 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                 }
             }
 
+            // 3a) Insert BOM (if any)  ✅ ONLY ADDITION
+            if (dto.BomLines is not null && dto.BomLines.Count > 0)
+            {
+                const string ib = @"
+INSERT INTO dbo.ItemBom (ItemId, ExistingCost, UnitCost, CreatedBy)
+VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);";
+
+                for (int i = 0; i < dto.BomLines.Count; i++)
+                {
+                    var b = dto.BomLines[i];
+                    await Connection.ExecuteAsync(ib, new
+                    {
+                        ItemId = itemId,
+                      
+                        ExistingCost = b.ExistingCost,
+                        UnitCost = b.UnitCost,
+                        CreatedBy = dto.CreatedBy
+                    });
+                }
+            }
+
             // 4) 🟢 CREATE audit (no triggers)
             long? userId = null;
             if (long.TryParse(dto.CreatedBy, out var uid)) userId = uid;
 
             var newJson = await GetItemSnapshotJsonAsync(itemId);      // AFTER create snapshot
-            await AddAuditAsync(itemId, "CREATE", DateTime.Now, userId, null, newJson, null);
+            await AddAuditAsync(itemId, "CREATE", userId, null, newJson, null);
 
             return itemId;
         }
@@ -241,7 +262,7 @@ WHERE Id=@Id;";
                         ItemId = dto.Id,
                         SupplierId = p.SupplierId,
                         Price = p.Price,
-                        Barcode=p.Barcode
+                        Barcode = p.Barcode
                     });
                 }
             }
@@ -276,13 +297,37 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                 }
             }
 
+            // 2a) Replace BOM (if any)  ✅ ONLY ADDITION
+            await Connection.ExecuteAsync("DELETE FROM dbo.ItemBom WHERE ItemId=@Id;", new { dto.Id });
+
+            if (dto.BomLines is not null && dto.BomLines.Count > 0)
+            {
+                const string ib = @"
+INSERT INTO dbo.ItemBom (ItemId, ExistingCost, UnitCost, CreatedBy)
+VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);";
+
+                for (int i = 0; i < dto.BomLines.Count; i++)
+                {
+                    var b = dto.BomLines[i];
+                    await Connection.ExecuteAsync(ib, new
+                    {
+                        ItemId = dto.Id,
+                       
+                        ExistingCost = b.ExistingCost,
+                        UnitCost = b.UnitCost,
+                        CreatedBy = dto.UpdatedBy
+                    });
+                }
+            }
+
             // 3) 🟡 UPDATE audit (diff-friendly: before & after)
             long? userId = null;
             if (long.TryParse(dto.UpdatedBy, out var uid)) userId = uid;
 
             var newJson = await GetItemSnapshotJsonAsync(dto.Id);      // AFTER update snapshot
-            await AddAuditAsync(dto.Id, "UPDATE", DateTime.Now, userId, oldJson, newJson, oldJson);
+            await AddAuditAsync(dto.Id, "UPDATE", userId, oldJson, newJson, null);
         }
+
 
 
         public async Task DeactivateAsync(int id)
@@ -300,16 +345,15 @@ FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES;";
             return Connection.QueryFirstOrDefaultAsync<string>(sql, new { Id = id });
         }
 
-        private Task AddAuditAsync(long itemId, string action,DateTime OccurredAtUtc, long? userId, string? oldJson, string? newJson, string? remarks = null)
+        private Task AddAuditAsync(long itemId, string action, long? userId, string? oldJson, string? newJson, string? remarks = null)
         {
             const string insAudit = @"
-INSERT INTO dbo.ItemMasterAudit (ItemId, Action,OccurredAtUtc, UserId, OldValuesJson, NewValuesJson, Remarks)
-VALUES (@ItemId, @Action,SYSUTCDATETIME(), @UserId, @OldValuesJson, @NewValuesJson, @Remarks);";
+INSERT INTO dbo.ItemMasterAudit (ItemId, Action, UserId, OldValuesJson, NewValuesJson, Remarks)
+VALUES (@ItemId, @Action, @UserId, @OldValuesJson, @NewValuesJson, @Remarks);";
             return Connection.ExecuteAsync(insAudit, new
             {
                 ItemId = itemId,
                 Action = action,
-                OccurredAtUtc= OccurredAtUtc,
                 UserId = userId,
                 OldValuesJson = oldJson,
                 NewValuesJson = newJson,
