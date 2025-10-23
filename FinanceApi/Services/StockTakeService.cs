@@ -20,13 +20,13 @@ namespace FinanceApi.Services
         }
 
         public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
-                        long warehouseId,long supplierId, long binId, byte takeTypeId, long? strategyId)
+                        long warehouseId,long supplierId,byte takeTypeId, long? strategyId)
         {
             // (Optional) defensive check; your controller already validates this.
             if (takeTypeId == 2 && strategyId is null)
                 throw new ArgumentException("strategyId is required when takeTypeId = 2 (Cycle).", nameof(strategyId));
 
-            return await _repository.GetWarehouseItemsAsync(warehouseId, supplierId,binId, takeTypeId, strategyId);
+            return await _repository.GetWarehouseItemsAsync(warehouseId, supplierId,takeTypeId, strategyId);
         }
 
         public async Task<StockTakeDTO?> GetByIdAsync(int id)

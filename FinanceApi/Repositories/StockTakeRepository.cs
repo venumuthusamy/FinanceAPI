@@ -26,8 +26,6 @@ namespace FinanceApi.Repositories
             st.TakeTypeId,
             st.WarehouseTypeId,
             ISNULL(w.Name,'') AS WarehouseName,
-            st.LocationId,
-            ISNULL(B.BinName,'') AS LocationName,
             st.StrategyId,
             ISNULL(s.StrategyName,'') AS StrategyName,
             st.SupplierId,
@@ -41,7 +39,6 @@ namespace FinanceApi.Repositories
             st.IsActive
         FROM StockTake st
         LEFT JOIN Warehouse w ON st.WarehouseTypeId = w.Id
-        LEFT JOIN BIN  B ON st.LocationId      = B.Id
         LEFT JOIN Strategy  s ON st.StrategyId      = s.Id
         LEFT JOIN Suppliers  sp ON st.SupplierId      = sp.Id
         WHERE st.IsActive = 1
@@ -58,6 +55,7 @@ namespace FinanceApi.Repositories
             Id,
             StockTakeId,
             ItemId,
+            BinId,
             OnHand,
             CountedQty,
             BadCountedQty,
@@ -87,46 +85,36 @@ namespace FinanceApi.Repositories
             return headers;
         }
 
-
         public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
-     long warehouseId,
-     long supplierId,
-     long binId,
-     byte takeTypeId,
-     long? strategyId
- )
+                long warehouseId,
+                long supplierId,
+                byte takeTypeId,
+                long? strategyId)
         {
             const string sql = @"
 SELECT
-    im.Id   AS ItemId,
-    im.Sku  AS Sku,
-    im.Name AS ItemName,
+    im.Id                       AS ItemId,
+    im.Sku                      AS Sku,
+    im.Name                     AS ItemName,
     iws.WarehouseId,
+    w.Name                      AS WarehouseName,
     iws.BinId,
+    b.BinName                   AS BinName,
+    NULL                        AS BinCode,
     iws.OnHand,
     iws.Reserved,
     (iws.OnHand - iws.Reserved) AS AvailableQty,
     iws.MinQty,
     iws.MaxQty,
     iws.ReorderQty,
-    @SupplierId AS SupplierId
-    -- If you also want to *show* a price, uncomment this:
-    -- ,(
-    --   SELECT TOP 1 ip.Price
-    --   FROM dbo.ItemPrice ip
-    --   WHERE ip.ItemId = im.Id
-    --     AND (@SupplierId IS NULL OR ip.SupplierId = @SupplierId)
-    --   ORDER BY ip.UpdatedDate DESC, ip.Id DESC
-    -- ) AS Price
+    @SupplierId                 AS SupplierId
 FROM dbo.ItemWarehouseStock iws
 JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
+LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
 WHERE
     iws.WarehouseId = @WarehouseId
-    AND (@BinId IS NULL OR iws.BinId = @BinId)
-    AND (
-         @TakeTypeId = 1
-         OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId)
-    )
+    AND (@TakeTypeId = 1 OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId))
     AND (
         @SupplierId IS NULL
         OR EXISTS (
@@ -137,22 +125,18 @@ WHERE
         )
     )
 ORDER BY im.Sku, im.Name;
+
+
 ";
 
-            long? binParam = binId; // pass NULL from controller if you support "All bins"
-
-            return await Connection.QueryAsync<StockTakeWarehouseItem>(
-                sql,
-                new
-                {
-                    WarehouseId = warehouseId,
-                    BinId = binParam,
-                    TakeTypeId = takeTypeId,
-                    StrategyId = strategyId,
-                    SupplierId = supplierId
-                });
+            return await Connection.QueryAsync<StockTakeWarehouseItem>(sql, new
+            {
+                WarehouseId = warehouseId,
+                SupplierId = supplierId,
+                TakeTypeId = takeTypeId,
+                StrategyId = strategyId
+            });
         }
-
 
 
         public async Task<StockTakeDTO?> GetByIdAsync(int id)
@@ -163,8 +147,6 @@ ORDER BY im.Sku, im.Name;
             st.TakeTypeId,
             st.WarehouseTypeId,
             ISNULL(w.Name,'') AS WarehouseName,
-            st.LocationId,
-            ISNULL(B.BinName,'') AS LocationName,
             st.StrategyId,
             ISNULL(s.StrategyName,'') AS StrategyName,
             st.SupplierId,
@@ -178,7 +160,6 @@ ORDER BY im.Sku, im.Name;
             st.IsActive
         FROM StockTake st
         LEFT JOIN Warehouse w ON st.WarehouseTypeId = w.Id
-        LEFT JOIN BIN  B ON st.LocationId      = B.Id
         LEFT JOIN Strategy  s ON st.StrategyId      = s.Id
         LEFT JOIN Suppliers  sp ON st.SupplierId      = sp.Id
         WHERE st.Id = @Id AND st.IsActive = 1;";
@@ -192,6 +173,7 @@ ORDER BY im.Sku, im.Name;
             Id,
             StockTakeId,
             ItemId,
+            BinId,
             OnHand,
             CountedQty,
             BadCountedQty,
@@ -229,25 +211,25 @@ ORDER BY im.Sku, im.Name;
             const string insertHeaderSql = @"
 INSERT INTO StockTake
 (
-    WarehouseTypeId, LocationId, TakeTypeId, StrategyId,SupplierId,
+    WarehouseTypeId,TakeTypeId, StrategyId,SupplierId,
     Freeze, Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
 (
-    @WarehouseTypeId, @LocationId, @TakeTypeId, @StrategyId,@SupplierId,
+    @WarehouseTypeId,@TakeTypeId, @StrategyId,@SupplierId,
     @Freeze, @Status, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
             const string insertLinesSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId, OnHand, CountedQty,BadCountedQty, VarianceQty,Reason,
+    StockTakeId, ItemId,BinId, OnHand, CountedQty,BadCountedQty, VarianceQty,Reason,
     Barcode, Remarks,Selected, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId, @OnHand, @CountedQty,@BadCountedQty, @VarianceQty,@Reason,
+    @StockTakeId, @ItemId,@BinId, @OnHand, @CountedQty,@BadCountedQty, @VarianceQty,@Reason,
     @Barcode, @Remarks,@Selected, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
@@ -265,8 +247,7 @@ VALUES
                     insertHeaderSql,
                     new
                     {
-                        stockTake.WarehouseTypeId,
-                        stockTake.LocationId,
+                        stockTake.WarehouseTypeId,                       
                         stockTake.TakeTypeId,
                         stockTake.StrategyId,
                         stockTake.SupplierId,
@@ -288,6 +269,7 @@ VALUES
                     {
                         StockTakeId = newId,
                         l.ItemId,
+                        l.BinId,
                         l.OnHand,
                         CountedQty = l.CountedQty,
                         BadCountedQty = l.BadCountedQty,
@@ -332,7 +314,6 @@ VALUES
 UPDATE StockTake
 SET
     WarehouseTypeId = @WarehouseTypeId,
-    LocationId      = @LocationId,
     TakeTypeId      = @TakeTypeId,   -- if you renamed: TakeType
     StrategyId      = @StrategyId,
     SupplierId      = @SupplierId,
@@ -346,6 +327,7 @@ WHERE Id = @Id;";
 UPDATE StockTakeLines
 SET
     ItemId      = @ItemId,
+    BinId       = @BinId,
     OnHand      = @OnHand,
     CountedQty  = @CountedQty,
     BadCountedQty  = @BadCountedQty,
@@ -362,12 +344,12 @@ WHERE Id = @Id AND StockTakeId = @StockTakeId;";
             const string insertLineSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId, OnHand, CountedQty, BadCountedQty,VarianceQty,Reason
+    StockTakeId, ItemId,BinId, OnHand, CountedQty, BadCountedQty,VarianceQty,Reason
     Barcode, Remarks,Selected, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId, @OnHand, @CountedQty, @BadCountedQty,@VarianceQty,@Reason
+    @StockTakeId, @ItemId,@BinId, @OnHand, @CountedQty, @BadCountedQty,@VarianceQty,@Reason
     @Barcode, @Remarks,@Selected, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -391,8 +373,7 @@ WHERE StockTakeId = @StockTakeId
                 // 1) Update header
                 await conn.ExecuteAsync(updateHeaderSql, new
                 {
-                    updatedStockTake.WarehouseTypeId,
-                    updatedStockTake.LocationId,
+                    updatedStockTake.WarehouseTypeId,                  
                     updatedStockTake.TakeTypeId,   // if renamed -> TakeType
                     updatedStockTake.StrategyId,
                     updatedStockTake.SupplierId,
@@ -422,6 +403,7 @@ WHERE StockTakeId = @StockTakeId
                                 Id = l.Id,
                                 StockTakeId = updatedStockTake.Id,
                                 l.ItemId,
+                                l.BinId,
                                 l.OnHand,
                                 CountedQty = l.CountedQty,
                                 BadCountedQty = l.BadCountedQty,
@@ -442,6 +424,7 @@ WHERE StockTakeId = @StockTakeId
                             {
                                 StockTakeId = updatedStockTake.Id,
                                 l.ItemId,
+                                l.BinId,
                                 l.OnHand,
                                 CountedQty = l.CountedQty,
                                 BadCountedQty = l.BadCountedQty,
@@ -548,7 +531,7 @@ WHERE StockTakeId = @Id AND IsActive = 1;";
                 // 1) Header
                 const string headerSql = @"
 SELECT TOP(1)
-    Id, WarehouseTypeId, LocationId, TakeTypeId, StrategyId,SupplierId, Freeze, Status, IsActive
+    Id, WarehouseTypeId,TakeTypeId, StrategyId,SupplierId, Freeze, Status, IsActive
 FROM StockTake
 WHERE Id = @Id AND IsActive = 1;";
                 var header = await conn.QueryFirstOrDefaultAsync(headerSql, new { Id = stockTakeId }, tx);
@@ -563,7 +546,7 @@ WHERE Id = @Id AND IsActive = 1;";
 
                 // 2) Lines (optionally only Selected)
                 var linesSql = @"
-SELECT Id, StockTakeId, ItemId, OnHand, CountedQty, BadCountedQty, VarianceQty,
+SELECT Id, StockTakeId, ItemId,BinId, OnHand, CountedQty, BadCountedQty, VarianceQty,
        Barcode, Remarks, Reason, Selected, IsActive
 FROM StockTakeLines
 WHERE StockTakeId = @Id AND IsActive = 1";
@@ -589,7 +572,7 @@ WHERE StockTakeId = @Id AND IsActive = 1";
                 const string insertAdjSql = @"
 INSERT INTO StockTakeInventoryAdjustment
 (
-    ItemId, WarehouseTypeId, LocationId,SupplierId,
+    ItemId, BinId,WarehouseTypeId,SupplierId,
     TxnDate, Reason, Remarks,
     SourceType, SourceId, SourceLineId,
     QtyIn, QtyOut,
@@ -598,7 +581,7 @@ INSERT INTO StockTakeInventoryAdjustment
 )
 VALUES
 (
-    @ItemId, @WarehouseTypeId, @LocationId,@SupplierId,
+    @ItemId,@BinId, @WarehouseTypeId,@SupplierId,
     @TxnDate, @Reason, @Remarks,
     @SourceType, @SourceId, @SourceLineId,
     @QtyIn, @QtyOut,
@@ -623,8 +606,8 @@ VALUES
                     rows.Add(new
                     {
                         ItemId = l.ItemId,
-                        WarehouseTypeId = (int)header.WarehouseTypeId,
-                        LocationId = (int)header.LocationId,
+                        BinId = l.BinId,
+                        WarehouseTypeId = (int)header.WarehouseTypeId,                       
                         SupplierId = (int)header.SupplierId,
                         TxnDate = txnDate,
                         // prefer line reason; fall back to request reason
@@ -679,7 +662,7 @@ WHEN NOT MATCHED THEN
                     var upsertRows = lines.Select(l => new {
                         ItemId = l.ItemId,
                         WarehouseId = (int)header.WarehouseTypeId, // map to your actual WarehouseId
-                        BinId = (int)header.LocationId,      // map to your actual BinId
+                        BinId = l.BinId,      // map to your actual BinId
                         TotalPhysical = (l.CountedQty ?? 0m) + (l.BadCountedQty ?? 0m)
                     }).ToList();
 

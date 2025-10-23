@@ -5,6 +5,7 @@
         public long ItemId { get; set; }
         public string Sku { get; set; } = "";
         public string ItemName { get; set; } = "";
+        public string BinName { get; set; } = "";
         public string Barcode { get; set; } = "";
         public long WarehouseId { get; set; }
         public long? BinId { get; set; }
