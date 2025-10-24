@@ -12,5 +12,6 @@ namespace Interfaces
         Task<IEnumerable<ItemWarehouseStockDTO>> GetAuditsByItemAsync(int itemId);
         Task<IEnumerable<ItemWarehouseStockDTO>> GetWarehouseStockByItemAsync(int itemId);
         Task<IEnumerable<ItemWarehouseStockDTO>> GetSupplierPricesByItemAsync(int itemId);
+        Task<BomSnapshot> GetBomSnapshotAsync(long itemId);
     }
 }

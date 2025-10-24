@@ -169,7 +169,8 @@ VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);";
                       
                         ExistingCost = b.ExistingCost,
                         UnitCost = b.UnitCost,
-                        CreatedBy = dto.CreatedBy
+                        CreatedBy = dto.CreatedBy,
+
                     });
                 }
             }
@@ -302,13 +303,13 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
             }
 
             // 2a) Replace BOM (if any)  ✅ ONLY ADDITION
-            await Connection.ExecuteAsync("DELETE FROM dbo.ItemBom WHERE ItemId=@Id;", new { dto.Id });
+           // await Connection.ExecuteAsync("DELETE FROM dbo.ItemBom WHERE ItemId=@Id;", new { dto.Id });
 
             if (dto.BomLines is not null && dto.BomLines.Count > 0)
             {
                 const string ib = @"
-INSERT INTO dbo.ItemBom (ItemId, ExistingCost, UnitCost, CreatedBy)
-VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);";
+INSERT INTO dbo.ItemBom (ItemId, ExistingCost, UnitCost, CreatedBy,SupplierId)
+VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy, @SupplierId);";
 
                 for (int i = 0; i < dto.BomLines.Count; i++)
                 {
@@ -319,7 +320,8 @@ VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);";
                        
                         ExistingCost = b.ExistingCost,
                         UnitCost = b.UnitCost,
-                        CreatedBy = dto.UpdatedBy
+                        CreatedBy = dto.UpdatedBy,
+                        SupplierId = b.SupplierId
                     });
                 }
             }
@@ -429,6 +431,38 @@ WHERE ip.ItemId = @ItemId
 ORDER BY s.Name";
            
             return await Connection.QueryAsync<ItemWarehouseStockDTO>(sql, new { ItemId = itemId });
+        }
+
+        public async Task<BomSnapshot> GetBomSnapshotAsync(long itemId)
+        {
+            const string sql = @"
+;WITH Ranked AS (
+  SELECT b.*,
+         ROW_NUMBER() OVER (PARTITION BY b.ItemId, b.SupplierId ORDER BY b.CreatedDate DESC, b.Id DESC) AS rn
+  FROM Finance.dbo.ItemBom b
+  WHERE b.ItemId = @ItemId
+)
+SELECT SupplierId, ExistingCost, UnitCost, CreatedDate
+FROM Ranked
+WHERE rn = 1
+ORDER BY SupplierId;
+
+;WITH Ranked3 AS (
+  SELECT b.SupplierId, b.ExistingCost, b.UnitCost, b.CreatedDate,
+         ROW_NUMBER() OVER (PARTITION BY b.ItemId, b.SupplierId ORDER BY b.CreatedDate DESC, b.Id DESC) AS rn
+  FROM Finance.dbo.ItemBom b
+  WHERE b.ItemId = @ItemId
+)
+SELECT SupplierId, ExistingCost, UnitCost, CreatedDate, rn
+FROM Ranked3
+WHERE rn <= 3
+ORDER BY SupplierId, rn;";
+
+            using var multi = await Connection.QueryMultipleAsync(sql, new { ItemId = itemId });
+            var latest = (await multi.ReadAsync<BomLatestRow>()).ToList();
+            var history = (await multi.ReadAsync<BomHistoryPoint>()).ToList();
+
+            return new BomSnapshot { Latest = latest, History = history };
         }
 
     }

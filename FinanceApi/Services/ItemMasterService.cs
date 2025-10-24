@@ -33,5 +33,9 @@ namespace FinanceApi.Services
         {
             return _repo.GetAuditsByItemAsync(itemId);
         }
+        public Task<BomSnapshot> GetBomSnapshot(int itemId)
+        {
+            return _repo.GetBomSnapshotAsync(itemId);
+        }
     }
 }
