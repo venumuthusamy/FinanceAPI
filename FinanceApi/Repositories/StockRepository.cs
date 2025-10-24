@@ -103,7 +103,7 @@ VALUES (
         public async Task<IEnumerable<StockListViewInfo>> GetAllStockList()
         {
             const string query = @"
-                          select im.Id,im.Name,im.Sku,
+                                                   select im.Id,im.Name,im.Sku,
 iws.WarehouseId,wh.Name as WarehouseName,
 iws.BinId,bn.BinName,
 iws.Available,
@@ -112,7 +112,7 @@ from ItemMaster as im
 inner join ItemWarehouseStock as iws on iws.ItemId = im.Id
 inner join Warehouse as wh on wh.Id = iws.WarehouseId
 inner join BIN as bn on bn.ID = iws.BinId
-where iws.Available != 0 or iws.IsPartialTransfer = 1;
+where iws.Available != 0 and iws.IsTransfered = 0 ;
 ";
 
             return await Connection.QueryAsync<StockListViewInfo>(query);
@@ -166,7 +166,7 @@ WHERE ItemId = @ItemId
     iws.BinId,
     bn.BinName,
     s.Available,
-    iws.IsApproved,
+    s.IsApproved,
     iws.IsTransfered,
     s.OnHand,
     iws.MinQty,
@@ -232,6 +232,10 @@ SET
     OnHand            = OnHand - @TransferQty,
     IsFullTransfer    = @IsFullTransfer,
     IsPartialTransfer = @IsPartialTransfer,
+IsTransfered      = CASE 
+                           WHEN @IsPartialTransfer = 1 THEN 0  -- partial → mark as not transferred
+                           ELSE IsTransfered                   -- keep existing value
+                        END,
     WarehouseId = CASE 
                     WHEN @IsFullTransfer = 1 THEN @ToWarehouseId  -- only change if full transfer
                     ELSE WarehouseId 
@@ -295,6 +299,7 @@ WHERE iws.IsTransfered = 1 AND s.Id = @Id
 ";
             return await Connection.QuerySingleAsync<StockHistoryViewInfo>(query, new { Id = id });
         }
+
 
 
     }
