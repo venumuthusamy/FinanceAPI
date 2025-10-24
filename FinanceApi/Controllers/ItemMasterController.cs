@@ -117,6 +117,16 @@ namespace FinanceApi.Controllers
 
             return Ok(new ResponseResult(true, "Success", item));
         }
+        [HttpGet("GetBom/{itemId}")]
+
+        public async Task<IActionResult> GetBom(int itemId)
+        {
+            var item = await _service.GetBomSnapshot(itemId);
+            if (item == null)
+                return Ok(new ResponseResult(false, "ItemBom not found", null));
+
+            return Ok(new ResponseResult(true, "Success", item));
+        }
     }
 }
 

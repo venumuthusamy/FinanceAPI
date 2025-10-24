@@ -12,5 +12,6 @@ namespace InterfaceService
         Task<IEnumerable<ItemWarehouseStockDTO?>> getStockByItemId(int itemId);
         Task<IEnumerable<ItemWarehouseStockDTO?>> getPriceByItemId(int itemId);
         Task<IEnumerable<ItemWarehouseStockDTO?>> getAuditByItemId(int itemId);
+        Task<BomSnapshot> GetBomSnapshot(int itemId);
     }
 }
