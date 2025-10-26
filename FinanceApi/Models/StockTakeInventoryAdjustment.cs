@@ -24,6 +24,8 @@
 
         // Quantities
         public decimal QtyIn { get; set; }
+        public decimal CountedQty { get; set; }
+        public decimal BadCountedQty { get; set; }
         public decimal QtyOut { get; set; }
 
         // Audit snapshot

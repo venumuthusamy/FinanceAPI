@@ -54,6 +54,9 @@ namespace FinanceApi.Repositories
         SELECT
             Id,
             StockTakeId,
+            WarehouseTypeId,
+            SupplierId,
+            Status,
             ItemId,
             BinId,
             OnHand,
@@ -86,12 +89,42 @@ namespace FinanceApi.Repositories
         }
 
         public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
-                long warehouseId,
-                long supplierId,
-                byte takeTypeId,
-                long? strategyId)
+     long warehouseId,
+     long supplierId,        // pass 0 for "no supplier filter"
+     byte takeTypeId,
+     long? strategyId)
         {
-            const string sql = @"
+            // 1) Find the most relevant matching StockTake (if any)
+            const string findStockTakeSql = @"
+SELECT TOP (1)
+    st.Id     AS StockTakeId,
+    st.Status AS StockTakeStatus
+FROM dbo.StockTake st
+WHERE
+    st.IsActive       = 1
+    AND st.WarehouseTypeId = @WarehouseId
+    AND st.TakeTypeId      = @TakeTypeId
+    AND (NULLIF(@SupplierId,0) IS NULL OR st.SupplierId = @SupplierId)
+    AND (@StrategyId IS NULL OR st.StrategyId = @StrategyId)
+ORDER BY st.CreatedDate DESC, st.Id DESC;";
+
+            var match = await Connection.QueryFirstOrDefaultAsync<(long StockTakeId, int StockTakeStatus)>(
+                findStockTakeSql,
+                new { WarehouseId = warehouseId, SupplierId = supplierId, TakeTypeId = takeTypeId, StrategyId = strategyId }
+            );
+
+            // 2) If matched & status is 1 or 2 (Draft/Approve), throw an error
+            if (match.StockTakeId != 0 && (match.StockTakeStatus == 1 || match.StockTakeStatus == 2))
+            {
+                // throw a meaningful error; adjust exception type to your API layer
+                throw new InvalidOperationException(
+                    "A matching StockTake exists in Draft/Approved status.So Listing items is not allowed.Check and Proceed");
+            }
+
+            // 3) If NO match → return the normal list (BaseItems)
+            if (match.StockTakeId == 0)
+            {
+                const string baseSql = @"
 SELECT
     im.Id                       AS ItemId,
     im.Sku                      AS Sku,
@@ -100,23 +133,26 @@ SELECT
     w.Name                      AS WarehouseName,
     iws.BinId,
     b.BinName                   AS BinName,
-    NULL                        AS BinCode,
+    CAST(NULL AS varchar(50))   AS BinCode,
     iws.OnHand,
     iws.Reserved,
     (iws.OnHand - iws.Reserved) AS AvailableQty,
     iws.MinQty,
     iws.MaxQty,
     iws.ReorderQty,
-    @SupplierId                 AS SupplierId
+    NULLIF(@SupplierId,0)       AS SupplierId
 FROM dbo.ItemWarehouseStock iws
 JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
 JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
 LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
 WHERE
     iws.WarehouseId = @WarehouseId
-    AND (@TakeTypeId = 1 OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId))
     AND (
-        @SupplierId IS NULL
+          @TakeTypeId = 1
+       OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId)
+    )
+    AND (
+        NULLIF(@SupplierId,0) IS NULL
         OR EXISTS (
             SELECT 1
             FROM dbo.ItemPrice ip
@@ -124,19 +160,103 @@ WHERE
               AND ip.SupplierId = @SupplierId
         )
     )
-ORDER BY im.Sku, im.Name;
+ORDER BY im.Sku, im.Name;";
 
+                return await Connection.QueryAsync<StockTakeWarehouseItem>(baseSql, new
+                {
+                    WarehouseId = warehouseId,
+                    SupplierId = supplierId,
+                    TakeTypeId = takeTypeId,
+                    StrategyId = strategyId
+                });
+            }
 
-";
+            // 4) Matched & Status = 3 → apply your three conditions
+            const string postedSql = @"
+WITH BaseItems AS (
+    SELECT
+        im.Id                       AS ItemId,
+        im.Sku                      AS Sku,
+        im.Name                     AS ItemName,
+        iws.WarehouseId,
+        w.Name                      AS WarehouseName,
+        iws.BinId,
+        b.BinName                   AS BinName,
+        CAST(NULL AS varchar(50))   AS BinCode,
+        iws.OnHand,
+        iws.Reserved,
+        (iws.OnHand - iws.Reserved) AS AvailableQty,
+        iws.MinQty,
+        iws.MaxQty,
+        iws.ReorderQty,
+        NULLIF(@SupplierId,0)       AS SupplierId
+    FROM dbo.ItemWarehouseStock iws
+    JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+    JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
+    LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
+    WHERE
+        iws.WarehouseId = @WarehouseId
+        AND (
+              @TakeTypeId = 1
+           OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId)
+        )
+        AND (
+            NULLIF(@SupplierId,0) IS NULL
+            OR EXISTS (
+                SELECT 1
+                FROM dbo.ItemPrice ip
+                WHERE ip.ItemId = im.Id
+                  AND ip.SupplierId = @SupplierId
+            )
+        )
+),
+Joined AS (
+    SELECT
+        bi.*,
+        stl.Id                    AS LineId,
+        ISNULL(stl.Selected,0)    AS Selected,
+        ISNULL(stl.VarianceQty,0) AS VarianceQty,
+        stl.OnHand                AS LineOnHand
+    FROM BaseItems bi
+    LEFT JOIN dbo.StockTakeLines stl
+      ON stl.StockTakeId = @StockTakeId
+     AND stl.ItemId      = bi.ItemId
+     AND stl.BinId       = bi.BinId
+)
+SELECT
+    ItemId,
+    Sku,
+    ItemName,
+    WarehouseId,
+    WarehouseName,
+    BinId,
+    BinName,
+    BinCode,
+    OnHand,
+    Reserved,
+    AvailableQty,
+    MinQty,
+    MaxQty,
+    ReorderQty,
+    SupplierId
+FROM Joined
+WHERE
+      Selected = 0
+   OR (Selected = 1 AND VarianceQty = 0 AND ISNULL(OnHand,0) <> ISNULL(LineOnHand,0))
+   OR (Selected = 1 AND VarianceQty <> 0)
+   OR (LineId IS NULL)   -- keep if you want to surface items with no line yet
+ORDER BY Sku, ItemName;";
 
-            return await Connection.QueryAsync<StockTakeWarehouseItem>(sql, new
+            return await Connection.QueryAsync<StockTakeWarehouseItem>(postedSql, new
             {
                 WarehouseId = warehouseId,
                 SupplierId = supplierId,
                 TakeTypeId = takeTypeId,
-                StrategyId = strategyId
+                StrategyId = strategyId,
+                StockTakeId = match.StockTakeId
             });
         }
+
 
 
         public async Task<StockTakeDTO?> GetByIdAsync(int id)
@@ -172,6 +292,9 @@ ORDER BY im.Sku, im.Name;
         SELECT
             Id,
             StockTakeId,
+            WarehouseTypeId,
+            SupplierId,
+            Status,
             ItemId,
             BinId,
             OnHand,
@@ -224,12 +347,12 @@ VALUES
             const string insertLinesSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId,BinId, OnHand, CountedQty,BadCountedQty, VarianceQty,Reason,
+    StockTakeId, ItemId,BinId, OnHand, CountedQty,BadCountedQty, VarianceQty,Reason,WarehouseTypeId,SupplierId,Status,
     Barcode, Remarks,Selected, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId,@BinId, @OnHand, @CountedQty,@BadCountedQty, @VarianceQty,@Reason,
+    @StockTakeId, @ItemId,@BinId, @OnHand, @CountedQty,@BadCountedQty, @VarianceQty,@Reason,@WarehouseTypeId,@SupplierId,@Status,
     @Barcode, @Remarks,@Selected, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
@@ -270,6 +393,9 @@ VALUES
                         StockTakeId = newId,
                         l.ItemId,
                         l.BinId,
+                        l.WarehouseTypeId,
+                        l.SupplierId,
+                        l.Status,
                         l.OnHand,
                         CountedQty = l.CountedQty,
                         BadCountedQty = l.BadCountedQty,
@@ -328,6 +454,9 @@ UPDATE StockTakeLines
 SET
     ItemId      = @ItemId,
     BinId       = @BinId,
+    WarehouseTypeId = @WarehouseTypeId, 
+    SupplierId = @SupplierId,
+    Status  = @Status,
     OnHand      = @OnHand,
     CountedQty  = @CountedQty,
     BadCountedQty  = @BadCountedQty,
@@ -344,12 +473,12 @@ WHERE Id = @Id AND StockTakeId = @StockTakeId;";
             const string insertLineSql = @"
 INSERT INTO StockTakeLines
 (
-    StockTakeId, ItemId,BinId, OnHand, CountedQty, BadCountedQty,VarianceQty,Reason
+    StockTakeId, ItemId,BinId, OnHand, CountedQty, BadCountedQty,VarianceQty,Reason,WarehouseTypeId,SupplierId,Status,
     Barcode, Remarks,Selected, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @StockTakeId, @ItemId,@BinId, @OnHand, @CountedQty, @BadCountedQty,@VarianceQty,@Reason
+    @StockTakeId, @ItemId,@BinId, @OnHand, @CountedQty, @BadCountedQty,@VarianceQty,@Reason,@WarehouseTypeId,@SupplierId,@Status,
     @Barcode, @Remarks,@Selected, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -404,6 +533,9 @@ WHERE StockTakeId = @StockTakeId
                                 StockTakeId = updatedStockTake.Id,
                                 l.ItemId,
                                 l.BinId,
+                                l.WarehouseTypeId,
+                                l.SupplierId,
+                                l.Status,
                                 l.OnHand,
                                 CountedQty = l.CountedQty,
                                 BadCountedQty = l.BadCountedQty,
@@ -425,6 +557,9 @@ WHERE StockTakeId = @StockTakeId
                                 StockTakeId = updatedStockTake.Id,
                                 l.ItemId,
                                 l.BinId,
+                                l.WarehouseTypeId,
+                                l.SupplierId,
+                                l.Status,
                                 l.OnHand,
                                 CountedQty = l.CountedQty,
                                 BadCountedQty = l.BadCountedQty,
@@ -511,15 +646,16 @@ WHERE StockTakeId = @Id AND IsActive = 1;";
         }
 
         // In StockTakeRepository
+
         public async Task<int> CreateFromStockTakeAsync(
-            int stockTakeId,
-            string? reason,
-            string? remarks,
-            string userName,
-            bool applyToStock = true,
-            bool markPosted = true,
-            DateTime? txnDateOverride = null,
-            bool onlySelected = true)
+      int stockTakeId,
+      string? reason,
+      string? remarks,
+      string userName,
+      bool applyToStock = true,
+      bool markPosted = true,
+      DateTime? txnDateOverride = null,
+      bool onlySelected = true)
         {
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
@@ -531,22 +667,21 @@ WHERE StockTakeId = @Id AND IsActive = 1;";
                 // 1) Header
                 const string headerSql = @"
 SELECT TOP(1)
-    Id, WarehouseTypeId,TakeTypeId, StrategyId,SupplierId, Freeze, Status, IsActive
+    Id, WarehouseTypeId, TakeTypeId, StrategyId, SupplierId, Freeze, Status, IsActive
 FROM StockTake
 WHERE Id = @Id AND IsActive = 1;";
                 var header = await conn.QueryFirstOrDefaultAsync(headerSql, new { Id = stockTakeId }, tx);
                 if (header is null) throw new KeyNotFoundException($"StockTake {stockTakeId} not found.");
 
-                // Guard: only Approved can post; Posted is blocked
                 int status = (int)header.Status;
                 if (status == (int)StockTakeStatus.Posted)
                     throw new InvalidOperationException("This stock take is already posted.");
                 if (status != (int)StockTakeStatus.Approved)
                     throw new InvalidOperationException("Only Approved stock takes can be posted.");
 
-                // 2) Lines (optionally only Selected)
+                // 2) Lines
                 var linesSql = @"
-SELECT Id, StockTakeId, ItemId,BinId, OnHand, CountedQty, BadCountedQty, VarianceQty,
+SELECT Id, StockTakeId, ItemId, BinId, OnHand, CountedQty, BadCountedQty, VarianceQty,
        Barcode, Remarks, Reason, Selected, IsActive
 FROM StockTakeLines
 WHERE StockTakeId = @Id AND IsActive = 1";
@@ -555,12 +690,24 @@ WHERE StockTakeId = @Id AND IsActive = 1";
 
                 var lines = (await conn.QueryAsync<StockTakeLines>(linesSql, new { Id = stockTakeId }, tx)).ToList();
 
+                // EARLY EXIT: no lines to process — still post header and ALL lines (new)
                 if (lines.Count == 0)
                 {
                     if (markPosted)
+                    {
+                        // post header
                         await conn.ExecuteAsync(
                             "UPDATE StockTake SET Status=@S, UpdatedBy=@U, UpdatedDate=SYSUTCDATETIME() WHERE Id=@Id;",
                             new { S = (int)StockTakeStatus.Posted, U = userName, Id = stockTakeId }, tx);
+
+                        // post ALL lines of this take (selected/unselected)
+                        await conn.ExecuteAsync(@"
+UPDATE StockTakeLines
+SET Status = @S, UpdatedBy = @U, UpdatedDate = SYSUTCDATETIME()
+WHERE StockTakeId = @Id AND IsActive = 1;",
+                            new { S = (int)StockTakeLineStatus.Posted, U = userName, Id = stockTakeId }, tx);
+                    }
+
                     tx.Commit();
                     return 0;
                 }
@@ -568,81 +715,96 @@ WHERE StockTakeId = @Id AND IsActive = 1";
                 var now = DateTime.UtcNow;
                 var txnDate = txnDateOverride ?? now;
 
-                // 3) Insert StockTakeInventoryAdjustment rows (variance-only)
+                // 3) Insert StockTakeInventoryAdjustment rows (variance-only) — unchanged logic
                 const string insertAdjSql = @"
 INSERT INTO StockTakeInventoryAdjustment
 (
-    ItemId, BinId,WarehouseTypeId,SupplierId,
+    ItemId, BinId, WarehouseTypeId, SupplierId,
     TxnDate, Reason, Remarks,
     SourceType, SourceId, SourceLineId,
     QtyIn, QtyOut,
-    QtyBefore, QtyAfter,
+    QtyBefore,CountedQty,BadCountedQty, QtyAfter,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
-    @ItemId,@BinId, @WarehouseTypeId,@SupplierId,
+    @ItemId, @BinId, @WarehouseTypeId, @SupplierId,
     @TxnDate, @Reason, @Remarks,
     @SourceType, @SourceId, @SourceLineId,
     @QtyIn, @QtyOut,
-    @QtyBefore, @QtyAfter,
+    @QtyBefore,@CountedQty,@BadCountedQty, @QtyAfter,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );";
 
-                var rows = new List<object>();
+                var adjRows = new List<object>();
+                var postedLineIds = new List<int>(); // lines that produced an adjustment
 
                 foreach (var l in lines)
                 {
                     decimal before = l.OnHand;
                     decimal good = l.CountedQty ?? 0m;
                     decimal bad = l.BadCountedQty ?? 0m;
-                    decimal? variance = l.VarianceQty ?? (good + bad - before);
+                    //decimal variance = l.VarianceQty ?? (good + bad - before);
 
-                    if (!variance.HasValue || variance.Value == 0m) continue;
+                    //if (variance == 0m) continue;
 
-                    decimal qtyIn = variance.Value > 0 ? variance.Value : 0m;
-                    decimal qtyOut = variance.Value < 0 ? -variance.Value : 0m;
+                    decimal variance = l.VarianceQty ?? (good - before);   // GOOD ONLY
+                    if (variance == 0m && bad == 0m)                       // skip only if truly no change
+                        continue;
 
-                    rows.Add(new
+                    decimal qtyIn = variance > 0 ? variance : 0m;
+                    decimal qtyOut = variance < 0 ? -variance : 0m;
+
+                    adjRows.Add(new
                     {
                         ItemId = l.ItemId,
                         BinId = l.BinId,
-                        WarehouseTypeId = (int)header.WarehouseTypeId,                       
+                        WarehouseTypeId = (int)header.WarehouseTypeId,
                         SupplierId = (int)header.SupplierId,
                         TxnDate = txnDate,
-                        // prefer line reason; fall back to request reason
-                        Reason = l.Reason,
-                        Remarks = (l.Remarks?.Trim().Length > 0 ? l.Remarks : remarks) ?? null,
+                        Reason = string.IsNullOrWhiteSpace(l.Reason) ? reason : l.Reason,
+                        Remarks = !string.IsNullOrWhiteSpace(l.Remarks) ? l.Remarks : remarks,
                         SourceType = "StockTake",
                         SourceId = stockTakeId,
                         SourceLineId = l.Id,
                         QtyIn = qtyIn,
                         QtyOut = qtyOut,
                         QtyBefore = before,
-                        // QtyAfter = total physical counted (good+bad). If you want only good, change here.
-                        QtyAfter = (decimal?)(good + bad),
+                        CountedQty = good,
+                        BadCountedQty = bad,
+                        QtyAfter = good + bad,
                         CreatedBy = userName,
                         CreatedDate = now,
                         UpdatedBy = userName,
                         UpdatedDate = now
                     });
+
+                    postedLineIds.Add(l.Id);
                 }
 
-                if (rows.Count == 0)
+                if (adjRows.Count == 0)
                 {
+                    // no variance lines — still post header & all lines (new)
                     if (markPosted)
+                    {
                         await conn.ExecuteAsync(
                             "UPDATE StockTake SET Status=@S, UpdatedBy=@U, UpdatedDate=SYSUTCDATETIME() WHERE Id=@Id;",
                             new { S = (int)StockTakeStatus.Posted, U = userName, Id = stockTakeId }, tx);
+
+                        await conn.ExecuteAsync(@"
+UPDATE StockTakeLines
+SET Status = @S, UpdatedBy = @U, UpdatedDate = SYSUTCDATETIME()
+WHERE StockTakeId = @Id AND IsActive = 1;",
+                            new { S = (int)StockTakeLineStatus.Posted, U = userName, Id = stockTakeId }, tx);
+                    }
+
                     tx.Commit();
                     return 0;
                 }
 
-                await conn.ExecuteAsync(insertAdjSql, rows, tx);
+                await conn.ExecuteAsync(insertAdjSql, adjRows, tx); // writes to StockTakeInventoryAdjustment (unchanged)
 
-                // 4) Apply to stock (set OnHand = good + bad)
-                // 4) Apply to stock (reset OnHand to total physical = usable + unusable)
-                // 4) Apply to stock (reset OnHand to total physical = usable + unusable)
+                // 4) Apply to stock for lines that had variance (unchanged)
                 if (applyToStock)
                 {
                     const string upsertStockSql = @"
@@ -658,20 +820,56 @@ WHEN NOT MATCHED THEN
     INSERT (ItemId, WarehouseId, BinId, OnHand, Reserved, MinQty, MaxQty, ReorderQty)
     VALUES (src.ItemId, src.WarehouseId, src.BinId, src.TotalPhysical, 0, 0, 0, 0);";
 
-                    // Tip: batch execute for performance
-                    var upsertRows = lines.Select(l => new {
-                        ItemId = l.ItemId,
-                        WarehouseId = (int)header.WarehouseTypeId, // map to your actual WarehouseId
-                        BinId = l.BinId,      // map to your actual BinId
-                        TotalPhysical = (l.CountedQty ?? 0m) + (l.BadCountedQty ?? 0m)
-                    }).ToList();
+                    var upsertRows = lines
+                        .Where(l => postedLineIds.Contains(l.Id))
+                        .Select(l => new
+                        {
+                            ItemId = l.ItemId,
+                            WarehouseId = (int)header.WarehouseTypeId,
+                            BinId = l.BinId,
+                            //TotalPhysical = (l.CountedQty ?? 0m) + (l.BadCountedQty ?? 0m)
+
+                            // If there are any faulty pieces, keep OnHand = GOOD only.
+                            // Otherwise (no faulty), good+bad == good anyway.
+                            TotalPhysical = (l.BadCountedQty ?? 0m) > 0m
+                                ? (l.CountedQty ?? 0m)                           // good only
+                                : ((l.CountedQty ?? 0m) + (l.BadCountedQty ?? 0m)) // same as good when bad=0
+                        })
+                        .ToList();
 
                     await conn.ExecuteAsync(upsertStockSql, upsertRows, tx);
                 }
 
+                // 5) Post the variance lines (existing)
+                await conn.ExecuteAsync(@"
+UPDATE StockTakeLines
+SET Status = @S, UpdatedBy = @U, UpdatedDate = @D
+WHERE Id IN @Ids;",
+                    new
+                    {
+                        S = (int)StockTakeLineStatus.Posted,
+                        U = userName,
+                        D = now,
+                        Ids = postedLineIds
+                    }, tx);
 
+                // 6) Ensure ALL lines are Posted when the take is posted (new)
+                if (markPosted)
+                {
+                    await conn.ExecuteAsync(@"
+UPDATE StockTakeLines
+SET Status = @S, UpdatedBy = @U, UpdatedDate = @D
+WHERE StockTakeId = @StockTakeId AND IsActive = 1;",
+                        new
+                        {
+                            S = (int)StockTakeLineStatus.Posted,
+                            U = userName,
+                            D = now,
+                            StockTakeId = stockTakeId
+                        }, tx);
+                }
 
-                // 5) Mark posted
+                // 7) Post header (existing)
                 if (markPosted)
                 {
                     await conn.ExecuteAsync(
@@ -680,7 +878,7 @@ WHEN NOT MATCHED THEN
                 }
 
                 tx.Commit();
-                return rows.Count;
+                return postedLineIds.Count; // count of lines that produced adjustments
             }
             catch
             {
@@ -688,6 +886,7 @@ WHEN NOT MATCHED THEN
                 throw;
             }
         }
+
 
 
     }
