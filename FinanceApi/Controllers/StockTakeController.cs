@@ -40,8 +40,18 @@ namespace FinanceApi.Controllers
             if (takeTypeId == 2 && strategyId is null)
                 return BadRequest(new ResponseResult(false, "strategyId is required when takeTypeId = 2 (Cycle).", null));
 
-            var items = await _service.GetWarehouseItemsAsync(warehouseId, supplierId,takeTypeId, strategyId);
-            return Ok(new ResponseResult(true, "Success", items));
+            
+
+            try
+            {
+                var items = await _service.GetWarehouseItemsAsync(warehouseId, supplierId, takeTypeId, strategyId);
+                return Ok(new ResponseResult(true, "Success", items));
+            }
+            catch (InvalidOperationException ex)  // thrown when status 1/2
+            {
+                // 409 is appropriate for a domain conflict
+                return Conflict(new { message = ex.Message });
+            }
         }
 
 

@@ -24,4 +24,6 @@ namespace FinanceApi.Models
         Approved = 2,
         Posted = 3
     }
+
+    public enum StockTakeLineStatus { Draft = 1, Approved = 2, Posted = 3 }
 }

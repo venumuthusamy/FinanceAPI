@@ -4,6 +4,9 @@
     {
         public int Id { get; set; }
         public int StockTakeId { get; set; }
+        public int WarehouseTypeId { get; set; }     
+        public int SupplierId { get; set; }
+        public int Status { get; set; }
         public long ItemId { get; set; }
         public long BinId { get; set; }
         public decimal OnHand { get; set; }

@@ -558,6 +558,9 @@ ADD CONSTRAINT CK_StockTake_TakeType CHECK (TakeTypeId IN (1,2));
 CREATE TABLE StockTakeLines (
     Id               INT IDENTITY(1,1) PRIMARY KEY,
     StockTakeId      INT            NOT NULL,
+    WarehouseTypeId      INT            NOT NULL,
+    SupplierId      INT            NOT NULL,
+    Status           TINYINT       null,
     ItemId           bigint            NOT NULL,
     BinId           bigint            NOT NULL,
     OnHand     DECIMAL(18,3)  NOT NULL,     
@@ -609,6 +612,8 @@ CREATE TABLE dbo.StockTakeInventoryAdjustment (
 
     -- Optional audit snapshot
     QtyBefore        DECIMAL(18,3)  NULL,
+    CountedQty       DECIMAL(18,3)  NULL,   
+    BadCountedQty    DECIMAL(18,3)  NULL, 
     QtyAfter         DECIMAL(18,3)  NULL,
 
     -- Cost hooks (optional)
