@@ -1,9 +1,7 @@
-﻿using FinanceApi.Interfaces;
-using FinanceApi.InterfaceService;
+﻿using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
-using FinanceApi.Models;
 using Interfaces;
-using InterfaceService;
+
 
 namespace FinanceApi.Services
 {
@@ -19,23 +17,23 @@ namespace FinanceApi.Services
         public Task DeleteAsync(int id) => _repo.DeactivateAsync(id);
 
         public Task<IEnumerable<ItemWarehouseStockDTO>> getStockByItemId(int itemId)
-        {
-           return _repo.GetWarehouseStockByItemAsync(itemId);
-        }
+            => _repo.GetWarehouseStockByItemAsync(itemId);
 
-        public Task<IEnumerable<ItemWarehouseStockDTO?>> getPriceByItemId(int itemId)
-        {
-          return _repo.GetSupplierPricesByItemAsync(itemId);
-        }
+        // ✅ make the return types consistent (non-nullable element type)
+        public Task<IEnumerable<ItemWarehouseStockDTO>> getPriceByItemId(int itemId)
+            => _repo.GetSupplierPricesByItemAsync(itemId);
 
-      
-        public Task<IEnumerable<ItemWarehouseStockDTO?>> getAuditByItemId(int itemId)
-        {
-            return _repo.GetAuditsByItemAsync(itemId);
-        }
+        public Task<IEnumerable<ItemWarehouseStockDTO>> getAuditByItemId(int itemId)
+            => _repo.GetAuditsByItemAsync(itemId);
+
         public Task<BomSnapshot> GetBomSnapshot(int itemId)
-        {
-            return _repo.GetBomSnapshotAsync(itemId);
-        }
+            => _repo.GetBomSnapshotAsync(itemId);
+
+        public Task ApplyGrnToInventoryAsync(ApplyGrnRequest req)
+            => _repo.ApplyGrnToInventoryAsync(req);
+
+        // ✅ pass-through to repo
+        public Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto)
+            => _repo.UpdateWarehouseAndSupplierPriceAsync(dto);
     }
 }

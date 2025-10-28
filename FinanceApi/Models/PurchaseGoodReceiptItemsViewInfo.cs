@@ -34,5 +34,11 @@
         public string qualityCheck { get; set; }
 
         public string batchSerial { get; set; }
+        public int warehouseId { get; set; }
+        public int binId { get; set; }
+        public int strategyId { get; set; }
+        public string warehouseName { get; set; }
+        public string binName { get; set; }
+        public string strategyName { get; set; }
     }
 }

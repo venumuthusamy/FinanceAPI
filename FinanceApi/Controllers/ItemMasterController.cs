@@ -1,10 +1,7 @@
 ﻿using FinanceApi.Data;
-using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
-using FinanceApi.ModelDTO; // ItemMasterDTO, ItemMasterUpsertDto
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
-using FinanceApi.Repositories;
-using InterfaceService;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Threading.Tasks;
@@ -12,7 +9,7 @@ using System.Threading.Tasks;
 namespace FinanceApi.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")] // -> api/ItemMaster/...
+    [Route("api/[controller]")]
     public class ItemMasterController : ControllerBase
     {
         private readonly IItemMasterService _service;
@@ -87,38 +84,38 @@ namespace FinanceApi.Controllers
                 return Ok(new ResponseResult(false, "Delete failed", ex.Message));
             }
         }
+
         [HttpGet("Audit/{itemId}")]
         public async Task<IActionResult> GetAudits(int itemId)
         {
-       
             var item = await _service.getAuditByItemId(itemId);
             if (item == null)
                 return Ok(new ResponseResult(false, "ItemAudit not found", null));
 
             return Ok(new ResponseResult(true, "Success", item));
         }
+
         [HttpGet("GetWarehouse/{itemId}")]
         public async Task<IActionResult> GetWarehouse(int itemId)
         {
-         
             var item = await _service.getStockByItemId(itemId);
             if (item == null)
                 return Ok(new ResponseResult(false, "ItemWareHouse not found", null));
 
             return Ok(new ResponseResult(true, "Success", item));
         }
+
         [HttpGet("GetSupplier/{itemId}")]
         public async Task<IActionResult> GetSupplier(int itemId)
         {
-         
             var item = await _service.getPriceByItemId(itemId);
             if (item == null)
                 return Ok(new ResponseResult(false, "ItemPrice not found", null));
 
             return Ok(new ResponseResult(true, "Success", item));
         }
-        [HttpGet("GetBom/{itemId}")]
 
+        [HttpGet("GetBom/{itemId}")]
         public async Task<IActionResult> GetBom(int itemId)
         {
             var item = await _service.GetBomSnapshot(itemId);
@@ -127,6 +124,41 @@ namespace FinanceApi.Controllers
 
             return Ok(new ResponseResult(true, "Success", item));
         }
+
+        // ✅ Apply GRN to inventory (you had this; leaving as-is)
+        [HttpPost("ApplyGrn")]
+        public async Task<IActionResult> ApplyGrn([FromBody] ApplyGrnRequest req)
+        {
+            if (req is null || req.Lines is null || req.Lines.Count == 0)
+                return Ok(new ResponseResult(false, "Empty GRN payload", null));
+
+            try
+            {
+                await _service.ApplyGrnToInventoryAsync(req);
+                return Ok(new ResponseResult(true, "GRN applied to inventory", null));
+            }
+            catch (Exception ex)
+            {
+                return Ok(new ResponseResult(false, "Apply GRN failed", ex.Message));
+            }
+        }
+
+        // ✅ New endpoint to post warehouse + supplier price together (e.g., from GRN)
+        [HttpPost("UpdateWarehouseAndSupplierPrice")]
+        public async Task<IActionResult> UpdateWarehouseAndSupplierPrice([FromBody] UpdateWarehouseSupplierPriceDto dto)
+        {
+            if (dto == null || string.IsNullOrWhiteSpace(dto.ItemCode))
+                return Ok(new ResponseResult(false, "ItemCode (SKU) is required", null));
+
+            try
+            {
+                await _service.UpdateWarehouseAndSupplierPriceAsync(dto);
+                return Ok(new ResponseResult(true, "Warehouse stock and supplier price updated", null));
+            }
+            catch (Exception ex)
+            {
+                return Ok(new ResponseResult(false, "Update failed", ex.Message));
+            }
+        }
     }
 }
-

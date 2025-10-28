@@ -4,6 +4,7 @@
     {
         public long? Id { get; set; }
         public long SupplierId { get; set; }
+        public decimal? Qty { get; set; }
         public decimal Price { get; set; }
         public string? Barcode { get; set; }
     }

@@ -98,6 +98,17 @@ WHERE Id = @Id;";
             const string sql = @"UPDATE Item SET IsActive = 0 WHERE Id = @Id;";
             await Connection.ExecuteAsync(sql, new { Id = id });
         }
+
+        public async Task<bool> ExistsInItemMasterAsync(string itemCode)
+        {
+            const string sql = @"
+SELECT TOP(1) 1
+FROM ItemMaster
+WHERE LTRIM(RTRIM(Sku)) = LTRIM(RTRIM(@itemCode));";
+
+            var exists = await Connection.ExecuteScalarAsync<int?>(sql, new { itemCode });
+            return exists.HasValue;
+        }
     }
 
 }

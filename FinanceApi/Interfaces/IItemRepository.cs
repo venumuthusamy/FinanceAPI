@@ -9,6 +9,8 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(Item item);
         Task UpdateAsync(Item item);
         Task DeactivateAsync(int id);
+
+        Task<bool> ExistsInItemMasterAsync(string itemCode);
     }
 
 }
