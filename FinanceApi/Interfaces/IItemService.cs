@@ -9,6 +9,7 @@ namespace FinanceApi.Interfaces
         Task<ItemDto?> GetById(int id);
         Task UpdateAsync(Item item);
         Task DeleteItem(int id);
+        Task<bool> ExistsInItemMasterAsync(string code);
     }
 
 }

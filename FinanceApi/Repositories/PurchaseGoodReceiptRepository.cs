@@ -47,7 +47,7 @@ WHERE pg.Id NOT IN (
 
 );";
 
-            return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query); 
+            return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }
 
 
@@ -133,7 +133,13 @@ SELECT
   gd.isPostInventory,
   gd.qtyReceived,
   gd.qualityCheck,
-  gd.batchSerial
+  gd.batchSerial,
+  gd.warehouseId,
+  gd.binId,
+  gd.strategyId,
+  gd.warehouseName,
+  gd.binName,
+  gd.strategyName
 FROM PurchaseGoodReceipt pg
 OUTER APPLY OPENJSON(pg.GRNJson)
 WITH (
@@ -154,7 +160,15 @@ WITH (
     isPostInventory BIT           '$.isPostInventory',
     qtyReceived     int '$.qtyReceived',
     qualityCheck    NVARCHAR(MAX) '$.qualityCheck',
-    batchSerial     NVARCHAR(MAX) '$.batchSerial'
+    batchSerial     NVARCHAR(MAX) '$.batchSerial',
+	warehouseId     INT '$.warehouseId',
+    binId           INT '$.binId',
+	strategyId      INT '$.strategyId',
+    warehouseName   NVARCHAR(MAX) '$.warehouseName',
+	binName         NVARCHAR(MAX) '$.binName',
+    strategyName    NVARCHAR(MAX) '$.strategyName'
+   
+
 ) AS gd
 LEFT JOIN item i ON gd.itemCode = i.itemCode
 LEFT JOIN Suppliers s ON gd.supplierId = s.Id
@@ -220,5 +234,9 @@ ORDER BY pg.Id DESC;
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }
+
+
+     
+
     }
 }

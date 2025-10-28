@@ -38,6 +38,9 @@ namespace FinanceApi.Services
         {
             return _repository.DeactivateAsync(id);
         }
+
+        public Task<bool> ExistsInItemMasterAsync(string code)
+        => _repository.ExistsInItemMasterAsync(code);
     }
 
 }

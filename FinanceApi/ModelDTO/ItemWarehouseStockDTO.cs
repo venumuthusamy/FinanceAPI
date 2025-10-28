@@ -35,5 +35,7 @@
         public string OldValuesJson {  get; set; }
         public string NewValuesJson { get; set; }
         public int AuditId { get; set; }
+
+        public int Qty { get; set; }
     }
 }

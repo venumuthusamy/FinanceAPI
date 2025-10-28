@@ -63,6 +63,17 @@ namespace FinanceApi.Controllers
             await _service.DeleteItem(id);
             return Ok(new ResponseResult(true, "Item deleted successfully", null));
         }
+
+        [HttpGet("CheckItemExists/{itemCode}")]
+        public async Task<IActionResult> CheckItemExists(string itemCode)
+        {
+            if (string.IsNullOrWhiteSpace(itemCode))
+                return BadRequest(new ResponseResult(false, "Invalid item code", null));
+
+            var exists = await _service.ExistsInItemMasterAsync(itemCode);
+            return Ok(new ResponseResult(true, exists ? "Item exists" : "Item not found", exists));
+        }
+
     }
 
 }
