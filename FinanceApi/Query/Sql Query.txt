@@ -628,5 +628,44 @@ CREATE TABLE dbo.StockTakeInventoryAdjustment (
 );
 
 
+CREATE TABLE StockReorder (
+    Id               INT IDENTITY(1,1) PRIMARY KEY,
+    WarehouseTypeId  INT           NOT NULL,
+    MethodId       TINYINT       NOT NULL,   
+    HorizonDays  INT           NOT NULL,
+    IncludeLeadTime           BIT           NOT NULL DEFAULT 0,
+    Status           TINYINT       null,
+    CreatedBy        VARCHAR(100),
+    CreatedDate      DATETIME      DEFAULT GETDATE(),
+    UpdatedBy        VARCHAR(100),
+    UpdatedDate      DATETIME,
+    IsActive         BIT           DEFAULT 1
+ 
+);
+
+
+
+CREATE TABLE StockReorderLines (
+    Id               INT IDENTITY(1,1) PRIMARY KEY,
+    StockReorderId      INT            NOT NULL,
+    WarehouseTypeId      INT            NOT NULL,
+    ItemId           bigint            NOT NULL,
+    OnHand     DECIMAL(18,3)  NOT NULL,     
+    Min       DECIMAL(18,3)  NULL,   
+    Max    DECIMAL(18,3)  NULL,  
+    ReorderQty   DECIMAL(18,3)  NULL,
+    LeadDays  INT            NOT NULL,
+    UsageHorizon  INT            NOT NULL,
+    Suggested  INT            NOT NULL,
+    Status           TINYINT       null,
+    Selected BIT NULL, 
+
+    CreatedBy        VARCHAR(100),
+    CreatedDate      DATETIME       DEFAULT GETDATE(),
+    UpdatedBy        VARCHAR(100),
+    UpdatedDate      DATETIME,
+    IsActive         BIT            DEFAULT 1,
+);
+
 
 
