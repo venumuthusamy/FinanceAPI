@@ -2,6 +2,7 @@
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using System.Data;
 
 namespace FinanceApi.Services
 {
@@ -62,7 +63,7 @@ namespace FinanceApi.Services
         }
 
 
-        public Task<int> AdjustOnHandAsync(AdjustOnHandRequest request)
+        public Task<AdjustOnHandResult> AdjustOnHandAsync(AdjustOnHandRequest request, IDbTransaction? tx = null)
         {
             return _repository.AdjustOnHandAsync(request);
         }
