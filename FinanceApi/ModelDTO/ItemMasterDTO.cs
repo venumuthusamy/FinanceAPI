@@ -18,5 +18,7 @@
         public decimal Reserved { get; set; }
         public decimal Available { get; set; }
         public DateTime? ExpiryDate { get; set; }
+
+        public int Qty { get; set; }
     }
 }

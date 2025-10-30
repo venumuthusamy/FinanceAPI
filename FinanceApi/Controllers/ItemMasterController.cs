@@ -160,5 +160,17 @@ namespace FinanceApi.Controllers
                 return Ok(new ResponseResult(false, "Update failed", ex.Message));
             }
         }
+
+
+        [HttpGet("GetItemDetailsByItemId/{id}")]
+        public async Task<IActionResult> GetItemDetailsByItemId(int id)
+        {
+            var item = await _service.GetItemDetailsByItemId(id);
+            if (item == null)
+                return Ok(new ResponseResult(false, "ItemWareHouse not found", null));
+
+            return Ok(new ResponseResult(true, "Success", item));
+        }
+
     }
 }

@@ -35,5 +35,9 @@ namespace FinanceApi.Services
         // ✅ pass-through to repo
         public Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto)
             => _repo.UpdateWarehouseAndSupplierPriceAsync(dto);
+
+
+        public Task<IEnumerable<StockAdjustmentItemsDTO>> GetItemDetailsByItemId(int id)
+           => _repo.GetItemDetailsByItemId(id);
     }
 }
