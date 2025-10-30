@@ -1,5 +1,6 @@
 ﻿using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using System.Data;
 
 namespace FinanceApi.InterfaceService
 {
@@ -15,7 +16,7 @@ namespace FinanceApi.InterfaceService
         Task<int> MarkAsTransferredBulkAsync(IEnumerable<MarkAsTransferredRequest> requests);
         Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList();
 
-        Task<int> AdjustOnHandAsync(AdjustOnHandRequest request);
+        Task<AdjustOnHandResult> AdjustOnHandAsync(AdjustOnHandRequest request, IDbTransaction? tx = null);
 
         Task<IEnumerable<StockListViewInfo>> GetAllItemStockList();
 

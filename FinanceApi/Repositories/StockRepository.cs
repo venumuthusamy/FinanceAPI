@@ -3,6 +3,7 @@ using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Data.Common;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
@@ -103,15 +104,17 @@ VALUES (
         public async Task<IEnumerable<StockListViewInfo>> GetAllStockList()
         {
             const string query = @"
-                                                   select im.Id,im.Name,im.Sku,
+                                                                                                  select im.Id,im.Name,im.Sku,
 iws.WarehouseId,wh.Name as WarehouseName,
 iws.BinId,bn.BinName,
 iws.Available,
-iws.OnHand,iws.MinQty,iws.MaxQty,iws.Reserved,im.ExpiryDate,im.Category,im.Uom
+iws.OnHand,iws.MinQty,iws.MaxQty,iws.Reserved,im.ExpiryDate,im.Category,im.Uom , ip.SupplierId,s.Name as Suppliername,ip.Qty
 from ItemMaster as im
 inner join ItemWarehouseStock as iws on iws.ItemId = im.Id
 inner join Warehouse as wh on wh.Id = iws.WarehouseId
 inner join BIN as bn on bn.ID = iws.BinId
+inner join ItemPrice as IP on ip.warehouseId = iws.WarehouseId
+inner join Suppliers as s on s.Id = ip.SupplierId
 where iws.Available != 0 and iws.IsTransfered = 0 ;
 ";
 
@@ -201,22 +204,120 @@ WHERE iws.IsTransfered = 1;
         }
 
 
-        public async Task<int> AdjustOnHandAsync(AdjustOnHandRequest request)
+       
+
+        public async Task<AdjustOnHandResult> AdjustOnHandAsync(AdjustOnHandRequest request, IDbTransaction? tx = null)
         {
-            const string query = @"
-UPDATE [dbo].[ItemWarehouseStock]
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
+
+            var localTx = tx ?? conn.BeginTransaction();
+            try
+            {
+                // ---- 0) Resolve effective supplier id (cannot be NULL because ItemPrice.SupplierId is NOT NULL)
+                const string findExistingSupplierSql = @"
+SELECT TOP (1) SupplierId
+FROM dbo.ItemPrice
+WHERE ItemId = @ItemId AND WarehouseId = @WarehouseId
+ORDER BY UpdatedDate DESC, Id DESC;";
+
+                long? effectiveSupplierId = request.SupplierId;
+
+                if (effectiveSupplierId == null)
+                {
+                    effectiveSupplierId = await conn.ExecuteScalarAsync<long?>(
+                        findExistingSupplierSql,
+                        new { request.ItemId, request.WarehouseId },
+                        localTx
+                    );
+                }
+
+                if (effectiveSupplierId == null)
+                {
+                    // Option 1: fail with a good message
+                    throw new InvalidOperationException(
+                        "SupplierId is required to adjust ItemPrice.Qty but none was provided, and no existing ItemPrice row was found. " +
+                        "Pass SupplierId in the request or create an ItemPrice entry first."
+                    );
+
+                    // Option 2: pick a business default (ONLY if you have a real, valid SupplierId for 'Unknown'):
+                    // effectiveSupplierId = 1; // e.g., your 'Unknown' supplier
+                }
+
+                // ---- 1) Update ItemWarehouseStock (OnHand & Available)
+                const string updIwsSql = @"
+UPDATE dbo.ItemWarehouseStock
 SET 
-    OnHand = @NewOnHand,
-    Available = CASE 
-                  WHEN @NewOnHand - ISNULL(Reserved, 0) < 0 THEN 0 
-                  ELSE @NewOnHand - ISNULL(Reserved, 0) 
-                END,
-    StockIssueID = @StockIssueID
+    OnHand      = @NewOnHand,
+    Available   = CASE WHEN @NewOnHand - ISNULL(Reserved,0) < 0 
+                       THEN 0 ELSE @NewOnHand - ISNULL(Reserved,0) END,
+    StockIssueID = @StockIssueId
 WHERE ItemId = @ItemId
   AND WarehouseId = @WarehouseId
   AND (BinId = @BinId OR (@BinId IS NULL AND BinId IS NULL));";
 
-            return await Connection.ExecuteAsync(query, request);
+                await conn.ExecuteAsync(updIwsSql, new
+                {
+                    request.NewOnHand,
+                    request.StockIssueId,
+                    request.ItemId,
+                    request.WarehouseId,
+                    request.BinId
+                }, localTx);
+
+                // ---- 2) MERGE ItemPrice on (ItemId, WarehouseId, SupplierId) with the resolved non-null SupplierId
+                const string mergePriceSql = @"
+MERGE dbo.ItemPrice AS tgt
+USING (SELECT @ItemId AS ItemId, @WarehouseId AS WarehouseId, @SupplierId AS SupplierId) AS s
+ON (tgt.ItemId = s.ItemId AND tgt.WarehouseId = s.WarehouseId AND tgt.SupplierId = s.SupplierId)
+WHEN MATCHED THEN
+    UPDATE SET Qty = @NewOnHand, UpdatedBy = @UpdatedBy, UpdatedDate = SYSDATETIME()
+WHEN NOT MATCHED THEN
+    INSERT (ItemId, WarehouseId, SupplierId, Qty, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+    VALUES (@ItemId, @WarehouseId, @SupplierId, @NewOnHand, @UpdatedBy, SYSDATETIME(), @UpdatedBy, SYSDATETIME());";
+
+                await conn.ExecuteAsync(mergePriceSql, new
+                {
+                    request.ItemId,
+                    request.WarehouseId,
+                    SupplierId = effectiveSupplierId,
+                    request.NewOnHand,
+                    UpdatedBy = request.UpdatedBy ?? "system"
+                }, localTx);
+
+                // ---- 3) Return fresh numbers
+                const string selectSql = @"
+SELECT 
+    iws.OnHand, 
+    iws.Reserved, 
+    iws.Available,
+    ip.Qty AS PriceQty
+FROM dbo.ItemWarehouseStock iws
+LEFT JOIN dbo.ItemPrice ip
+  ON ip.ItemId = iws.ItemId
+ AND ip.WarehouseId = iws.WarehouseId
+ AND ip.SupplierId = @SupplierId
+WHERE iws.ItemId = @ItemId
+  AND iws.WarehouseId = @WarehouseId
+  AND (iws.BinId = @BinId OR (iws.BinId IS NULL AND @BinId IS NULL));";
+
+                var result = await conn.QueryFirstOrDefaultAsync<AdjustOnHandResult>(selectSql, new
+                {
+                    request.ItemId,
+                    request.WarehouseId,
+                    request.BinId,
+                    SupplierId = effectiveSupplierId
+                }, localTx);
+
+                if (tx is null) localTx.Commit();
+                return result ?? new AdjustOnHandResult { OnHand = request.NewOnHand, Reserved = 0, Available = Math.Max(0, request.NewOnHand) };
+            }
+            catch
+            {
+                if (tx is null) localTx.Rollback();
+                throw;
+            }
         }
 
 

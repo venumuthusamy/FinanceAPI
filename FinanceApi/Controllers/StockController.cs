@@ -122,27 +122,21 @@ namespace FinanceApi.Controllers
 
 
         [HttpPost("AdjustOnHand")]
-        public async Task<IActionResult> AdjustOnHand([FromBody] AdjustOnHandRequest request)
+        public async Task<ActionResult<object>> AdjustOnHand([FromBody] AdjustOnHandRequest req)
         {
-            if (request == null)
-                return BadRequest("Invalid request data.");
+            if (req == null) return BadRequest("Invalid payload.");
+            if (req.ItemId <= 0 || req.WarehouseId <= 0) return BadRequest("ItemId and WarehouseId are required.");
 
             try
             {
-                var result = await _service.AdjustOnHandAsync(request);
-
-                if (result > 0)
-                    return Ok(new { success = true, message = "Stock on-hand adjusted successfully." });
-                else
-                    return NotFound(new { success = false, message = "Item or warehouse not found." });
+                var result = await _service.AdjustOnHandAsync(req);
+                return Ok(new { data = result, message = "Adjusted." });
             }
-            catch (Exception ex)
+            catch (InvalidOperationException ex)
             {
-                return StatusCode(500, new { success = false, message = "An error occurred while adjusting stock.", error = ex.Message });
+                return BadRequest(new { message = ex.Message });
             }
         }
-
-
 
         [HttpPost("ApproveTransfersBulk")]
         public async Task<IActionResult> ApproveTransfersBulk([FromBody] IEnumerable<ApproveTransferRequest> requests)
