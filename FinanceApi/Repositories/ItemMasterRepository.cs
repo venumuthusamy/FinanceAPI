@@ -524,69 +524,122 @@ VALUES
         {
             if (dto is null || string.IsNullOrWhiteSpace(dto.ItemCode))
                 throw new ArgumentException("Invalid request.");
+
             if (!dto.SupplierId.HasValue || !dto.Price.HasValue)
                 throw new ArgumentException("Supplier and Price are required to update cost.");
 
             var sku = dto.ItemCode.Trim();
             var by = dto.UpdatedBy ?? "";
 
+            // 1️⃣ Ensure ItemMaster exists (create if not found)
             const string findItemSql = @"SELECT Id FROM dbo.ItemMaster WHERE Sku = @Sku;";
             var itemId = await Connection.QueryFirstOrDefaultAsync<long?>(findItemSql, new { Sku = sku });
+
             if (itemId is null)
             {
-                const string insItemSql = @"
+                const string insertItemSql = @"
 INSERT INTO dbo.ItemMaster
- (Sku, Name, Category, Uom, CostingMethodId, TaxCodeId, Specs, PictureUrl, IsActive, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+    (Sku, Name, Category, Uom, CostingMethodId, TaxCodeId, Specs, PictureUrl, IsActive,
+     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
 OUTPUT INSERTED.Id
-VALUES (@Sku, @Name, N'Uncategorized', N'EA', NULL, NULL, NULL, NULL, 1, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
-                itemId = await Connection.QueryFirstAsync<long>(insItemSql, new { Sku = sku, Name = sku, By = by });
+VALUES
+    (@Sku, @Name, N'Uncategorized', N'EA', NULL, NULL, NULL, NULL, 1,
+     @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+
+                itemId = await Connection.QueryFirstAsync<long>(insertItemSql, new { Sku = sku, Name = sku, By = by });
             }
 
+            // 2️⃣ Capture old snapshot for audit
             var oldJson = await GetItemSnapshotJsonAsync(itemId.Value);
 
+            // 3️⃣ Open DB connection & start transaction
             var dbConn = (System.Data.Common.DbConnection)Connection;
             if (dbConn.State != System.Data.ConnectionState.Open)
                 await dbConn.OpenAsync();
 
             using var tx = dbConn.BeginTransaction();
+
             try
             {
-                await dbConn.ExecuteAsync(
-                    UpsertItemPriceMergeSql,
+                // 4️⃣ Upsert ItemPrice (Item + Supplier + Warehouse)
+                const string updatePriceSql = @"
+UPDATE dbo.ItemPrice
+   SET Price       = @Price,
+       Qty         = COALESCE(@Qty, Qty),
+       Barcode     = COALESCE(@Barcode, Barcode),
+       UpdatedBy   = @By,
+       UpdatedDate = SYSUTCDATETIME()
+ WHERE ItemId = @ItemId AND SupplierId = @SupplierId AND WarehouseId = @WarehouseId;";
+
+                var affected = await dbConn.ExecuteAsync(
+                    updatePriceSql,
                     new
                     {
                         ItemId = itemId.Value,
                         SupplierId = dto.SupplierId!.Value,
-                        WarehouseId = dto.WarehouseId,         // IMPORTANT in match key
+                        WarehouseId = dto.WarehouseId,
                         Price = dto.Price!.Value,
-                        Qty = dto.QtyDelta,            // set null to keep qty unchanged
+                        Qty = dto.QtyDelta,
                         Barcode = dto.Barcode,
                         By = by
                     },
                     tx
                 );
 
-                // Optional: snapshot BOM on price change (per Item+Supplier)
+                if (affected == 0)
+                {
+                    const string insertPriceSql = @"
+INSERT INTO dbo.ItemPrice
+    (ItemId, SupplierId, WarehouseId, Price, Qty, Barcode,
+     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+VALUES
+    (@ItemId, @SupplierId, @WarehouseId, @Price, @Qty, @Barcode,
+     @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+
+                    await dbConn.ExecuteAsync(
+                        insertPriceSql,
+                        new
+                        {
+                            ItemId = itemId.Value,
+                            SupplierId = dto.SupplierId!.Value,
+                            WarehouseId = dto.WarehouseId,
+                            Price = dto.Price!.Value,
+                            Qty = dto.QtyDelta,
+                            Barcode = dto.Barcode,
+                            By = by
+                        },
+                        tx
+                    );
+                }
+
+                // 5️⃣ BOM Snapshot logic — only if cost actually changed
                 const string getLastBomSql = @"
 SELECT TOP(1) UnitCost
 FROM dbo.ItemBom
 WHERE ItemId = @ItemId AND SupplierId = @SupplierId
 ORDER BY Id DESC;";
+
                 var lastUnitCost = await dbConn.ExecuteScalarAsync<decimal?>(
-                    getLastBomSql, new { ItemId = itemId.Value, SupplierId = dto.SupplierId!.Value }, tx);
+                    getLastBomSql,
+                    new { ItemId = itemId.Value, SupplierId = dto.SupplierId!.Value },
+                    tx
+                );
 
                 var newRounded = Math.Round(dto.Price!.Value, 4);
                 var lastRounded = lastUnitCost.HasValue ? Math.Round(lastUnitCost.Value, 4) : (decimal?)null;
 
                 if (lastRounded != newRounded)
                 {
-                    const string insBomSql = @"
+                    const string insertBomSql = @"
 INSERT INTO dbo.ItemBom
-    (ItemId, SupplierId, ExistingCost, UnitCost, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+    (ItemId, SupplierId, ExistingCost, UnitCost,
+     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
 VALUES
-    (@ItemId, @SupplierId, @ExistingCost, @UnitCost, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+    (@ItemId, @SupplierId, @ExistingCost, @UnitCost,
+     @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+
                     await dbConn.ExecuteAsync(
-                        insBomSql,
+                        insertBomSql,
                         new
                         {
                             ItemId = itemId.Value,
@@ -599,19 +652,20 @@ VALUES
                     );
                 }
 
+                // ✅ Commit changes
                 tx.Commit();
             }
             catch
             {
-                try { tx.Rollback(); } catch { /* ignore */ }
+                try { tx.Rollback(); } catch { /* ignore rollback failure */ }
                 throw;
             }
 
+            // 6️⃣ Audit after commit
             long? userId = long.TryParse(dto.UpdatedBy, out var uid) ? uid : (long?)null;
             var newJson = await GetItemSnapshotJsonAsync(itemId.Value);
             await AddAuditAsync(itemId.Value, "UPDATE", userId, oldJson, newJson, dto.Remarks);
         }
-
 
 
         // ==============================
