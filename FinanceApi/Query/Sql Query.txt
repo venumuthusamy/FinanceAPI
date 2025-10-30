@@ -634,7 +634,7 @@ CREATE TABLE StockReorder (
     MethodId       TINYINT       NOT NULL,   
     HorizonDays  INT           NOT NULL,
     IncludeLeadTime           BIT           NOT NULL DEFAULT 0,
-    Status           TINYINT       null,
+    Status           INT       null,
     CreatedBy        VARCHAR(100),
     CreatedDate      DATETIME      DEFAULT GETDATE(),
     UpdatedBy        VARCHAR(100),
@@ -666,6 +666,23 @@ CREATE TABLE StockReorderLines (
     UpdatedDate      DATETIME,
     IsActive         BIT            DEFAULT 1,
 );
+
+CREATE TABLE StockReorderLineSuppliers (
+    Id                   INT IDENTITY(1,1) PRIMARY KEY,
+    StockReorderLineId   INT             NOT NULL,
+    SupplierId           BIGINT          NOT NULL,
+    Price                DECIMAL(18,4)       NULL,
+    Qty                  DECIMAL(18,3)       NULL,
+    Selected             BIT             NOT NULL DEFAULT 0,
+    CreatedBy            VARCHAR(100)        NULL,
+    CreatedDate          DATETIME            NULL DEFAULT GETDATE(),
+    UpdatedBy            VARCHAR(100)        NULL,
+    UpdatedDate          DATETIME            NULL,
+    IsActive             BIT                 NOT NULL DEFAULT 1,
+
+    
+);
+
 
 
 

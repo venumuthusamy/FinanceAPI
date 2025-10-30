@@ -12,7 +12,7 @@
 
         public StockReorderStatus Status { get; set; } = StockReorderStatus.Draft;
     }
-    public enum StockReorderStatus : byte
+    public enum StockReorderStatus 
     {
         Draft = 1,
         Approved = 2,
