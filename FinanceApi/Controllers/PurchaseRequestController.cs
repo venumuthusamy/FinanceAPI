@@ -74,5 +74,22 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Purchase Request Deleted sucessfully", null);
             return Ok(data);
         }
+
+        [HttpPost("reorder-suggestions")]
+        public async Task<ActionResult<object>> CreateFromReorder(
+            [FromBody] CreateReorderSuggestionsRequest req)
+        {
+            if (req?.Groups == null || req.Groups.Count == 0)
+                return BadRequest("No groups.");
+
+            var created = await _service.CreateFromReorderSuggestionsAsync(
+                req,
+                requesterName: req.UserName,
+                requesterId: req.UserId,
+                departmentId: req.DepartmentId
+            );
+
+            return Ok(new { created });
+        }
     }
 }

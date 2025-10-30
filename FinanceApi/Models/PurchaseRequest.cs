@@ -30,5 +30,6 @@ namespace FinanceApi.Models
         public string PurchaseRequestNo { get; set; }
         public bool IsActive { get; set; }
         public int Status {  get; set; }
+        public bool IsReorder { get; set; }
     }
 }

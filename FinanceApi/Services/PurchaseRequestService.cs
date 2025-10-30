@@ -45,5 +45,17 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id);
         }
+        public async Task<List<CreatedPrDto>> CreateFromReorderSuggestionsAsync(
+              CreateReorderSuggestionsRequest req,
+              string requesterName,
+              long requesterId,
+              long? departmentId)
+        {
+            // Any cross-entity validations go here (e.g., check items active, suppliers active, etc.)
+            // For now we pass through to repository which writes PR(s).
+            return await _repository.CreateFromReorderSuggestionsAsync(
+                req.Groups, requesterName, requesterId, departmentId, req.Note
+            );
+        }
     }
 }
