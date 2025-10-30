@@ -18,6 +18,18 @@
 
         public bool Selected { get; set; }
 
+        public List<StockReorderLineSupplier> SupplierBreakdown { get; set; } = new();
 
+
+    }
+    public sealed class StockReorderLineSupplier
+    {
+        public int Id { get; set; }                 // <-- needed for upsert
+        public int StockReorderLineId { get; set; } // filled server-side
+        public long SupplierId { get; set; }
+        public decimal? Price { get; set; }
+        public decimal? Qty { get; set; }
+        public bool Selected { get; set; }
+        public bool IsActive { get; set; } = true;
     }
 }

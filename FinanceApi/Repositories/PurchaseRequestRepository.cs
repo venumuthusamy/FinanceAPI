@@ -342,7 +342,7 @@ VALUES
                             CreatedBy = requesterId.ToString(),
                             UpdatedBy = requesterId.ToString(),
                             Description = string.IsNullOrWhiteSpace(note)
-                                           ? "Auto-created from Reorder Planning"
+                                           ? "Suggest PO Reorder"
                                            : note,
                             PRNo = prNo,
                             IsReorder = 1

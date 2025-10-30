@@ -12,5 +12,15 @@ namespace FinanceApi.ModelDTO
         public bool LeadTime { get; set; }
         //public int Status { get; set; }
         public List<StockReorderLines> LineItems { get; set; } = new();
+
+        public StockReorderStatus Status { get; set; } = StockReorderStatus.Draft;
     }
+    public enum StockReorderStatus
+    {
+        Draft = 1,
+        Approved = 2,
+        Posted = 3
+    }
+
+    public enum StockReorderLineStatus { Draft = 1, Approved = 2, Posted = 3 }
 }
