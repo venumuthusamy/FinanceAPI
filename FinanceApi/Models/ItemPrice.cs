@@ -8,5 +8,6 @@ namespace FinanceApi.Models
         public long? Id { get; set; }
         public long SupplierId { get; set; }
         public decimal Price { get; set; }
+        public int WarehouseId { get; set; }
     }
 }

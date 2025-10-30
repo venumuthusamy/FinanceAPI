@@ -15,19 +15,73 @@ namespace FinanceApi.Repositories
         // ===================== READS =====================
 
         public async Task<IEnumerable<ItemMasterDTO>> GetAllAsync()
+
         {
+
             const string sql = @"
-SELECT i.*,
-       ISNULL(inv.OnHand,0)   AS OnHand,
-       ISNULL(inv.Reserved,0) AS Reserved,
-       ISNULL(inv.OnHand,0) - ISNULL(inv.Reserved,0) AS Available,
-	    ISNULL(inv.Available,0)   AS Qty
+
+SELECT 
+
+    i.Id,
+
+    i.Sku,
+
+    i.Name,
+
+    i.Category,
+
+    i.Uom,
+
+    i.CostingMethodId,
+
+    i.TaxCodeId,
+
+    i.Specs,
+
+    i.PictureUrl,
+
+    i.IsActive,
+
+    i.CreatedBy,
+
+    i.CreatedDate,
+
+    i.UpdatedBy,
+
+    i.UpdatedDate,
+
+    SUM(ISNULL(inv.OnHand, 0))     AS OnHand,
+
+    SUM(ISNULL(inv.Reserved, 0))   AS Reserved,
+
+    SUM(ISNULL(inv.OnHand, 0)) - SUM(ISNULL(inv.Reserved, 0)) AS Available,
+
+    SUM(ISNULL(inv.Available, 0))  AS Qty
+
 FROM dbo.ItemMaster i
-LEFT JOIN dbo.ItemWarehouseStock inv ON inv.ItemId = i.Id
+
+LEFT JOIN dbo.ItemWarehouseStock inv 
+
+    ON inv.ItemId = i.Id
+
 WHERE i.IsActive = 1
-ORDER BY i.Id DESC;;";
+
+GROUP BY 
+
+    i.Id, i.Sku, i.Name, i.Category, i.Uom,
+
+    i.CostingMethodId, i.TaxCodeId, i.Specs,
+
+    i.PictureUrl, i.IsActive, i.CreatedBy,
+
+    i.CreatedDate, i.UpdatedBy, i.UpdatedDate
+
+ORDER BY i.Id DESC;";
+
             return await Connection.QueryAsync<ItemMasterDTO>(sql);
+
         }
+
 
         public async Task<ItemMasterDTO?> GetByIdAsync(int id)
         {
@@ -255,8 +309,8 @@ WHERE Id=@Id;";
             if (dto.Prices is not null && dto.Prices.Count > 0)
             {
                 const string ip = @"
-INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price,Qty,Barcode)
-VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode);";
+INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price,Qty,Barcode,WarehouseId)
+VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode,@WarehouseId);";
                 foreach (var p in dto.Prices)
                 {
                     await Connection.ExecuteAsync(ip, new
@@ -265,7 +319,8 @@ VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode);";
                         SupplierId = p.SupplierId,
                         Price = p.Price,
                         Qty = p.Qty ?? 0m,     // NEW
-                        Barcode = p.Barcode
+                        Barcode = p.Barcode,
+                        WarehouseId = p.WarehouseId,
                     });
                 }
             }
@@ -446,6 +501,7 @@ VALUES
                                 Price = ln.Price,
                                 Qty = (decimal?)ln.QtyDelta,  // 1st time = new; next times = existing + new
                                 Barcode = ln.Barcode,
+                                WarehouseId= ln.WarehouseId,
                                 By = by
                             },
                             tx
@@ -508,6 +564,7 @@ VALUES (@Sku, @Name, N'Uncategorized', N'EA', NULL, NULL, NULL, NULL, 1, @By, SY
                         Price = dto.Price!.Value,
                         Qty = dto.QtyDelta,            // pass null to keep qty unchanged
                         Barcode = dto.Barcode,
+                        WarehouseId= dto.WarehouseId,
                         By = by
                     },
                     tx
@@ -577,8 +634,8 @@ WHEN MATCHED THEN
         UpdatedBy   = @By,
         UpdatedDate = SYSUTCDATETIME()
 WHEN NOT MATCHED THEN
-    INSERT (ItemId, SupplierId, Price, Qty, Barcode, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
-    VALUES (@ItemId, @SupplierId, @Price, COALESCE(@Qty,0), @Barcode, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());
+    INSERT (ItemId, SupplierId, Price, Qty, Barcode,WarehouseId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+    VALUES (@ItemId, @SupplierId, @Price, COALESCE(@Qty,0), @Barcode,@WareHouseId, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());
 ";
 
 
