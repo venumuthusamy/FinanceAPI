@@ -19,5 +19,7 @@ namespace Interfaces
 
         // ✅ add this missing repo contract
         Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto);
+
+        Task<IEnumerable<StockAdjustmentItemsDTO?>> GetItemDetailsByItemId(int id);
     }
 }

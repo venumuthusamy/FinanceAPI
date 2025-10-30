@@ -20,5 +20,7 @@ namespace FinanceApi.InterfaceService
 
         // ✅ add this missing service contract
         Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto);
+
+        Task<IEnumerable<StockAdjustmentItemsDTO>> GetItemDetailsByItemId(int id);
     }
 }
