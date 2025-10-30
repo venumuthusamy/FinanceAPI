@@ -91,6 +91,7 @@ WHERE StockReorderId IN @Ids AND IsActive = 1;";
         {
             const string sql = @"
 SELECT
+    -- Item level
     im.Id                     AS ItemId,
     im.Name                   AS ItemName,
     im.Sku                    AS Sku,
@@ -103,20 +104,56 @@ SELECT
     iws.MaxQty                AS MaxQty,
     iws.LeadTimeDays          AS LeadDays,
     CAST(0 AS DECIMAL(18,3))  AS UsageHorizon,
-    ISNULL(iws.MinQty, 0)     AS SafetyStock
+    ISNULL(iws.MinQty, 0)     AS SafetyStock,
+
+    -- Supplier level (can be multiple rows per item)
+    sp.Id                     AS SupplierId,
+    sp.Name                   AS SupplierName,
+    ISNULL(ip.Price, 0)       AS Price,
+    ISNULL(ip.Qty, 0)         AS Qty
 FROM dbo.ItemWarehouseStock iws
 JOIN dbo.ItemMaster  im ON im.Id = iws.ItemId
 JOIN dbo.Warehouse   w  ON w.Id  = iws.WarehouseId
+LEFT JOIN dbo.ItemPrice ip ON ip.ItemId = im.Id              -- your price list
+LEFT JOIN dbo.Suppliers  sp ON sp.Id     = ip.SupplierId
 WHERE iws.WarehouseId = @WarehouseId
-ORDER BY im.Sku, im.Name;";
+ORDER BY im.Sku, im.Name, sp.Name;";
 
-            var args = new { WarehouseId = warehouseId }; // <-- match SQL param name
+            var args = new { WarehouseId = warehouseId };
 
             if (Connection.State != ConnectionState.Open)
                 await (Connection as SqlConnection)!.OpenAsync();
 
-            return await Connection.QueryAsync<StockReorderWarehouseItems>(sql, args);
+            // Multi-mapping: item columns then SupplierId marks split
+            var map = new Dictionary<long, StockReorderWarehouseItems>();
+
+            var result = await Connection.QueryAsync<StockReorderWarehouseItems, StockReorderSupplier, StockReorderWarehouseItems>(
+                sql,
+                (item, sup) =>
+                {
+                    if (!map.TryGetValue(item.ItemId, out var existing))
+                    {
+                        existing = item;
+                        existing.Suppliers = new List<StockReorderSupplier>();
+                        map[item.ItemId] = existing;
+                    }
+
+                    // Only add supplier row if present (SupplierId not null/0). Qty defaults to 0 (user will input)
+                    if (sup != null && sup.SupplierId > 0)
+                    {
+                        
+                        existing.Suppliers.Add(sup);
+                    }
+                    return existing;
+                },
+                args,
+                splitOn: "SupplierId"
+            );
+
+            // De-dup consolidated list
+            return map.Values;
         }
+
 
 
         // --------------------------------------------------------------------

@@ -23,5 +23,15 @@
         public int LeadDays { get; set; }           // from supplier; 0 in simplified query
         public decimal UsageHorizon { get; set; }           // 0 in simplified query
         public decimal SafetyStock { get; set; }
+
+        public List<StockReorderSupplier> Suppliers { get; set; } = new();
+    }
+
+    public sealed class StockReorderSupplier
+    {
+        public long SupplierId { get; set; }
+        public string SupplierName { get; set; } = "";
+        public decimal Price { get; set; }
+        public decimal Qty { get; set; }
     }
 }
