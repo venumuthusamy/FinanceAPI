@@ -485,7 +485,7 @@ VALUES
                         );
                     }
 
-                    // Upsert ItemPrice per (ItemId, SupplierId, WarehouseId)
+                    // Upsert ItemPrice per (ItemId, SupplierId, WarehouseId) — PRICE accumulates
                     if (ln.SupplierId > 0 && ln.Price > 0)
                     {
                         await dbConn.ExecuteAsync(
@@ -493,17 +493,17 @@ VALUES
                             new
                             {
                                 ItemId = itemId.Value,
-                                SupplierId = ln.SupplierId,       // long (non-nullable)
-                                WarehouseId = ln.WarehouseId,      // long (non-nullable)
-                                Price = ln.Price,            // decimal (non-nullable)
-                                Qty = (decimal?)ln.QtyDelta,
+                                SupplierId = ln.SupplierId,
+                                WarehouseId = ln.WarehouseId,
+                                Price = ln.Price,                 // will be added to existing
+                                Qty = (decimal?)ln.QtyDelta,      // add to Qty if provided
                                 Barcode = ln.Barcode,
                                 By = by
                             },
                             tx
                         );
 
-                        // If you snapshot BOM on GRN, call your helper here (BOM is per Item+Supplier, usually no warehouse)
+                        // if needed later:
                         // await SnapshotBomIfChangedAsync(dbConn, tx, itemId.Value, ln.SupplierId, ln.Price, by);
                     }
                 }
@@ -520,6 +520,7 @@ VALUES
 
 
 
+
         public async Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto)
         {
             if (dto is null || string.IsNullOrWhiteSpace(dto.ItemCode))
@@ -531,7 +532,7 @@ VALUES
             var sku = dto.ItemCode.Trim();
             var by = dto.UpdatedBy ?? "";
 
-            // 1️⃣ Ensure ItemMaster exists (create if not found)
+            // Ensure ItemMaster exists
             const string findItemSql = @"SELECT Id FROM dbo.ItemMaster WHERE Sku = @Sku;";
             var itemId = await Connection.QueryFirstOrDefaultAsync<long?>(findItemSql, new { Sku = sku });
 
@@ -549,10 +550,9 @@ VALUES
                 itemId = await Connection.QueryFirstAsync<long>(insertItemSql, new { Sku = sku, Name = sku, By = by });
             }
 
-            // 2️⃣ Capture old snapshot for audit
+            // Audit snapshot (old)
             var oldJson = await GetItemSnapshotJsonAsync(itemId.Value);
 
-            // 3️⃣ Open DB connection & start transaction
             var dbConn = (System.Data.Common.DbConnection)Connection;
             if (dbConn.State != System.Data.ConnectionState.Open)
                 await dbConn.OpenAsync();
@@ -561,11 +561,14 @@ VALUES
 
             try
             {
-                // 4️⃣ Upsert ItemPrice (Item + Supplier + Warehouse)
+                // In UpdateWarehouseAndSupplierPriceAsync, replace the UPDATE with:
                 const string updatePriceSql = @"
 UPDATE dbo.ItemPrice
-   SET Price       = @Price,
-       Qty         = COALESCE(@Qty, Qty),
+   SET
+       -- PRICE: do NOT change existing price
+       -- Price       = Price,
+       Qty         = CASE WHEN @Qty IS NULL THEN Qty
+                          ELSE ISNULL(Qty, 0) + @Qty END,
        Barcode     = COALESCE(@Barcode, Barcode),
        UpdatedBy   = @By,
        UpdatedDate = SYSUTCDATETIME()
@@ -579,7 +582,7 @@ UPDATE dbo.ItemPrice
                         SupplierId = dto.SupplierId!.Value,
                         WarehouseId = dto.WarehouseId,
                         Price = dto.Price!.Value,
-                        Qty = dto.QtyDelta,
+                        Qty = (decimal?)null,
                         Barcode = dto.Barcode,
                         By = by
                     },
@@ -612,7 +615,7 @@ VALUES
                     );
                 }
 
-                // 5️⃣ BOM Snapshot logic — only if cost actually changed
+                // BOM snapshot only when cost actually changed (rounded to 4)
                 const string getLastBomSql = @"
 SELECT TOP(1) UnitCost
 FROM dbo.ItemBom
@@ -652,7 +655,6 @@ VALUES
                     );
                 }
 
-                // ✅ Commit changes
                 tx.Commit();
             }
             catch
@@ -661,7 +663,7 @@ VALUES
                 throw;
             }
 
-            // 6️⃣ Audit after commit
+            // Audit after commit
             long? userId = long.TryParse(dto.UpdatedBy, out var uid) ? uid : (long?)null;
             var newJson = await GetItemSnapshotJsonAsync(itemId.Value);
             await AddAuditAsync(itemId.Value, "UPDATE", userId, oldJson, newJson, dto.Remarks);
@@ -671,24 +673,30 @@ VALUES
         // ==============================
         // At class level (once)
         // ==============================
+        // Replace your UpsertItemPriceMergeSql with this
         private static readonly string UpsertItemPriceMergeSql = @"
 MERGE dbo.ItemPrice WITH (HOLDLOCK) AS tgt
-USING (SELECT @ItemId AS ItemId, @SupplierId AS SupplierId, @WarehouseId AS WarehouseId) AS src
-   ON tgt.ItemId = src.ItemId
-  AND tgt.SupplierId = src.SupplierId
+USING (
+    SELECT
+        @ItemId      AS ItemId,
+        @SupplierId  AS SupplierId,
+        @WarehouseId AS WarehouseId
+) AS src
+   ON tgt.ItemId      = src.ItemId
+  AND tgt.SupplierId  = src.SupplierId
   AND tgt.WarehouseId = src.WarehouseId
 WHEN MATCHED THEN
     UPDATE SET
-        Price       = @Price,
         Qty         = CASE WHEN @Qty IS NULL THEN tgt.Qty
-                           ELSE ISNULL(tgt.Qty,0) + @Qty END,
+                           ELSE ISNULL(tgt.Qty, 0) + @Qty END,
         Barcode     = COALESCE(@Barcode, tgt.Barcode),
         UpdatedBy   = @By,
         UpdatedDate = SYSUTCDATETIME()
+
 WHEN NOT MATCHED THEN
     INSERT (ItemId, SupplierId, WarehouseId, Price, Qty, Barcode, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
-    VALUES (@ItemId, @SupplierId, @WarehouseId, @Price, COALESCE(@Qty,0), @Barcode, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());
-";
+    VALUES (@ItemId, @SupplierId, @WarehouseId, @Price, COALESCE(@Qty, 0), @Barcode, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+
 
 
 
@@ -799,7 +807,7 @@ ORDER BY w.Name, b.BinName";
         public async Task<IEnumerable<ItemWarehouseStockDTO>> GetSupplierPricesByItemAsync(int itemId)
         {
             const string sql = @"
-SELECT ip.Id, ip.ItemId, ip.SupplierId, ip.Barcode, s.Name AS SupplierName, ip.Price, ip.Qty  -- Qty included
+SELECT ip.Id, ip.ItemId, ip.SupplierId, ip.Barcode, s.Name AS SupplierName, ip.Price, ip.Qty,ip.WarehouseId  -- Qty included
 FROM dbo.ItemPrice ip
 LEFT JOIN dbo.Suppliers s ON s.Id = ip.SupplierId
 WHERE ip.ItemId = @ItemId
