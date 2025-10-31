@@ -117,6 +117,7 @@ SELECT
     pr.UpdatedBy,
     pr.IsActive,
     pr.Status,
+    pr.IsReorder,
     ISNULL(d.DepartmentName,'') AS DepartmentName,
 
     /* Only UNUSED lines per PR */
@@ -130,7 +131,8 @@ SELECT
             prj.locationSearch,
             prj.location,
             prj.budget,
-            prj.remarks
+            prj.remarks,
+            prj.supplierId
         FROM OPENJSON(pr.prLines)
         WITH (
             itemSearch      NVARCHAR(200) '$.itemSearch',
@@ -141,7 +143,8 @@ SELECT
             locationSearch  NVARCHAR(200) '$.locationSearch',
             location        NVARCHAR(200) '$.location',
             budget          NVARCHAR(400) '$.budget',
-            remarks         NVARCHAR(400) '$.remarks'
+            remarks         NVARCHAR(400) '$.remarks',
+            supplierId      INT           '$.supplierId'
         ) AS prj
         LEFT JOIN UsedLines u
           ON UPPER(LTRIM(RTRIM(u.prNo)))     = UPPER(LTRIM(RTRIM(pr.PurchaseRequestNo)))
