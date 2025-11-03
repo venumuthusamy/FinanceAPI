@@ -16,5 +16,10 @@
         public decimal? MinQty { get; set; }
         public decimal? MaxQty { get; set; }
         public decimal? ReorderQty { get; set; }
+
+        public bool Selected { get; set; }
+        public decimal? VarianceQty { get; set; }
+        public decimal? LineOnHand { get; set; }
+        public int AlreadyCheckedPosted { get; set; } // 1 or 0
     }
 }

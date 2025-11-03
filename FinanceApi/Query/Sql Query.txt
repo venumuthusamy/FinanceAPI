@@ -567,7 +567,7 @@ CREATE TABLE StockTakeLines (
     CountedQty       DECIMAL(18,3)  NULL,   
     BadCountedQty    DECIMAL(18,3)  NULL,      
     VarianceQty      DECIMAL(18,3)  NULL, 
-    Reason          VARCHAR(100),
+    ReasonId      INT NULL,
     Barcode          VARCHAR(100),
     Remarks          VARCHAR(255),
     Selected BIT NULL, 
@@ -598,7 +598,7 @@ CREATE TABLE dbo.StockTakeInventoryAdjustment (
     TxnDate          DATETIME2(3)   NOT NULL CONSTRAINT DF_STIA_TxnDate DEFAULT SYSUTCDATETIME(),
 
     -- Why
-    Reason         VARCHAR(50)            NULL,        -- FK to AdjustmentReason (optional)
+    ReasonId      INT NULL,        -- FK to AdjustmentReason (optional)
     Remarks          NVARCHAR(255)  NULL,
 
     -- Source (document lineage)

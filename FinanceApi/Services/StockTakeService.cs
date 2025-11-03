@@ -19,15 +19,42 @@ namespace FinanceApi.Services
             return await _repository.GetAllAsync();
         }
 
-        public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
-                        long warehouseId,long supplierId,byte takeTypeId, long? strategyId)
+        public async Task<IEnumerable<SupplierDto>> GetAllSupplierByWarehouseIdAsync(int id)
         {
-            // (Optional) defensive check; your controller already validates this.
+            return await _repository.GetAllSupplierByWarehouseIdAsync(id);
+        }
+
+        public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
+       long warehouseId, long supplierId, byte takeTypeId, long? strategyId)
+        {
             if (takeTypeId == 2 && strategyId is null)
                 throw new ArgumentException("strategyId is required when takeTypeId = 2 (Cycle).", nameof(strategyId));
 
-            return await _repository.GetWarehouseItemsAsync(warehouseId, supplierId,takeTypeId, strategyId);
+            var rows = (await _repository.GetWarehouseItemsAsync(warehouseId, supplierId, takeTypeId, strategyId))
+                       ?.ToList() ?? new List<StockTakeWarehouseItem>();
+
+            // If there are rows and ALL of them are "already checked & posted" → throw coded InvalidOperationException
+            if (rows.Count > 0 && rows.All(r =>
+                    r.Selected
+                 && (r.VarianceQty ?? 0m) == 0m
+                 && (r.LineOnHand ?? 0m) == (GetDecimalOrZero(r.OnHand))   // see helper below if OnHand is nullable
+            ))
+            {
+                var ex = new InvalidOperationException("All selected lines for this supplier in this warehouse are already checked & posted.");
+                ex.Data["code"] = "AlreadyCheckedPosted";  // <-- REQUIRED for your catch filter
+                throw ex;
+            }
+
+            // Otherwise, remove the “already posted” rows and return actionable ones
+            return rows.Where(r => !(r.Selected && (r.VarianceQty ?? 0m) == 0m &&
+                                     (r.LineOnHand ?? 0m) == (GetDecimalOrZero(r.OnHand)))).ToList();
+
+            // local helper (adapt if OnHand is non-nullable)
+            static decimal GetDecimalOrZero(object? v)
+                => v is decimal d ? d : (v as decimal?) ?? 0m;
         }
+
+
 
         public async Task<StockTakeDTO?> GetByIdAsync(int id)
         {
