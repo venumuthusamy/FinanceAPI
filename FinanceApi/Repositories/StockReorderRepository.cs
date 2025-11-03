@@ -28,8 +28,8 @@ SELECT
     sr.WarehouseTypeId,
     w.Name AS WarehouseName,
     sr.MethodId,
-    sr.HorizonDays,
-    sr.IncludeLeadTime,
+    sr.HorizonDays      AS Horizon,
+    sr.IncludeLeadTime  AS LeadTime,
     sr.Status,
     sr.CreatedBy,
     sr.CreatedDate,
@@ -55,10 +55,8 @@ FROM dbo.StockReorderLines
 WHERE StockReorderId IN @Ids AND IsActive = 1;";
 
             var lines = (await Connection.QueryAsync<StockReorderLines>(linesSql, new { Ids = reorderIds })).ToList();
-            if (lines.Count == 0)
-                return headers;
+            if (lines.Count == 0) return headers;
 
-            // fetch suppliers for all lines in one go
             var lineIds = lines.Select(l => l.Id).ToArray();
 
             const string suppliersSql = @"
@@ -69,33 +67,65 @@ WHERE StockReorderLineId IN @LineIds AND IsActive = 1;";
 
             var suppliers = await Connection.QueryAsync<StockReorderLineSupplier>(suppliersSql, new { LineIds = lineIds });
 
-            // glue
             var headerById = headers.ToDictionary(h => h.Id);
             var lineById = lines.ToDictionary(l => l.Id);
+
             foreach (var ln in lines)
-            {
                 if (headerById.TryGetValue(ln.StockReorderId, out var parent))
-                {
-                    parent.LineItems ??= new List<StockReorderLines>();
-                    parent.LineItems.Add(ln);
-                }
-            }
+                    (parent.LineItems ??= new List<StockReorderLines>()).Add(ln);
+
             foreach (var s in suppliers)
-            {
                 if (lineById.TryGetValue(s.StockReorderLineId, out var ln))
-                {
-                    ln.SupplierBreakdown ??= new List<StockReorderLineSupplier>();
-                    ln.SupplierBreakdown.Add(s);
-                }
-            }
+                    (ln.SupplierBreakdown ??= new List<StockReorderLineSupplier>()).Add(s);
 
             return headers;
         }
 
+        public async Task<IEnumerable<ReorderPreviewLine>> GetReorderPreviewAsync(int stockReorderId)
+        {
+            const string sql = @"
+WITH PRs AS (
+    SELECT p.Id, p.PurchaseRequestNo, p.StockReorderId, p.PRLines,p.Status
+    FROM dbo.PurchaseRequest p
+    WHERE p.IsActive = 1
+      AND p.IsReorder = 1
+      AND p.StockReorderId = @StockReorderId
+)
+SELECT
+    pr.Status                          AS Status,
+    pr.PurchaseRequestNo           AS PrNo,
+    j.itemId                       AS ItemId,
+    j.itemCode                     AS ItemCode,
+    COALESCE(j.itemName, j.itemSearch, '') AS ItemName,
+    j.qty                          AS RequestedQty,
+    j.supplierId                   AS SupplierId,
+    j.warehouseId                  AS WarehouseId,
+    j.location                     AS Location,
+    TRY_CONVERT(date, j.deliveryDate) AS DeliveryDate,
+    ISNULL(srl.OnHand,0)           AS OnHand,
+    ISNULL(srl.[Min],0)            AS MinQty,
+    ISNULL(srl.[Max],0)            AS MaxQty,
+    ISNULL(srl.ReorderQty,0)       AS ReorderQty
+FROM PRs pr
+CROSS APPLY OPENJSON(pr.PRLines)
+WITH (
+    itemId       int            '$.itemId',
+    itemCode     nvarchar(100)  '$.itemCode',
+    itemName     nvarchar(200)  '$.itemName',
+    itemSearch   nvarchar(200)  '$.itemSearch',
+    qty          decimal(18,4)  '$.qty',
+    supplierId   int            '$.supplierId',
+    warehouseId  int            '$.warehouseId',
+    location     nvarchar(200)  '$.location',
+    deliveryDate nvarchar(40)   '$.deliveryDate'
+) AS j
+LEFT JOIN dbo.StockReorderLines srl
+       ON srl.StockReorderId = pr.StockReorderId
+      AND srl.ItemId         = j.itemId
+WHERE ISNULL(j.itemId,0) > 0;";
 
-
-
-
+            return await Connection.QueryAsync<ReorderPreviewLine>(sql, new { StockReorderId = stockReorderId });
+        }
 
         // --------------------------------------------------------------------
         // GET BY ID (header + lines)

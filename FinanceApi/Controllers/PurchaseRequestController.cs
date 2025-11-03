@@ -86,7 +86,9 @@ namespace FinanceApi.Controllers
                 req,
                 requesterName: req.UserName,
                 requesterId: req.UserId,
-                departmentId: req.DepartmentId
+                departmentId: req.DepartmentId,
+                deliveryDate: req.DeliveryDate,
+                stockReorderId: req.StockReorderId
             );
 
             return Ok(new { created });

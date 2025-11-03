@@ -49,5 +49,9 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id, updatedBy);
         }
+        public async Task<IEnumerable<ReorderPreviewLine>> GetReorderPreviewAsync(int stockReorderId)
+        {
+           return await _repository.GetReorderPreviewAsync(stockReorderId);
+        }
     }
 }

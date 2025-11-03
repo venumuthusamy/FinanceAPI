@@ -12,11 +12,13 @@ namespace FinanceApi.Interfaces
         Task UpdateAsync(PurchaseRequest pr);
         Task DeactivateAsync(int id);
         Task<List<CreatedPrDto>> CreateFromReorderSuggestionsAsync(
-              List<ReorderSuggestionGroupDto> groups,
-              string requester,
-              long requesterId,
-              long? deptId,
-              string? note
-          );
+     List<ReorderSuggestionGroupDto> groups,
+     string requester,
+     long requesterId,
+     long? deptId,
+     string? note,
+     DateTime? headerDeliveryDate, long? stockReorderId);
+
+
     }
 }

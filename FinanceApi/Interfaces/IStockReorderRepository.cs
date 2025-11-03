@@ -11,6 +11,6 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(StockReorder stockReorder);
         Task UpdateAsync(StockReorder stockReorder);
         Task DeactivateAsync(int id, int updatedBy);
-      
+        Task<IEnumerable<ReorderPreviewLine>> GetReorderPreviewAsync(int stockReorderId);
 }
 }

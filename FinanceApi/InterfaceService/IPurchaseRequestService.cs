@@ -12,10 +12,13 @@ namespace FinanceApi.InterfaceService
         Task UpdateAsync(PurchaseRequest purchaseRequest);
         Task DeleteLicense(int id);
         Task<List<CreatedPrDto>> CreateFromReorderSuggestionsAsync(
-        CreateReorderSuggestionsRequest req,
-        string requesterName,
-        long requesterId,
-        long? departmentId
-    );
+      CreateReorderSuggestionsRequest req,
+      string requesterName,
+      long requesterId,
+      long? departmentId,
+      DateTime? deliveryDate, long? stockReorderId);
+
+
+
     }
 }

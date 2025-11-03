@@ -30,5 +30,6 @@
         public int Status { get; set; }
 
         public bool IsReorder { get; set; }
+        public long? StockReorderId { get; set; }
     }
 }
