@@ -14,7 +14,7 @@
         public DateTime TxnDate { get; set; } = DateTime.UtcNow;
 
         // Why
-        public string? Reason { get; set; }
+        public int ReasonId { get; set; }
         public string? Remarks { get; set; }
 
         // Source

@@ -37,5 +37,11 @@
         public int AuditId { get; set; }
 
         public int Qty { get; set; }
+
+        public decimal? CountedQty { get; set; }
+        public decimal? BadCountedQty { get; set; }
+        public int? ReasonId { get; set; }
+
+
     }
 }

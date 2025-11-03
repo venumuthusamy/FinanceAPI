@@ -25,6 +25,14 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
+        [HttpGet("GetAllSupplierByWarehouseId/{id}")]
+        public async Task<IActionResult> GetAllSupplierByWarehouseId(int id)
+        {
+            var list = await _service.GetAllSupplierByWarehouseIdAsync(id);
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
         [HttpGet("warehouse-items")]
         public async Task<IActionResult> GetWarehouseItems(
         [FromQuery] long warehouseId,
@@ -40,17 +48,22 @@ namespace FinanceApi.Controllers
             if (takeTypeId == 2 && strategyId is null)
                 return BadRequest(new ResponseResult(false, "strategyId is required when takeTypeId = 2 (Cycle).", null));
 
-            
+
+
 
             try
             {
                 var items = await _service.GetWarehouseItemsAsync(warehouseId, supplierId, takeTypeId, strategyId);
                 return Ok(new ResponseResult(true, "Success", items));
             }
-            catch (InvalidOperationException ex)  // thrown when status 1/2
+            catch (InvalidOperationException ex) when ((ex.Data["code"] as string) == "AlreadyCheckedPosted")
             {
-                // 409 is appropriate for a domain conflict
-                return Conflict(new { message = ex.Message });
+                return Ok(new ResponseResult(true, ex.Message, Array.Empty<StockTakeWarehouseItem>()));
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Draft/Approved conflict (your existing throw)
+                return Conflict(new ResponseResult(false, ex.Message, null));
             }
         }
 

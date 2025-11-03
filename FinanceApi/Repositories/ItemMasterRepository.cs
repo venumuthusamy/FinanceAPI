@@ -806,19 +806,50 @@ ORDER BY w.Name, b.BinName";
 
         public async Task<IEnumerable<ItemWarehouseStockDTO>> GetSupplierPricesByItemAsync(int itemId)
         {
-            const string sql = @"
-SELECT ip.Id, ip.ItemId, ip.SupplierId, ip.Barcode, s.Name AS SupplierName, ip.Price, ip.Qty,ip.WarehouseId  -- Qty included
+            //            const string sql = @"
+            //SELECT ip.Id, ip.ItemId, ip.SupplierId, ip.Barcode, s.Name AS SupplierName, ip.Price, ip.Qty,ip.WarehouseId  -- Qty included
+            //FROM dbo.ItemPrice ip
+            //LEFT JOIN dbo.Suppliers s ON s.Id = ip.SupplierId
+            //WHERE ip.ItemId = @ItemId
+            //ORDER BY s.Name";
+
+            const string sql = @"SELECT
+    ip.Id,
+    ip.ItemId,
+    ip.SupplierId,
+    ip.Barcode,
+    s.Name AS SupplierName,
+    ip.Price,
+    ip.Qty,
+    ip.WarehouseId,
+    stl.CountedQty,
+    stl.BadCountedQty,
+    stl.ReasonId
 FROM dbo.ItemPrice ip
 LEFT JOIN dbo.Suppliers s ON s.Id = ip.SupplierId
+OUTER APPLY (
+    SELECT TOP (1)
+        CAST(l.CountedQty    AS DECIMAL(18,4)) AS CountedQty,
+        CAST(l.BadCountedQty AS DECIMAL(18,4)) AS BadCountedQty,
+        CAST(l.ReasonId      AS INT)           AS ReasonId
+    FROM dbo.StockTakeLines l
+    INNER JOIN dbo.StockTake t ON t.Id = l.StockTakeId
+    WHERE l.ItemId = ip.ItemId
+      AND ISNULL(l.SupplierId, 0) = ISNULL(ip.SupplierId, 0)
+      AND t.WarehouseTypeId = ip.WarehouseId   -- match warehouse via StockTake
+    ORDER BY l.Id DESC                      -- latest matching line
+) stl
 WHERE ip.ItemId = @ItemId
-ORDER BY s.Name";
+ORDER BY s.Name;";
+
+
             return await Connection.QueryAsync<ItemWarehouseStockDTO>(sql, new { ItemId = itemId });
         }
 
         public async Task<BomSnapshot> GetBomSnapshotAsync(long itemId)
         {
             const string sql = @"
-;WITH Ranked AS (
+; WITH Ranked AS (
   SELECT b.*,
          ROW_NUMBER() OVER (
            PARTITION BY b.ItemId, b.SupplierId
