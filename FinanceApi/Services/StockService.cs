@@ -62,10 +62,9 @@ namespace FinanceApi.Services
             return await _repository.GetAllStockTransferedList();
         }
 
-
-        public Task<AdjustOnHandResult> AdjustOnHandAsync(AdjustOnHandRequest request, IDbTransaction? tx = null)
+        public async Task<int> AdjustOnHandAsync(AdjustOnHandRequest request)
         {
-            return _repository.AdjustOnHandAsync(request);
+            return await _repository.AdjustOnHandAsync(request);
         }
 
         public async Task<ApproveBulkResult> ApproveTransfersBulkAsync(IEnumerable<ApproveTransferRequest> requests)

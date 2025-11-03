@@ -40,5 +40,12 @@
         public string Remarks { get; set; }
 
         public decimal TransferQty { get; set; }
+
+        public int SupplierId { get; set; }
+
+        public string SupplierName { get; set; }
+
+        public bool isPartialTransfer { get; set; }
+        public int Price { get; set; }
     }
 }

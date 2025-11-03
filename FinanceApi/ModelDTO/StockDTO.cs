@@ -22,5 +22,7 @@ namespace FinanceApi.ModelDTO
         public long UpdatedBy { get; set; }
         public DateTime UpdatedDate { get; set; }
 
+        public int ToBinId { get; set; }
+
     }
 }

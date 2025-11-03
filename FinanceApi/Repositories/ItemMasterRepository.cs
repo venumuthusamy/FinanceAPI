@@ -174,8 +174,8 @@ VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode);";
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID,IsFullTransfer,IsPartialTransfer)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID,@IsFullTransfer,@IsPartialTransfer);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID,IsFullTransfer,IsPartialTransfer,ApprovedBy)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID,@IsFullTransfer,@IsPartialTransfer,@ApprovedBy);";
 
                 foreach (var s in dto.ItemStocks)
                 {
@@ -202,7 +202,8 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.IsTransfered,
                         s.StockIssueID,
                         s.IsFullTransfer,
-                        s.IsPartialTransfer
+                        s.IsPartialTransfer,
+                        s.ApprovedBy
                     });
                 }
             }
@@ -309,8 +310,8 @@ WHERE Id=@Id;";
             if (dto.Prices is not null && dto.Prices.Count > 0)
             {
                 const string ip = @"
-INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price,Qty,Barcode,WarehouseId)
-VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode,@WarehouseId);";
+INSERT INTO dbo.ItemPrice (ItemId,SupplierId,Price,Qty,Barcode,WarehouseId,IsTransfered)
+VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode,@WarehouseId,@IsTransfered);";
                 foreach (var p in dto.Prices)
                 {
                     await Connection.ExecuteAsync(ip, new
@@ -321,6 +322,7 @@ VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode,@WarehouseId);";
                         Qty = p.Qty ?? 0m,     // NEW
                         Barcode = p.Barcode,
                         WarehouseId = p.WarehouseId,
+                        IsTransfered = 0
                     });
                 }
             }
@@ -330,8 +332,8 @@ VALUES (@ItemId,@SupplierId,@Price,@Qty,@Barcode,@WarehouseId);";
             {
                 const string iw = @"
 INSERT INTO dbo.ItemWarehouseStock
- (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID,IsFullTransfer,IsPartialTransfer)
-VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID,@IsFullTransfer,@IsPartialTransfer);";
+ (ItemId,WarehouseId,BinId,StrategyId,OnHand,Reserved,MinQty,MaxQty,ReorderQty,LeadTimeDays,BatchFlag,SerialFlag,Available,IsApproved,IsTransfered,StockIssueID,IsFullTransfer,IsPartialTransfer,ApprovedBy)
+VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty,@ReorderQty,@LeadTimeDays,@BatchFlag,@SerialFlag,@Available,@IsApproved,@IsTransfered,@StockIssueID,@IsFullTransfer,@IsPartialTransfer,@ApprovedBy);";
 
                 foreach (var s in dto.ItemStocks)
                 {
@@ -358,7 +360,8 @@ VALUES(@ItemId,@WarehouseId,@BinId,@StrategyId,@OnHand,@Reserved,@MinQty,@MaxQty
                         s.IsTransfered,
                         s.StockIssueID,
                         s.IsFullTransfer,
-                        s.IsPartialTransfer
+                        s.IsPartialTransfer,
+                        s.ApprovedBy
                     });
                 }
             }
@@ -460,10 +463,10 @@ UPDATE dbo.ItemWarehouseStock
                         const string insStockSql = @"
 INSERT INTO dbo.ItemWarehouseStock
  (ItemId, WarehouseId, BinId, StrategyId, OnHand, Reserved, MinQty, MaxQty, ReorderQty, LeadTimeDays,
-  BatchFlag, SerialFlag, Available, IsApproved, IsTransfered, StockIssueID, IsFullTransfer, IsPartialTransfer)
+  BatchFlag, SerialFlag, Available, IsApproved, IsTransfered, StockIssueID, IsFullTransfer, IsPartialTransfer,ApprovedBy)
 VALUES
  (@ItemId, @WarehouseId, @BinId, @StrategyId, @OnHand, 0, NULL, NULL, NULL, NULL,
-  @BatchFlag, @SerialFlag, @Available, 0, 0, 0, 0, 0);";
+  @BatchFlag, @SerialFlag, @Available, 0, 0, 0, 0, 0,0);";
 
                         decimal onHand = ln.QtyDelta;
                         int available = (int)Math.Max(0m, onHand);
@@ -498,6 +501,7 @@ VALUES
                                 Price = ln.Price,                 // will be added to existing
                                 Qty = (decimal?)ln.QtyDelta,      // add to Qty if provided
                                 Barcode = ln.Barcode,
+                                IsTransfered = 0,
                                 By = by
                             },
                             tx
@@ -584,6 +588,7 @@ UPDATE dbo.ItemPrice
                         Price = dto.Price!.Value,
                         Qty = (decimal?)null,
                         Barcode = dto.Barcode,
+                        IsTransfered = 0,
                         By = by
                     },
                     tx
@@ -609,6 +614,7 @@ VALUES
                             Price = dto.Price!.Value,
                             Qty = dto.QtyDelta,
                             Barcode = dto.Barcode,
+                            IsTransfered = 0,
                             By = by
                         },
                         tx
@@ -691,11 +697,12 @@ WHEN MATCHED THEN
                            ELSE ISNULL(tgt.Qty, 0) + @Qty END,
         Barcode     = COALESCE(@Barcode, tgt.Barcode),
         UpdatedBy   = @By,
+IsTransfered = 0,
         UpdatedDate = SYSUTCDATETIME()
 
 WHEN NOT MATCHED THEN
-    INSERT (ItemId, SupplierId, WarehouseId, Price, Qty, Barcode, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
-    VALUES (@ItemId, @SupplierId, @WarehouseId, @Price, COALESCE(@Qty, 0), @Barcode, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+    INSERT (ItemId, SupplierId, WarehouseId, Price, Qty, Barcode, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate,IsTransfered)
+    VALUES (@ItemId, @SupplierId, @WarehouseId, @Price, COALESCE(@Qty, 0), @Barcode, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME(),@IsTransfered);";
 
 
 
@@ -726,7 +733,7 @@ WITH base AS (
       SELECT w.WarehouseId, w.BinId, w.StrategyId, w.OnHand, w.Reserved,
              CASE WHEN w.OnHand - w.Reserved < 0 THEN 0 ELSE w.OnHand - w.Reserved END AS Available,
              w.MinQty, w.MaxQty, w.ReorderQty, w.LeadTimeDays, w.BatchFlag, w.SerialFlag,
-             w.IsApproved, w.IsTransfered, w.StockIssueID, w.IsFullTransfer, w.IsPartialTransfer
+             w.IsApproved, w.IsTransfered, w.StockIssueID, w.ApprovedBy, w.IsFullTransfer, w.IsPartialTransfer
       FROM dbo.ItemWarehouseStock w
       WHERE w.ItemId = i.Id
       FOR JSON PATH, INCLUDE_NULL_VALUES
