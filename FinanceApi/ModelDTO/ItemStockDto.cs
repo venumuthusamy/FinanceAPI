@@ -20,5 +20,7 @@
         public int StockIssueID {  get; set; }
         public bool IsFullTransfer { get; set; }
         public bool IsPartialTransfer { get; set; }
+
+        public int ApprovedBy { get; set; }
     }
 }

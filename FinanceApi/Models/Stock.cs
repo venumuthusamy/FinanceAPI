@@ -7,10 +7,6 @@
 
         public int Available { get; set; }
         public int OnHand { get; set; }
-        public int Reserved { get; set; }
-        public int Min { get; set; }
-
-        public DateTime? Expiry { get; set; } // Nullable in case some items have no expiry
 
         public long CreatedBy { get; set; }
         public DateTime CreatedDate { get; set; }
@@ -30,5 +26,10 @@
         public string? BinName { get; set; }
 
         public string Remarks { get; set; }
+
+        public int SupplierId { get; set; }
+        public bool IsSupplierBased { get; set; }
+
+        public int ToBinId {  get; set; }
     }
 }

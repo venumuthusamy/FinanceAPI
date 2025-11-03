@@ -17,7 +17,7 @@ namespace FinanceApi.Interfaces
         Task<int> MarkAsTransferredBulkAsync(IEnumerable<MarkAsTransferredRequest> requests);
         Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList();
 
-        Task<AdjustOnHandResult> AdjustOnHandAsync(AdjustOnHandRequest request, IDbTransaction? tx = null);
+        Task<int> AdjustOnHandAsync(AdjustOnHandRequest request);
 
         Task<IEnumerable<StockListViewInfo>> GetAllItemStockList();
 
