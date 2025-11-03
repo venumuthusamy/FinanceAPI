@@ -1,9 +1,11 @@
-﻿using FinanceApi.Models;
+﻿using Dapper;
 using FinanceApi.Data;
-using Microsoft.EntityFrameworkCore;
 using FinanceApi.Interfaces;
+using FinanceApi.Models;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Dapper;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace FinanceApi.Repositories
 {
@@ -192,18 +194,28 @@ ORDER BY po.Id;
         {
             if (purchaseOrder is null) throw new ArgumentNullException(nameof(purchaseOrder));
 
-            // Ensure timestamps
-            if (purchaseOrder.CreatedDate == default) purchaseOrder.CreatedDate = DateTime.UtcNow;
-            if (purchaseOrder.UpdatedDate == default) purchaseOrder.UpdatedDate = DateTime.UtcNow;
+            // Timestamps
+            var now = DateTime.UtcNow;
+            if (purchaseOrder.CreatedDate == default) purchaseOrder.CreatedDate = now;
+            if (purchaseOrder.UpdatedDate == default) purchaseOrder.UpdatedDate = now;
 
-            // Generate the next PO number from last Id (simple approach)
-            const string getLastIdQuery = @"SELECT ISNULL(MAX(Id), 0) FROM PurchaseOrder WITH (HOLDLOCK, TABLOCKX)";
-            var lastId = await Connection.ExecuteScalarAsync<int>(getLastIdQuery);
-            var nextNumber = lastId + 1;
-            purchaseOrder.PurchaseOrderNo = $"PO-{nextNumber:00000}"; // e.g., PO-00001
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
 
-            const string sql = @"
-INSERT INTO PurchaseOrder
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                // 1) Generate safe running number
+                // (HOLDLOCK + TABLOCKX to serialize access)
+                const string getLastIdSql = @"SELECT ISNULL(MAX(Id), 0) FROM dbo.PurchaseOrder WITH (HOLDLOCK, TABLOCKX);";
+                var lastId = await conn.ExecuteScalarAsync<int>(getLastIdSql, transaction: tx);
+                var nextNumber = lastId + 1;
+                purchaseOrder.PurchaseOrderNo = $"PO-{nextNumber:00000}";
+
+                // 2) Insert PO and capture Id
+                const string insertPoSql = @"
+INSERT INTO dbo.PurchaseOrder
 (
     PurchaseOrderNo, SupplierId, ApproveLevelId, ApprovalStatus, PaymentTermId,
     CurrencyId, IncotermsId, PoDate, DeliveryDate, Remarks, FxRate, Tax, Shipping,
@@ -215,9 +227,12 @@ VALUES
     @PurchaseOrderNo, @SupplierId, @ApproveLevelId, @ApprovalStatus, @PaymentTermId,
     @CurrencyId, @IncotermsId, @PoDate, @DeliveryDate, @Remarks, @FxRate, @Tax, @Shipping,
     @Discount, @SubTotal, @NetTotal, @PoLines, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
-);
+);";
 
+                var poId = await conn.ExecuteScalarAsync<int>(insertPoSql, purchaseOrder, tx);
 
+                // 3) Update PurchaseRequest status from prNo inside @PoLines JSON
+                const string updatePrSql = @"
 ;WITH PRs AS (
     SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
     FROM OPENJSON(@PoLines)
@@ -225,47 +240,124 @@ VALUES
     WHERE ISNULL(prNo, '') <> ''
 )
 UPDATE PR
-SET PR.Status = @ApprovalStatus,     
+SET PR.Status      = @ApprovalStatus,
     PR.UpdatedDate = SYSUTCDATETIME()
-FROM PurchaseRequest PR
-JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo;
+FROM dbo.PurchaseRequest PR
+JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo;";
+
+                await conn.ExecuteAsync(
+                    updatePrSql,
+                    new
+                    {
+                        PoLines = purchaseOrder.PoLines,          // JSON string (must contain prNo per line)
+                        ApprovalStatus = purchaseOrder.ApprovalStatus
+                    },
+                    tx);
+
+                // 4) Collect StockReorderId(s) from updated PRs and set Status = 2 (or = @ApprovalStatus if preferred)
+                const string updateStockReorderSql = @"
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (prNo nvarchar(100) '$.prNo')
+    WHERE ISNULL(prNo, '') <> ''
+),
+SRids AS (
+    SELECT DISTINCT PR.StockReorderId
+    FROM dbo.PurchaseRequest PR
+    JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo
+    WHERE PR.StockReorderId IS NOT NULL
+)
+UPDATE SR
+SET SR.Status      = @ApprovalStatus,                    -- <-- change to @ApprovalStatus to mirror PO status
+    SR.UpdatedDate = SYSUTCDATETIME()
+FROM dbo.StockReorder SR
+JOIN SRids X ON X.StockReorderId = SR.Id;";
+
+                await conn.ExecuteAsync(
+                    updateStockReorderSql,
+                    new { PoLines = purchaseOrder.PoLines, purchaseOrder.ApprovalStatus },
+                    tx);
+
+                // 5) Set Status = 2 for child StockReorderLines
+                const string updateStockReorderLinesSql = @"
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (prNo nvarchar(100) '$.prNo')
+    WHERE ISNULL(prNo, '') <> ''
+),
+SRids AS (
+    SELECT DISTINCT PR.StockReorderId
+    FROM dbo.PurchaseRequest PR
+    JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo
+    WHERE PR.StockReorderId IS NOT NULL
+)
+UPDATE L
+SET L.Status      = @ApprovalStatus,                    
+    L.UpdatedDate = SYSUTCDATETIME()
+FROM dbo.StockReorderLines L
+JOIN SRids X ON X.StockReorderId = L.StockReorderId;
+-- If you only want to flip selected lines, add: WHERE L.Selected = 1
 ";
 
+                await conn.ExecuteAsync(
+                    updateStockReorderLinesSql,
+                    new { PoLines = purchaseOrder.PoLines, purchaseOrder.ApprovalStatus },
+                    tx);
 
-            // Returns the new PO Id
-            var newId = await Connection.ExecuteScalarAsync<int>(sql, purchaseOrder);
-            return newId;
+                tx.Commit();
+                return poId;
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
         }
 
 
         public async Task UpdateAsync(PurchaseOrder updatedPurchaseOrder)
         {
-            const string query = @"
-UPDATE PurchaseOrder 
+            if (updatedPurchaseOrder is null) throw new ArgumentNullException(nameof(updatedPurchaseOrder));
+
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
+
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                // 1) Update PO header
+                const string updatePoSql = @"
+UPDATE dbo.PurchaseOrder 
 SET 
     PurchaseOrderNo = @PurchaseOrderNo,
-    SupplierId = @SupplierId,
-    ApproveLevelId = @ApproveLevelId,
-    ApprovalStatus = @ApprovalStatus,
-    PaymentTermId = @PaymentTermId,
-    CurrencyId = @CurrencyId,
-    IncotermsId = @IncotermsId,
-    PoDate = @PoDate,
-    DeliveryDate = @DeliveryDate,
-    Remarks = @Remarks,
-    FxRate = @FxRate,
-    Tax = @Tax,
-    Shipping = @Shipping,
-    Discount = @Discount,
-    SubTotal = @SubTotal,
-    NetTotal = @NetTotal,
-    PoLines = @PoLines,
-    UpdatedBy = @UpdatedBy,
-    UpdatedDate = @UpdatedDate,
-    IsActive = @IsActive
+    SupplierId      = @SupplierId,
+    ApproveLevelId  = @ApproveLevelId,
+    ApprovalStatus  = @ApprovalStatus,
+    PaymentTermId   = @PaymentTermId,
+    CurrencyId      = @CurrencyId,
+    IncotermsId     = @IncotermsId,
+    PoDate          = @PoDate,
+    DeliveryDate    = @DeliveryDate,
+    Remarks         = @Remarks,
+    FxRate          = @FxRate,
+    Tax             = @Tax,
+    Shipping        = @Shipping,
+    Discount        = @Discount,
+    SubTotal        = @SubTotal,
+    NetTotal        = @NetTotal,
+    PoLines         = @PoLines,
+    UpdatedBy       = @UpdatedBy,
+    UpdatedDate     = @UpdatedDate,
+    IsActive        = @IsActive
 WHERE Id = @Id;
+";
+                await conn.ExecuteAsync(updatePoSql, updatedPurchaseOrder, tx);
 
-
+                // 2) Update PR statuses for PRs referenced in PoLines (expects each line to carry `prNo`)
+                const string updatePrSql = @"
 ;WITH PRs AS (
     SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
     FROM OPENJSON(@PoLines)
@@ -273,15 +365,76 @@ WHERE Id = @Id;
     WHERE ISNULL(prNo, '') <> ''
 )
 UPDATE PR
-SET PR.Status = @ApprovalStatus,       
+SET PR.Status      = @ApprovalStatus,
     PR.UpdatedDate = SYSUTCDATETIME()
-FROM PurchaseRequest PR
+FROM dbo.PurchaseRequest PR
 JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo;
 ";
+                await conn.ExecuteAsync(
+                    updatePrSql,
+                    new { PoLines = updatedPurchaseOrder.PoLines, updatedPurchaseOrder.ApprovalStatus },
+                    tx);
 
+                // 3) Update StockReorder status (derived via linked PRs) → set to 2 (or mirror PO status)
+                const string updateStockReorderSql = @"
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (prNo nvarchar(100) '$.prNo')
+    WHERE ISNULL(prNo, '') <> ''
+),
+SRids AS (
+    SELECT DISTINCT PR.StockReorderId
+    FROM dbo.PurchaseRequest PR
+    JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo
+    WHERE PR.StockReorderId IS NOT NULL
+)
+UPDATE SR
+SET SR.Status      = @ApprovalStatus,                    -- <== change to @ApprovalStatus to mirror PO status
+    SR.UpdatedDate = SYSUTCDATETIME()
+FROM dbo.StockReorder SR
+JOIN SRids X ON X.StockReorderId = SR.Id;
+";
+                await conn.ExecuteAsync(
+                    updateStockReorderSql,
+                    new { PoLines = updatedPurchaseOrder.PoLines, updatedPurchaseOrder.ApprovalStatus },
+                    tx);
 
-            await Connection.ExecuteAsync(query, updatedPurchaseOrder);
+                // 4) Update StockReorderLines status (same SR set)
+                const string updateStockReorderLinesSql = @"
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (prNo nvarchar(100) '$.prNo')
+    WHERE ISNULL(prNo, '') <> ''
+),
+SRids AS (
+    SELECT DISTINCT PR.StockReorderId
+    FROM dbo.PurchaseRequest PR
+    JOIN PRs ON PRs.prNo = PR.PurchaseRequestNo
+    WHERE PR.StockReorderId IS NOT NULL
+)
+UPDATE L
+SET L.Status      = @ApprovalStatus,                     -- <== change to @ApprovalStatus to mirror PO status
+    L.UpdatedDate = SYSUTCDATETIME()
+FROM dbo.StockReorderLines L
+JOIN SRids X ON X.StockReorderId = L.StockReorderId;
+-- If you only want to update selected lines, add: WHERE L.Selected = 1
+";
+                await conn.ExecuteAsync(
+                    updateStockReorderLinesSql,
+                    new { PoLines = updatedPurchaseOrder.PoLines, updatedPurchaseOrder.ApprovalStatus },
+                    tx);
+
+                tx.Commit();
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
         }
+
 
 
 

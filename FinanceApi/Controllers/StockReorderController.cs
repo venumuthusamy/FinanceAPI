@@ -1,5 +1,6 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.InterfaceService;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -76,7 +77,16 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "StockReorder Deleted sucessfully", null);
             return Ok(data);
         }
+        [HttpGet("preview/{id}")]
+        public async Task<IActionResult> GetPreview(int id)
+        {
+            var rows = (await _service.GetReorderPreviewAsync(id))?.ToList()
+                   ?? new List<ReorderPreviewLine>();  // <- never null
 
-       
+            // If you want success=true even when empty:
+            var resp = new ResponseResult(true, "StockReorder preview fetched successfully", rows);
+            return Ok(resp);
+        }
+
     }
 }

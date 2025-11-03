@@ -214,11 +214,11 @@ ORDER BY pr.Id DESC;
             const string insertQuery = @"
         INSERT INTO PurchaseRequest
             (Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines, CreatedDate,
-             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status)
+             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status,StockReorderId)
         OUTPUT INSERTED.ID
         VALUES
             (@Requester, @DepartmentID, @DeliveryDate, @MultiLoc, @Oversea, @PRLines, @CreatedDate,
-             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status)";
+             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status,@StockReorderId)";
 
             return await Connection.QueryFirstAsync<int>(insertQuery, pr);
         }
@@ -253,42 +253,59 @@ ORDER BY pr.Id DESC;
         }
 
         public async Task<List<CreatedPrDto>> CreateFromReorderSuggestionsAsync(
-       List<ReorderSuggestionGroupDto> groups,
-       string requester,
-       long requesterId,
-       long? deptId,
-       string? note)
+        List<ReorderSuggestionGroupDto> groups,
+        string requester,
+        long requesterId,
+        long? deptId,
+        string? note,
+        DateTime? headerDeliveryDate, long? stockReorderId 
+    )
         {
-            // ✅ Get a brand-new connection for this method call
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
                 await (conn as SqlConnection)!.OpenAsync();
+
             using var tx = conn.BeginTransaction();
             try
             {
-                // 1) Pull item meta once (guard empty IN)
+                // 1) Gather item metadata once
                 var allItemIds = groups.SelectMany(g => g.Lines)
                                        .Select(l => l.ItemId)
                                        .Distinct()
                                        .ToArray();
 
                 var itemInfo = allItemIds.Length == 0
-     ? new Dictionary<long, ItemMeta>()
-     : (await conn.QueryAsync<ItemMeta>(@"
+                    ? new Dictionary<long, ItemMeta>()
+                    : (await conn.QueryAsync<ItemMeta>(@"
 SELECT 
-    im.Id                                  AS ItemId,
-    im.Sku                                 AS Sku,
-    im.Name                                AS Name,
-    -- prefer Item.UomId -> Uom.Name/Code, else fall back to ItemMaster.Uom text
-    COALESCE(u.Name, im.Uom, '')   AS Uom,
-    i.BudgetLineId               AS Budget
-   
+    im.Id                        AS ItemId,
+    im.Sku                       AS Sku,
+    im.Name                      AS Name,
+    COALESCE(u.Name, im.Uom, '') AS Uom,
+    ca.Id                        AS BudgetHeadId,
+    ca.HeadName                  AS Budget
 FROM dbo.ItemMaster im
-LEFT JOIN dbo.Item i            ON i.ItemCode = im.Sku      -- or ON i.ItemId = im.Id if you have that FK
-LEFT JOIN dbo.Uom  u            ON u.Id = i.UomId
+LEFT JOIN dbo.Item           i  ON i.ItemCode = im.Sku   -- or i.ItemId = im.Id
+LEFT JOIN dbo.Uom            u  ON u.Id = i.UomId
+LEFT JOIN dbo.ChartOfAccount ca ON ca.Id = i.BudgetLineId
 WHERE im.Id IN @Ids;",
-     new { Ids = allItemIds }, tx
- )).ToDictionary(x => x.ItemId, x => x);
+                        new { Ids = allItemIds }, tx))
+                    .ToDictionary(x => x.ItemId, x => x);
+
+                // 2) Find earliest per-line date across all groups (for fallback)
+                DateTime? earliestLineDate = groups
+                    .SelectMany(g => g.Lines)
+                    .Select(l => l.DeliveryDate)
+                    .Where(d => d.HasValue)
+                    .OrderBy(d => d!.Value)
+                    .FirstOrDefault();
+
+                // 3) Normalize header date (UTC Date)
+                DateTime? effectiveHeaderDate = headerDeliveryDate ?? earliestLineDate;
+                if (effectiveHeaderDate.HasValue)
+                    effectiveHeaderDate = DateTime.SpecifyKind(effectiveHeaderDate.Value.Date, DateTimeKind.Utc);
+                else
+                    effectiveHeaderDate = DateTime.UtcNow.Date.AddDays(1);
 
                 var created = new List<CreatedPrDto>();
 
@@ -303,13 +320,15 @@ WHERE im.Id IN @Ids;",
                             {
                                 itemId = l.ItemId,
                                 itemCode = info?.Sku,
-                                itemName = info?.Name,
+                                itemSearch = l.ItemName,        // keep name for PR line search
                                 qty = l.Qty,
                                 price = l.Price,
                                 uom = info?.Uom ?? "",
-                                budget = info?.Budget ?? 0m,
+                                budget = info?.Budget,
                                 supplierId = g.SupplierId,
-                                warehouseId = g.WarehouseId
+                                warehouseId = g.WarehouseId,
+                                location = l.Location,          // per-line location (optional)
+                                deliveryDate = l.DeliveryDate   // per-line date (optional)
                             };
                         })
                         .ToList();
@@ -323,33 +342,36 @@ WHERE im.Id IN @Ids;",
                             PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
                         });
 
-                    // 2) PR number inside same tx & conn
+                    // 4) Generate PR number (inside same tx)
                     var prNo = await NextPrNumberAsync(conn, tx);
 
-                    // 3) Insert PR
+                    // 5) Insert PR header (DeliveryDate = effective header date)
                     var prId = await conn.QueryFirstAsync<int>(@"
 INSERT INTO PurchaseRequest
 (Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines,
- CreatedDate, UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo, IsActive, Status,IsReorder)
+ CreatedDate, UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,
+ IsActive, Status, IsReorder, StockReorderId)  
 OUTPUT INSERTED.ID
 VALUES
 (@Requester, @DepartmentID, @DeliveryDate, 0, 0, @PRLines,
- @UtcNow, @UtcNow, @CreatedBy, @UpdatedBy, @Description, @PRNo, 1, 1,@IsReorder);",
-                        new
-                        {
-                            Requester = requester,
-                            DepartmentID = (object?)deptId ?? DBNull.Value,
-                            DeliveryDate = DateTime.UtcNow.Date.AddDays(1),
-                            PRLines = json,
-                            UtcNow = DateTime.UtcNow,
-                            CreatedBy = requesterId.ToString(),
-                            UpdatedBy = requesterId.ToString(),
-                            Description = string.IsNullOrWhiteSpace(note)
-                                           ? "Suggest PO Reorder"
-                                           : note,
-                            PRNo = prNo,
-                            IsReorder = 1
-                        }, tx);
+ @UtcNow, @UtcNow, @CreatedBy, @UpdatedBy, @Description, @PRNo,
+ 1, 1, @IsReorder, @StockReorderId);            
+",
+ new
+ {
+     Requester = requester,
+     DepartmentID = (object?)deptId ?? DBNull.Value,
+     DeliveryDate = effectiveHeaderDate,
+     PRLines = json,
+     UtcNow = DateTime.UtcNow,
+     CreatedBy = requesterId.ToString(),
+     UpdatedBy = requesterId.ToString(),
+     Description = string.IsNullOrWhiteSpace(note) ? "Suggest PO Reorder" : note,
+     PRNo = prNo,
+     IsReorder = 1,
+     StockReorderId = (object?)stockReorderId ?? DBNull.Value   // 👈 pass it
+ }, tx);
+
 
                     created.Add(new CreatedPrDto { Id = prId, PurchaseRequestNo = prNo });
                 }
@@ -363,6 +385,8 @@ VALUES
                 throw;
             }
         }
+
+      
 
         // ⚠️ Helper takes the SAME conn + tx
         private static async Task<string> NextPrNumberAsync(IDbConnection conn, IDbTransaction tx)
