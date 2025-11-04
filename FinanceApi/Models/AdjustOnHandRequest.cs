@@ -6,9 +6,15 @@
         public long WarehouseId { get; set; }
         public long? BinId { get; set; }
         public long? SupplierId { get; set; }
-        public decimal NewOnHand { get; set; }
+
+        // 🔹 Qty to subtract from ItemWarehouseStock
+        public decimal FaultQty { get; set; }
+
+        // 🔹 Full new OnHand value to update in ItemPrice
+        public decimal FinalOnHand { get; set; }
+
         public long? StockIssueId { get; set; }
-        public long? ApprovedBy { get; set; }   // ✅ added
+        public long? ApprovedBy { get; set; }   // approver ID
         public string? UpdatedBy { get; set; }
     }
 
