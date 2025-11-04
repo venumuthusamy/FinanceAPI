@@ -38,7 +38,7 @@ namespace FinanceApi.Repositories
         public async Task<int> InsertBulkAsync(IEnumerable<Stock> stocks)
         {
             const string query = @"
-INSERT INTO [Finance].[dbo].[Stock] (
+INSERT INTO [dbo].[Stock] (
     ItemID,
     FromWarehouseID,
     ToWarehouseID,
@@ -189,7 +189,7 @@ inner join BIN as bn on bn.ID = iws.BinId;
             const string updateIws = @"
 UPDATE iws
 SET    IsTransfered = 1
-FROM   [Finance].[dbo].[ItemWarehouseStock] iws
+FROM   [dbo].[ItemWarehouseStock] iws
 WHERE  iws.ItemId      = @ItemId
   AND  iws.WarehouseId = @WarehouseId
   AND (
@@ -200,7 +200,7 @@ WHERE  iws.ItemId      = @ItemId
             const string updateItemPrice = @"
 UPDATE ip
 SET    IsTransfered = 1
-FROM   [Finance].[dbo].[ItemPrice] ip
+FROM   [dbo].[ItemPrice] ip
 WHERE  ip.ItemId      = @ItemId
   AND  ip.WarehouseId = @WarehouseId
   AND (
@@ -402,14 +402,14 @@ ORDER BY s.FromWarehouseID, lp.SupplierId;
             const string updateIwsSql = @"
 UPDATE iws
 SET 
-    iws.OnHand = @NewOnHand,
+    iws.OnHand = iws.OnHand - @FaultQty,   -- ✅ subtract fault qty
     iws.Available = CASE 
-                        WHEN @NewOnHand - ISNULL(iws.Reserved, 0) < 0 
+                        WHEN (iws.OnHand - @FaultQty) - ISNULL(iws.Reserved, 0) < 0 
                         THEN 0 
-                        ELSE @NewOnHand - ISNULL(iws.Reserved, 0) 
+                        ELSE (iws.OnHand - @FaultQty) - ISNULL(iws.Reserved, 0) 
                     END,
     iws.StockIssueID = @StockIssueId,
-    iws.ApprovedBy = @ApprovedBy       -- ✅ update approver here
+    iws.ApprovedBy = @ApprovedBy
 FROM [Finance].[dbo].[ItemWarehouseStock] iws
 WHERE iws.ItemId = @ItemId
   AND iws.WarehouseId = @WarehouseId
@@ -418,7 +418,7 @@ WHERE iws.ItemId = @ItemId
 
             const string updateItemPriceSql = @"
 UPDATE ip
-SET ip.Qty = @NewOnHand
+SET ip.Qty = @FinalOnHand     -- ✅ update full new on-hand
 FROM [Finance].[dbo].[ItemPrice] ip
 WHERE ip.ItemId = @ItemId
   AND ip.WarehouseId = @WarehouseId
@@ -433,24 +433,24 @@ WHERE ip.ItemId = @ItemId
             using var tx = conn.BeginTransaction();
             try
             {
-                // 1️⃣ Update ItemWarehouseStock
+                // 1️⃣ Update ItemWarehouseStock (subtract fault quantity)
                 var rowsIws = await conn.ExecuteAsync(updateIwsSql, new
                 {
                     request.ItemId,
                     request.WarehouseId,
                     request.BinId,
-                    request.NewOnHand,
+                    request.FaultQty,
                     request.StockIssueId,
-                    request.ApprovedBy   // ✅ added approver param
+                    request.ApprovedBy
                 }, tx);
 
-                // 2️⃣ Update ItemPrice
+                // 2️⃣ Update ItemPrice (set full final on-hand)
                 var rowsIp = await conn.ExecuteAsync(updateItemPriceSql, new
                 {
                     request.ItemId,
                     request.WarehouseId,
                     request.SupplierId,
-                    request.NewOnHand
+                    request.FinalOnHand
                 }, tx);
 
                 tx.Commit();
@@ -492,7 +492,7 @@ WHERE ip.ItemId = @ItemId
                     // 1) Get current Available & OnHand from FROM warehouse (bin-aware)
                     const string getAvailableSql = @"
 SELECT Available, OnHand
-FROM [Finance].[dbo].[ItemWarehouseStock]
+FROM [dbo].[ItemWarehouseStock]
 WHERE ItemId = @ItemId
   AND WarehouseId = @WarehouseId
   AND (BinId = @BinId OR (@BinId IS NULL AND BinId IS NULL));";
@@ -508,7 +508,7 @@ WHERE ItemId = @ItemId
 
                     // 3) Update FROM ItemWarehouseStock
                     const string updateIwsSql = @"
-UPDATE [Finance].[dbo].[ItemWarehouseStock]
+UPDATE [dbo].[ItemWarehouseStock]
 SET 
     IsApproved        = 1,
     Available         = @NewAvailable,
@@ -537,7 +537,7 @@ WHERE ItemId = @ItemId
 
                     // 4) Update Stock
                     const string sqlStock = @"
-UPDATE [Finance].[dbo].[Stock]
+UPDATE [dbo].[Stock]
 SET 
     ToWarehouseID     = @ToWarehouseId,
     ToBinId           = @ToBinId,
@@ -552,7 +552,7 @@ WHERE Id = @StockId;";
 
                     // 5) Update ItemPrice (FROM side)
                     const string sqlItemPrice = @"
-UPDATE [Finance].[dbo].[ItemPrice]
+UPDATE [dbo].[ItemPrice]
 SET 
     Qty = Qty - @TransferQty,
     IsTransfered = CASE 
@@ -573,7 +573,7 @@ WHERE ItemId = @ItemId
                     // 6) Upsert ItemWarehouseStock at TO (bin-aware)
                     const string checkToWarehouseSql = @"
 SELECT COUNT(*)
-FROM [Finance].[dbo].[ItemWarehouseStock]
+FROM .[dbo].[ItemWarehouseStock]
 WHERE ItemId = @ItemId 
   AND WarehouseId = @ToWarehouseId
   AND (BinId = @ToBinId OR (@ToBinId IS NULL AND BinId IS NULL));";
@@ -583,7 +583,7 @@ WHERE ItemId = @ItemId
                     if (existsIwsTo > 0)
                     {
                         const string updateToWarehouseSql = @"
-UPDATE [Finance].[dbo].[ItemWarehouseStock]
+UPDATE [dbo].[ItemWarehouseStock]
 SET 
     Available = Available + @TransferQty,
     OnHand    = OnHand + @TransferQty
@@ -596,7 +596,7 @@ WHERE ItemId = @ItemId
                     else
                     {
                         const string insertToWarehouseSql = @"
-INSERT INTO [Finance].[dbo].[ItemWarehouseStock]
+INSERT INTO [dbo].[ItemWarehouseStock]
 (
     ItemId,
     WarehouseId,
@@ -646,7 +646,7 @@ VALUES
                     //    a) Check existence (supplier-aware)
                     const string checkToItemPriceSql = @"
 SELECT COUNT(*) 
-FROM [Finance].[dbo].[ItemPrice]
+FROM [dbo].[ItemPrice]
 WHERE ItemId = @ItemId 
   AND WarehouseId = @ToWarehouseId
   AND (
@@ -660,7 +660,7 @@ WHERE ItemId = @ItemId
                     {
                         // b) Update Qty only
                         const string updateToItemPriceSql = @"
-UPDATE [Finance].[dbo].[ItemPrice]
+UPDATE [dbo].[ItemPrice]
 SET 
     Qty = Qty + @TransferQty,
     UpdatedDate = GETDATE(),
@@ -679,7 +679,7 @@ WHERE ItemId = @ItemId
                         // c) INSERT with PRICE taken from FROM warehouse's latest ItemPrice
                         const string getSrcPriceSql = @"
 SELECT TOP (1) Price, Barcode
-FROM [Finance].[dbo].[ItemPrice]
+FROM [dbo].[ItemPrice]
 WHERE ItemId = @ItemId 
   AND WarehouseId = @WarehouseId
   AND (
@@ -694,7 +694,7 @@ ORDER BY
                         var barcode = (object?)src.Barcode ?? DBNull.Value;
 
                         const string insertToItemPriceSql = @"
-INSERT INTO [Finance].[dbo].[ItemPrice]
+INSERT INTO [dbo].[ItemPrice]
 (
     ItemId,
     SupplierId,
