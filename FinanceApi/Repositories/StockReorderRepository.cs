@@ -591,44 +591,53 @@ WHERE l.StockReorderId = @Id AND s.IsActive = 1;";
         public async Task<IEnumerable<StockReorderWarehouseItems>> GetWarehouseItemsAsync(long warehouseId)
         {
             const string sql = @"
+WITH ipx AS (
+    SELECT ip.*,
+           ROW_NUMBER() OVER (
+               PARTITION BY ip.ItemId, ip.SupplierId, ip.WarehouseId
+               ORDER BY ISNULL(ip.UpdatedDate, ip.CreatedDate) DESC, ip.Id DESC
+           ) AS rn
+    FROM dbo.ItemPrice ip
+)
 SELECT
-    -- Item level
-    im.Id                     AS ItemId,
-    im.Name                   AS ItemName,
-    im.Sku                    AS Sku,
-    iws.WarehouseId           AS WarehouseId,
-    w.Name                    AS WarehouseName,
-    ISNULL(iws.OnHand, 0)     AS OnHand,
-    ISNULL(iws.Reserved, 0)   AS Reserved,
-    ISNULL(iws.MinQty, 0)     AS MinQty,
-    iws.ReorderQty            AS ReorderQty,
-    iws.MaxQty                AS MaxQty,
-    iws.LeadTimeDays          AS LeadDays,
-    CAST(0 AS DECIMAL(18,3))  AS UsageHorizon,
-    ISNULL(iws.MinQty, 0)     AS SafetyStock,
+    im.Id                    AS ItemId,
+    im.Name                  AS ItemName,
+    im.Sku                   AS Sku,
+    iws.WarehouseId          AS WarehouseId,
+    w.Name                   AS WarehouseName,
+    ISNULL(iws.OnHand, 0)    AS OnHand,
+    ISNULL(iws.Reserved, 0)  AS Reserved,
+    ISNULL(iws.MinQty, 0)    AS MinQty,
+    iws.ReorderQty           AS ReorderQty,
+    iws.MaxQty               AS MaxQty,
+    iws.LeadTimeDays         AS LeadDays,
+    CAST(0 AS DECIMAL(18,3)) AS UsageHorizon,
+    ISNULL(iws.MinQty, 0)    AS SafetyStock,
 
-    -- Supplier level (can be multiple rows per item)
-    sp.Id                     AS SupplierId,
-    sp.Name                   AS SupplierName,
-    ISNULL(ip.Price, 0)       AS Price,
-    ISNULL(ip.Qty, 0)         AS Qty
+    sp.Id                    AS SupplierId,
+    sp.Name                  AS SupplierName,
+    ISNULL(ip.Price, 0)      AS Price,
+    ISNULL(ip.Qty, 0)        AS Qty,
+    ip.Barcode               AS Barcode
 FROM dbo.ItemWarehouseStock iws
 JOIN dbo.ItemMaster  im ON im.Id = iws.ItemId
 JOIN dbo.Warehouse   w  ON w.Id  = iws.WarehouseId
-LEFT JOIN dbo.ItemPrice ip ON ip.ItemId = im.Id              -- your price list
-LEFT JOIN dbo.Suppliers  sp ON sp.Id     = ip.SupplierId
+LEFT JOIN ipx ip
+       ON ip.ItemId      = im.Id
+      AND ip.WarehouseId = iws.WarehouseId
+      AND ip.rn = 1
+LEFT JOIN dbo.Suppliers sp ON sp.Id = ip.SupplierId
 WHERE iws.WarehouseId = @WarehouseId
 ORDER BY im.Sku, im.Name, sp.Name;";
 
             var args = new { WarehouseId = warehouseId };
 
             if (Connection.State != ConnectionState.Open)
-                await (Connection as SqlConnection)!.OpenAsync();
+                await ((SqlConnection)Connection).OpenAsync();
 
-            // Multi-mapping: item columns then SupplierId marks split
             var map = new Dictionary<long, StockReorderWarehouseItems>();
 
-            var result = await Connection.QueryAsync<StockReorderWarehouseItems, StockReorderSupplier, StockReorderWarehouseItems>(
+            await Connection.QueryAsync<StockReorderWarehouseItems, StockReorderSupplier, StockReorderWarehouseItems>(
                 sql,
                 (item, sup) =>
                 {
@@ -639,20 +648,18 @@ ORDER BY im.Sku, im.Name, sp.Name;";
                         map[item.ItemId] = existing;
                     }
 
-                    // Only add supplier row if present (SupplierId not null/0). Qty defaults to 0 (user will input)
+                    // add only when a warehouse-specific ItemPrice row exists
                     if (sup != null && sup.SupplierId > 0)
-                    {
-
                         existing.Suppliers.Add(sup);
-                    }
+
                     return existing;
                 },
                 args,
                 splitOn: "SupplierId"
             );
 
-            // De-dup consolidated list
             return map.Values;
         }
+
     }
 }
