@@ -61,6 +61,10 @@ namespace FinanceApi.Services
         {
             return await _repository.GetAllStockTransferedList();
         }
+        public async Task<IEnumerable<StockTransferListViewInfo>> GetStockTransferedList()
+        {
+            return await _repository.GetStockTransferedList();
+        }
 
         public async Task<int> AdjustOnHandAsync(AdjustOnHandRequest request)
         {
