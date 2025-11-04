@@ -410,7 +410,7 @@ SET
                     END,
     iws.StockIssueID = @StockIssueId,
     iws.ApprovedBy = @ApprovedBy
-FROM [Finance].[dbo].[ItemWarehouseStock] iws
+FROM [dbo].[ItemWarehouseStock] iws
 WHERE iws.ItemId = @ItemId
   AND iws.WarehouseId = @WarehouseId
   AND ((iws.BinId IS NULL AND @BinId IS NULL) OR iws.BinId = @BinId);
@@ -419,7 +419,7 @@ WHERE iws.ItemId = @ItemId
             const string updateItemPriceSql = @"
 UPDATE ip
 SET ip.Qty = @FinalOnHand     -- ✅ update full new on-hand
-FROM [Finance].[dbo].[ItemPrice] ip
+FROM [dbo].[ItemPrice] ip
 WHERE ip.ItemId = @ItemId
   AND ip.WarehouseId = @WarehouseId
   AND ip.SupplierId = @SupplierId;
