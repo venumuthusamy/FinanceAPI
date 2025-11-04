@@ -242,60 +242,153 @@ WHERE  ip.ItemId      = @ItemId
         public async Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList()
         {
             const string query = @"
-WITH ReservedStock AS (
-    SELECT
-        iws.ItemId,
-        iws.WarehouseId,
-        SUM(iws.Reserved) AS Reserved,
-        MAX(iws.MinQty) AS MinQty,
-        MAX(iws.MaxQty) AS MaxQty
-    FROM ItemWarehouseStock iws
-    WHERE iws.IsTransfered = 1
-    GROUP BY iws.ItemId, iws.WarehouseId
+WITH RS AS (
+  SELECT
+      iws.ItemId,
+      iws.WarehouseId,
+      SUM(ISNULL(iws.Reserved,0)) AS Reserved,
+      MAX(ISNULL(iws.MinQty,0))   AS MinQty,
+      MAX(ISNULL(iws.MaxQty,0))   AS MaxQty
+  FROM ItemWarehouseStock iws
+  GROUP BY iws.ItemId, iws.WarehouseId
 )
-
 SELECT
-    s.Id AS StockId,
-    im.Id AS ItemId,
+    s.Id                  AS StockId,
+    im.Id                 AS ItemId,
     im.Name,
     im.Sku,
-    ip.WarehouseId,
-    wh.Name AS WarehouseName,
+
+    s.FromWarehouseID     AS WarehouseId,
+    whFrom.Name           AS WarehouseName,
+
     s.FromWarehouseID,
-    whFrom.Name AS FromWarehouseName,
+    whFrom.Name           AS FromWarehouseName,
     s.ToWarehouseID,
-    whTo.Name AS ToWarehouseName,
+    whTo.Name             AS ToWarehouseName,
+
     s.BinId,
     bn.BinName,
-    s.Available,
-    s.OnHand,
-    rs.Reserved,    
-    rs.MinQty,
-    rs.MaxQty,
-    ip.SupplierId,
-ip.Price,
-    sp.Name AS SupplierName,
+
+    ISNULL(iws.OnHand,0)      AS OnHand,
+    ISNULL(iws.Available,0)   AS Available,
+    ISNULL(rs.Reserved,0)     AS Reserved,
+    ISNULL(rs.MinQty,0)       AS MinQty,
+    ISNULL(rs.MaxQty,0)       AS MaxQty,
+
+    lp.SupplierId,
+    lp.Price,
+    sp.Name               AS SupplierName,
+
     s.TransferQty,
     s.Remarks,
     s.IsApproved,
     s.IsSupplierBased
-FROM ItemPrice ip
-INNER JOIN ItemMaster im ON im.Id = ip.ItemId
-INNER JOIN Stock s 
-    ON s.ItemId = ip.ItemId
-    AND s.SupplierId = ip.SupplierId
-    AND s.FromWarehouseID = ip.WarehouseId
-INNER JOIN Warehouse wh ON wh.Id = ip.WarehouseId
+FROM Stock s
+JOIN ItemMaster im ON im.Id = s.ItemId
+
+OUTER APPLY (
+    SELECT TOP (1) ip.SupplierId, ip.Price
+    FROM ItemPrice ip
+    WHERE ip.ItemId = s.ItemId
+      AND (ip.SupplierId = s.SupplierId OR s.SupplierId IS NULL)
+      AND ip.WarehouseId = s.FromWarehouseID
+    ORDER BY ip.Id DESC
+) lp
+
+LEFT JOIN Suppliers sp   ON sp.Id     = lp.SupplierId
 LEFT JOIN Warehouse whFrom ON whFrom.Id = s.FromWarehouseID
-LEFT JOIN Warehouse whTo ON whTo.Id = s.ToWarehouseID
-LEFT JOIN BIN bn ON bn.ID = s.BinId
-LEFT JOIN ReservedStock rs 
-    ON rs.ItemId = ip.ItemId
-    AND rs.WarehouseId = ip.WarehouseId
-LEFT JOIN Suppliers sp ON sp.Id = ip.SupplierId
-WHERE ip.IsTransfered = 1
-  AND s.IsSupplierBased = 1
-ORDER BY ip.WarehouseId, ip.SupplierId;
+LEFT JOIN Warehouse whTo   ON whTo.Id   = s.ToWarehouseID
+LEFT JOIN Bin bn           ON bn.Id     = s.BinId
+
+LEFT JOIN ItemWarehouseStock iws
+       ON iws.ItemId = s.ItemId
+      AND iws.WarehouseId = s.FromWarehouseID
+      AND (iws.BinId = s.BinId OR s.BinId IS NULL)
+
+LEFT JOIN RS rs
+       ON rs.ItemId      = s.ItemId
+      AND rs.WarehouseId = s.FromWarehouseID
+
+WHERE s.isApproved = 1    
+ORDER BY s.FromWarehouseID, lp.SupplierId;
+
+";
+            return await Connection.QueryAsync<StockTransferListViewInfo>(query);
+        }
+
+
+        public async Task<IEnumerable<StockTransferListViewInfo>> GetStockTransferedList()
+        {
+            const string query = @"
+WITH RS AS (
+  SELECT
+      iws.ItemId,
+      iws.WarehouseId,
+      SUM(ISNULL(iws.Reserved,0)) AS Reserved,
+      MAX(ISNULL(iws.MinQty,0))   AS MinQty,
+      MAX(ISNULL(iws.MaxQty,0))   AS MaxQty
+  FROM ItemWarehouseStock iws
+  GROUP BY iws.ItemId, iws.WarehouseId
+)
+SELECT
+    s.Id                  AS StockId,
+    im.Id                 AS ItemId,
+    im.Name,
+    im.Sku,
+
+    s.FromWarehouseID     AS WarehouseId,
+    whFrom.Name           AS WarehouseName,
+
+    s.FromWarehouseID,
+    whFrom.Name           AS FromWarehouseName,
+    s.ToWarehouseID,
+    whTo.Name             AS ToWarehouseName,
+
+    s.BinId,
+    bn.BinName,
+
+    ISNULL(iws.OnHand,0)      AS OnHand,
+    ISNULL(iws.Available,0)   AS Available,
+    ISNULL(rs.Reserved,0)     AS Reserved,
+    ISNULL(rs.MinQty,0)       AS MinQty,
+    ISNULL(rs.MaxQty,0)       AS MaxQty,
+
+    lp.SupplierId,
+    lp.Price,
+    sp.Name               AS SupplierName,
+
+    s.TransferQty,
+    s.Remarks,
+    s.IsApproved,
+    s.IsSupplierBased
+FROM Stock s
+JOIN ItemMaster im ON im.Id = s.ItemId
+
+OUTER APPLY (
+    SELECT TOP (1) ip.SupplierId, ip.Price
+    FROM ItemPrice ip
+    WHERE ip.ItemId = s.ItemId
+      AND (ip.SupplierId = s.SupplierId OR s.SupplierId IS NULL)
+      AND ip.WarehouseId = s.FromWarehouseID
+    ORDER BY ip.Id DESC
+) lp
+
+LEFT JOIN Suppliers sp   ON sp.Id     = lp.SupplierId
+LEFT JOIN Warehouse whFrom ON whFrom.Id = s.FromWarehouseID
+LEFT JOIN Warehouse whTo   ON whTo.Id   = s.ToWarehouseID
+LEFT JOIN Bin bn           ON bn.Id     = s.BinId
+
+LEFT JOIN ItemWarehouseStock iws
+       ON iws.ItemId = s.ItemId
+      AND iws.WarehouseId = s.FromWarehouseID
+      AND (iws.BinId = s.BinId OR s.BinId IS NULL)
+
+LEFT JOIN RS rs
+       ON rs.ItemId      = s.ItemId
+      AND rs.WarehouseId = s.FromWarehouseID
+
+WHERE iws.IsTransfered =1
+ORDER BY s.FromWarehouseID, lp.SupplierId;
 
 ";
             return await Connection.QueryAsync<StockTransferListViewInfo>(query);
@@ -571,7 +664,7 @@ UPDATE [Finance].[dbo].[ItemPrice]
 SET 
     Qty = Qty + @TransferQty,
     UpdatedDate = GETDATE(),
-    IsTransfered = 1
+    IsTransfered = 0
 WHERE ItemId = @ItemId 
   AND WarehouseId = @ToWarehouseId
   AND (
@@ -676,7 +769,7 @@ VALUES
 
             const string query = @"
 SELECT 
-s.ID,
+    s.ID,
     im.Id,
     im.Name,
     im.Sku,
@@ -684,19 +777,19 @@ s.ID,
     whFrom.Name AS FromWarehouseName,
     s.ToWarehouseID,
     ISNULL(whTo.Name, 'Pending') AS ToWarehouseName,
-    s.TransferQty,      -- transfer quantity
-    s.Available       -- available quantity from warehouse stock
-FROM ItemMaster AS im
+    s.TransferQty,
+    s.Available
+FROM Stock AS s
+INNER JOIN ItemMaster AS im 
+    ON im.Id = s.ItemId
 INNER JOIN ItemWarehouseStock AS iws 
-    ON iws.ItemId = im.Id
-INNER JOIN Stock AS s 
-    ON s.ItemId = iws.ItemId
+    ON iws.ItemId = s.ItemId 
+    AND iws.WarehouseId = s.FromWarehouseID   -- ✅ restrict to one warehouse
 LEFT JOIN Warehouse AS whFrom 
     ON whFrom.Id = s.FromWarehouseID
 LEFT JOIN Warehouse AS whTo 
     ON whTo.Id = s.ToWarehouseID
-WHERE iws.IsTransfered = 1 AND s.Id = @Id or iws.IsPartialTransfer = 1
-
+WHERE   s.Id = @Id ;
 ";
             return await Connection.QuerySingleAsync<StockHistoryViewInfo>(query, new { Id = id });
         }

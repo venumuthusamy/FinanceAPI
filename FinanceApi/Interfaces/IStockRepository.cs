@@ -24,5 +24,7 @@ namespace FinanceApi.Interfaces
         Task<ApproveBulkResult> ApproveTransfersBulkAsync(IEnumerable<ApproveTransferRequest> requests);
 
         Task<StockHistoryViewInfo> GetByIdStockHistory(long id);
+
+        Task<IEnumerable<StockTransferListViewInfo>> GetStockTransferedList();
     }
 }

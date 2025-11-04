@@ -120,6 +120,14 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
+        [HttpGet("GetStockTransferedList")]
+        public async Task<IActionResult> GetStockTransferedList()
+        {
+            var list = await _service.GetStockTransferedList();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
+
 
         [HttpPost("AdjustOnHand")]
         public async Task<ActionResult<object>> AdjustOnHand([FromBody] AdjustOnHandRequest req)
