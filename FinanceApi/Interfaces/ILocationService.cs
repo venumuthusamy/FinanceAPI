@@ -10,5 +10,7 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(Location location);
         Task UpdateAsync(Location location);
         Task DeleteAsync(int id);
+
+        Task<IEnumerable<LocationDto>> GetLocationByCountryId(int id);
     }
 }
