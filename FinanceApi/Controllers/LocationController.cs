@@ -72,5 +72,14 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Location Deleted sucessfully", null);
             return Ok(data);
         }
+
+        [HttpGet("getLocationbyCountryId/{id}")]
+        public async Task<IActionResult> getLocationbyCountryId(int id)
+        {
+            var licenseObj = await _service.GetLocationByCountryId(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
+
     }
 }

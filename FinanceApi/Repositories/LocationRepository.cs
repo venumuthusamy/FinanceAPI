@@ -66,5 +66,15 @@ namespace FinanceApi.Repositories
             const string query = "UPDATE Location SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
         }
+
+
+        public async Task<IEnumerable<LocationDto>> GetLocationbyCountryId(long id)
+        {
+
+            const string query = "SELECT * FROM Location WHERE CountryId = @Id and IsActive = 1";
+
+            return await Connection.QueryAsync<LocationDto>(query, new { Id = id });
+        }
+
     }
 }
