@@ -35,7 +35,7 @@ FROM dbo.Quotation q
 LEFT JOIN dbo.Customer c ON c.Id=q.CustomerId
 LEFT JOIN dbo.Currency cu ON cu.Id = q.CurrencyId  
 left join dbo.PaymentTerms pt on pt.Id = q.PaymentTermsId
-WHERE q.Id=2 AND q.IsActive=1;;
+WHERE q.Id= @Id AND q.IsActive=1;;
 
 SELECT l.Id,
        l.QuotationId,
