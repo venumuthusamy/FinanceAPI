@@ -30,15 +30,24 @@ namespace FinanceApi.Services
             return await _customerMasterRepository.GetByIdAsync(id);
         }
 
-        public Task UpdateAsync(CustomerMaster customerMaster)
+        public Task UpdateAsync(UpdateCustomerRequest req)
         {
-            return _customerMasterRepository.UpdateAsync(customerMaster);
+            return _customerMasterRepository.UpdateAsync(req);
         }
 
 
-        public async Task DeleteAsync(int id)
+        public Task<bool> DeactivateAsync(int customerId, int? kycId)
+         => _customerMasterRepository.DeactivateAsync(customerId, kycId);
+
+        public async Task<IEnumerable<CustomerList>> GetAllCustomerDetails()
         {
-            await _customerMasterRepository.DeactivateAsync(id);
+            return await _customerMasterRepository.GetAllCustomerDetails();
         }
+
+        public async Task<CustomerList> EditLoadforCustomerbyId(int id)
+        {
+            return await _customerMasterRepository.EditLoadforCustomerbyId(id);
+        }
+
     }
 }

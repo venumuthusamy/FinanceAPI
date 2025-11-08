@@ -14,6 +14,9 @@
         public string BSImageName { get; set; }
         public string ACRAImageName { get; set; }
 
+        public int? ApprovedBy { get; set; }
+        public bool? IsApproved { get; set; }
+        public bool? IsActive { get; set; }
         public DateTime CreatedDate { get; set; }
         public int? CreatedBy { get; set; }
 

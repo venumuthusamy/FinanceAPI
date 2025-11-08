@@ -8,7 +8,10 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<CustomerMasterDTO>> GetAllAsync();
         Task<CustomerMasterDTO> GetByIdAsync(int id);
         Task<int> CreateAsync(CustomerMaster customerMaster);
-        Task UpdateAsync(CustomerMaster customerMaster);
-        Task DeactivateAsync(int id);
+        Task<bool> UpdateAsync(UpdateCustomerRequest req);
+        Task<bool> DeactivateAsync(int customerId, int? kycId);
+        Task<IEnumerable<CustomerList>> GetAllCustomerDetails();
+
+        Task<CustomerList> EditLoadforCustomerbyId(int id);
     }
 }
