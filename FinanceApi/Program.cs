@@ -53,6 +53,7 @@ builder.Services.AddScoped<ISupplierInvoicePinRepository, SupplierInvoicePinRepo
 builder.Services.AddScoped<IPurchaseRequestTempRepository, PurchaseRequestTempRepository>();
 builder.Services.AddScoped<IStockIssuesRepository, StockIssuesRepository>();
 builder.Services.AddScoped<IBinRepository, BinRepository>();
+builder.Services.AddScoped<IQuotationRepository, QuotationRepository>();
 builder.Services.AddScoped<IStockAdjustmentRepository, StockAdjustmentRepository>();
 
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
@@ -64,6 +65,7 @@ builder.Services.AddScoped<ICatagoryService, CatagoryServices>();
 builder.Services.AddScoped<IStockIssueServices, StockIssuesServices>();
 builder.Services.AddScoped<IBinServices, BinServices>();
 builder.Services.AddScoped<IStockAdjustmentServices, StockAdjustmentServices>();
+builder.Services.AddScoped<IQuotationService, QuotationService>();
 
 builder.Services.AddHttpContextAccessor();
 

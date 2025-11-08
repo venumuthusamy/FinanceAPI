@@ -104,7 +104,7 @@ WHERE Id = @Id;";
             const string sql = @"
 SELECT TOP(1) 1
 FROM ItemMaster
-WHERE LTRIM(RTRIM(Sku)) = LTRIM(RTRIM(@itemCode));";
+WHERE LTRIM(RTRIM(Sku)) = LTRIM(RTRIM(@itemCode)) and IsActive=1;";
 
             var exists = await Connection.ExecuteScalarAsync<int?>(sql, new { itemCode });
             return exists.HasValue;
