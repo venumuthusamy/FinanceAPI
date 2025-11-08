@@ -55,6 +55,7 @@ builder.Services.AddScoped<IStockIssuesRepository, StockIssuesRepository>();
 builder.Services.AddScoped<IBinRepository, BinRepository>();
 builder.Services.AddScoped<IQuotationRepository, QuotationRepository>();
 builder.Services.AddScoped<IStockAdjustmentRepository, StockAdjustmentRepository>();
+//builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
 
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
 builder.Services.AddScoped<IIncotermsService, IncotermsService>();
@@ -66,6 +67,7 @@ builder.Services.AddScoped<IStockIssueServices, StockIssuesServices>();
 builder.Services.AddScoped<IBinServices, BinServices>();
 builder.Services.AddScoped<IStockAdjustmentServices, StockAdjustmentServices>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
+//builder.Services.AddScoped<IVehicleService, VehicleService>();
 
 builder.Services.AddHttpContextAccessor();
 
