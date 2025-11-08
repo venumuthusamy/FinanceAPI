@@ -684,5 +684,46 @@ CREATE TABLE StockReorderLineSuppliers (
 );
 
 
+CREATE TABLE SalesOrder (
+    Id               INT IDENTITY(1,1) PRIMARY KEY,
+    QuotationNo INT           NOT NULL,
+    CustomerId  INT           NOT NULL,
+    WarehouseId  INT           NOT NULL,
+    RequestedDate DATETIME NOT NULL,
+    DeliveryDate DATETIME NOT NULL,
+    Status           TINYINT       null,
+    Shipping Int,
+    Discount  Int,
+    GstPct Int,
+    CreatedBy        VARCHAR(100),
+    CreatedDate      DATETIME      DEFAULT GETDATE(),
+    UpdatedBy        VARCHAR(100),
+    UpdatedDate      DATETIME,
+    IsActive         BIT           DEFAULT 1
+ 
+);
+
+
+
+CREATE TABLE SalesOrderLines (
+    Id               INT IDENTITY(1,1) PRIMARY KEY,
+    SalesOrderId      INT            NOT NULL,
+    ItemId           bigint            NOT NULL,
+    ItemName VARCHAR(255),
+    Uom INT,
+    Quantity INT,
+    UnitPrice DECIMAL(18,2),
+    Discount DECIMAL(18,2),
+    Tax VARCHAR(255),
+    Total DECIMAL(18,2),  
+    CreatedBy        VARCHAR(100),
+    CreatedDate      DATETIME       DEFAULT GETDATE(),
+    UpdatedBy        VARCHAR(100),
+    UpdatedDate      DATETIME,
+    IsActive         BIT            DEFAULT 1,
+);
+
+
+
 
 
