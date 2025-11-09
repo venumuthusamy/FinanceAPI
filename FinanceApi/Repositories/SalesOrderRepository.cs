@@ -113,30 +113,17 @@ FROM dbo.Item i
 JOIN dbo.ItemMaster im ON im.Sku = i.ItemCode
 WHERE i.Id = @ItemId;";
 
-            const string getWarehouseAvailList = @"
-SELECT W.WarehouseId,
-       SUM(W.OnHand - W.Reserved) AS Available
-FROM dbo.ItemWarehouseStock W
-WHERE W.ItemId = @ItemMasterId
-GROUP BY W.WarehouseId
-HAVING SUM(W.OnHand - W.Reserved) > 0
-ORDER BY Available DESC;";
-
-            const string getBestBinInWarehouse = @"
-SELECT TOP 1 iws.BinId,
-       (iws.OnHand - iws.Reserved) AS Available
+            const string getBinAvail = @"
+SELECT TOP 1 iws.BinId, iws.Available
 FROM dbo.ItemWarehouseStock iws
-WHERE iws.ItemId = @ItemMasterId
-  AND iws.WarehouseId = @WarehouseId
-ORDER BY (iws.OnHand - iws.Reserved) DESC, iws.BinId ASC;";
+WHERE iws.ItemId = @ItemMasterId AND iws.WarehouseId = @WarehouseId
+ORDER BY iws.Available DESC;";
 
-            const string getBestSupplierForQty = @"
+            const string getSupplier = @"
 SELECT TOP 1 ip.SupplierId
 FROM dbo.ItemPrice ip
-WHERE ip.ItemId = @ItemMasterId
-  AND ip.WarehouseId = @WarehouseId
-  AND (ip.Qty IS NULL OR ip.Qty <= @ReqQty)
-ORDER BY ip.UnitPrice ASC, ip.Qty DESC, ip.Id ASC;";
+WHERE ip.ItemId = @ItemMasterId AND ip.WarehouseId = @WarehouseId
+ORDER BY ip.Id ASC;";
 
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
@@ -145,10 +132,10 @@ ORDER BY ip.UnitPrice ASC, ip.Qty DESC, ip.Id ASC;";
             using var tx = conn.BeginTransaction();
             try
             {
-                // Running number
+                // Generate running SO number
                 var soNo = await GetNextSalesOrderNoAsync(conn, tx, "SO-", 4);
 
-                // Header
+                // Insert Header
                 var salesOrderId = await conn.ExecuteScalarAsync<int>(insertHeader, new
                 {
                     so.QuotationNo,
@@ -166,7 +153,7 @@ ORDER BY ip.UnitPrice ASC, ip.Qty DESC, ip.Id ASC;";
                     UpdatedDate = so.UpdatedDate ?? now
                 }, tx);
 
-                // Lines
+                // Insert Line Items
                 foreach (var l in so.LineItems)
                 {
                     var whId = l.SelectedWarehouseId ?? l.WarehouseId;
@@ -178,34 +165,16 @@ ORDER BY ip.UnitPrice ASC, ip.Qty DESC, ip.Id ASC;";
                     decimal? available = null;
                     int? supplierId = null;
 
-                    // Auto-pick Warehouse if not forced by UI
-                    if (itemMasterId > 0 && !whId.HasValue)
-                    {
-                        var whList = (await conn.QueryAsync<(int WarehouseId, decimal Available)>(
-                            getWarehouseAvailList, new { ItemMasterId = itemMasterId }, tx)).ToList();
-
-                        var reqQty = Convert.ToDecimal(l.Quantity);
-                        var best = whList.FirstOrDefault(w => w.Available >= reqQty);
-                        if (best.WarehouseId > 0)
-                        {
-                            whId = best.WarehouseId;
-                            available = best.Available;
-                        }
-                        // else: keep null (no single WH satisfies qty). You can later implement split.
-                    }
-
-                    // Bin + Supplier once WH chosen
                     if (itemMasterId > 0 && whId.HasValue)
                     {
-                        var bin = await conn.QueryFirstOrDefaultAsync<(int? BinId, decimal? Available)>(
-                            getBestBinInWarehouse, new { ItemMasterId = itemMasterId, WarehouseId = whId.Value }, tx);
+                        var ba = await conn.QueryFirstOrDefaultAsync<(int? BinId, decimal? Available)>(
+                            getBinAvail, new { ItemMasterId = itemMasterId, WarehouseId = whId.Value }, tx);
 
-                        binId = bin.BinId;
-                        available ??= bin.Available;
+                        binId = ba.BinId;
+                        available = ba.Available;
 
                         supplierId = await conn.ExecuteScalarAsync<int?>(
-                            getBestSupplierForQty,
-                            new { ItemMasterId = itemMasterId, WarehouseId = whId.Value, ReqQty = (decimal)l.Quantity }, tx);
+                            getSupplier, new { ItemMasterId = itemMasterId, WarehouseId = whId.Value }, tx);
                     }
 
                     await conn.ExecuteAsync(insertLine, new
@@ -213,11 +182,11 @@ ORDER BY ip.UnitPrice ASC, ip.Qty DESC, ip.Id ASC;";
                         SalesOrderId = salesOrderId,
                         l.ItemId,
                         l.ItemName,
-                        Uom = l.Uom,
+                        Uom = l.Uom,                // ✅ Store UOM Name
                         l.Quantity,
                         l.UnitPrice,
                         l.Discount,
-                        Tax = l.Tax,
+                        Tax = l.Tax,                     // ✅ No conversion (string stays string)
                         l.Total,
                         WarehouseId = whId,
                         BinId = binId,
