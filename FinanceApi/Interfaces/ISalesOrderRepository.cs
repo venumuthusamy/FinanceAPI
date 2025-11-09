@@ -10,8 +10,6 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(SalesOrder salesOrder);
         Task UpdateAsync(SalesOrder salesOrder);
         Task DeactivateAsync(int id, int updatedBy);
-
         Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id);
-
     }
 }

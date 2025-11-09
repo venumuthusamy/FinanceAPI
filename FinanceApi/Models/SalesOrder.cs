@@ -1,6 +1,6 @@
 ﻿namespace FinanceApi.Models
 {
-       public class SalesOrder
+    public class SalesOrder
     {
         public int Id { get; set; }
         public int QuotationNo { get; set; }
@@ -20,7 +20,7 @@
         public List<SalesOrderLines> LineItems { get; set; } = new();
     }
 
-        //public List<SalesOrderLines> LineItems { get; set; } = new();
-      
-    }
+    //public List<SalesOrderLines> LineItems { get; set; } = new();
+
+}
 

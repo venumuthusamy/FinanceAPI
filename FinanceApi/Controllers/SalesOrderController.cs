@@ -56,7 +56,6 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Sales Order Deleted sucessfully", null);
             return Ok(data);
         }
-
         [HttpGet("GetByQuatitonDetails/{id}")]
         public async Task<IActionResult> GetByQuatitonDetails(int id)
         {
