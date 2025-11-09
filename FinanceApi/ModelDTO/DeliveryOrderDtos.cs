@@ -1,22 +1,32 @@
-﻿namespace FinanceApi.ModelDTO
+﻿// File: ModelDTO/DeliveryOrderDtos.cs
+namespace FinanceApi.ModelDTO
 {
-    public class DeliveryOrderDtos
+    public static class DeliveryOrderDtos
     {
-        // Contracts/DeliveryOrderDtos.cs
         public record DoHeaderDto(
-          int Id, string DoNumber, int Status, int? SoId, int? PackId,
-          string? DriverName, int? VehicleId, string? RouteName, DateTime? DeliveryDate,
-          string? PodFileUrl, bool IsPosted);
+            int Id, string DoNumber, int Status,
+            int? SoId, int? PackId,
+            int? DriverId, int? VehicleId,
+            string? RouteName, DateTime? DeliveryDate,
+            string? PodFileUrl, bool IsPosted,
+            string SalesOrderNo
+        );
 
         public record DoLineDto(
-          int Id, int DoId, int? SoLineId, int? PackLineId,
-          int? ItemId, string ItemName, string? Uom, decimal Qty, string? Notes);
+            int Id, int DoId, int? SoLineId, int? PackLineId,
+            int? ItemId, string ItemName, string? Uom, decimal Qty, string? Notes
+        );
 
         public class DoCreateRequest
         {
             public int? SoId { get; set; }
             public int? PackId { get; set; }
+            public int DriverId { get; set; }             // NOT NULL in DB
+            public int? VehicleId { get; set; }
+            public string? RouteName { get; set; }        // free text
+            public DateTime? DeliveryDate { get; set; }   // date only or datetime
             public List<DoCreateLine> Lines { get; set; } = new();
+
             public class DoCreateLine
             {
                 public int? SoLineId { get; set; }
@@ -31,7 +41,7 @@
 
         public class DoUpdateHeaderRequest
         {
-            public string? DriverName { get; set; }
+            public int? DriverId { get; set; }
             public int? VehicleId { get; set; }
             public string? RouteName { get; set; }
             public DateTime? DeliveryDate { get; set; }
@@ -48,6 +58,5 @@
             public decimal Qty { get; set; }
             public string? Notes { get; set; }
         }
-
     }
 }
