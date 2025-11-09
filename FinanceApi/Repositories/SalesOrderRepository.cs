@@ -126,7 +126,7 @@ WHERE ip.ItemId = @ItemMasterId AND ip.WarehouseId = @WarehouseId
 ORDER BY ip.Id ASC;";
 
             var conn = Connection;
-            if (conn.State != ConnectionState.Open)
+            if (conn.State != ConnectionState.Open)  
                 await (conn as SqlConnection)!.OpenAsync();
 
             using var tx = conn.BeginTransaction();
