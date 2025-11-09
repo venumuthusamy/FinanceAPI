@@ -27,6 +27,7 @@ SELECT
     so.QuotationNo, 
     so.CustomerId,
     ISNULL(c.CustomerName,'')   AS CustomerName,
+>>>>>>>>> Temporary merge branch 2
     so.RequestedDate,
     so.DeliveryDate,
     so.Status,
@@ -87,8 +88,13 @@ SELECT TOP (1)
     so.Id,
     so.QuotationNo, 
     so.CustomerId,
+<<<<<<<<< Temporary merge branch 1
+    ISNULL(c.Name,'')   AS CustomerName,
+    so.RequestedDate,
+=========
     ISNULL(c.CustomerName,'')   AS CustomerName,
      so.RequestedDate,
+>>>>>>>>> Temporary merge branch 2
     so.DeliveryDate,
     so.Status,
     so.Shipping,
