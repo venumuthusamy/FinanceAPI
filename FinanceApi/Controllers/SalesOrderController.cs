@@ -56,6 +56,13 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Sales Order Deleted sucessfully", null);
             return Ok(data);
         }
+        [HttpGet("GetByQuatitonDetails/{id}")]
+        public async Task<IActionResult> GetByQuatitonDetails(int id)
+        {
+            var licenseObj = await _service.GetByQuatitonDetails(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
 
     }
 }
