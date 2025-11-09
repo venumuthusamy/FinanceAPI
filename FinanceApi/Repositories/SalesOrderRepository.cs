@@ -27,6 +27,7 @@ SELECT
     so.QuotationNo, 
     so.CustomerId,
     ISNULL(c.CustomerName,'')   AS CustomerName,
+    ISNULL(c.Name,'')   AS CustomerName,
     so.RequestedDate,
     so.DeliveryDate,
     so.Status,
@@ -89,6 +90,8 @@ SELECT TOP (1)
     so.CustomerId,
     ISNULL(c.CustomerName,'')   AS CustomerName,
      so.RequestedDate,
+    ISNULL(c.Name,'')   AS CustomerName,
+    so.RequestedDate,
     so.DeliveryDate,
     so.Status,
     so.Shipping,
@@ -147,14 +150,14 @@ ORDER BY s.Id;";
             const string insertHeaderSql = @"
 INSERT INTO SalesOrder
 (
-    QuotationNo, CustomerId, WarehouseId, RequestedDate, DeliveryDate,
+    QuotationNo, CustomerId, RequestedDate, DeliveryDate,
     Status, Shipping, Discount, GstPct,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
 (
-    @QuotationNo, @CustomerId, @WarehouseId, @RequestedDate, @DeliveryDate,
+    @QuotationNo, @CustomerId, @RequestedDate, @DeliveryDate,
     @Status, @Shipping, @Discount, @GstPct,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
@@ -185,7 +188,6 @@ VALUES
                     {
                         so.QuotationNo,
                         so.CustomerId,
-                        so.WarehouseId,
                         so.RequestedDate,
                         so.DeliveryDate,
                         so.Status,
@@ -245,7 +247,6 @@ UPDATE SalesOrder
 SET
     QuotationNo  = @QuotationNo,
     CustomerId   = @CustomerId,
-    WarehouseId  = @WarehouseId,
     RequestedDate= @RequestedDate,
     DeliveryDate = @DeliveryDate,
     Status       = @Status,
@@ -305,7 +306,6 @@ WHERE SalesOrderId = @SalesOrderId
                 {
                     so.QuotationNo,
                     so.CustomerId,
-                    so.WarehouseId,
                     so.RequestedDate,
                     so.DeliveryDate,
                     so.Status,
