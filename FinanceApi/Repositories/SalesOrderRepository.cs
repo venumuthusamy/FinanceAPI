@@ -26,8 +26,6 @@ SELECT
     so.QuotationNo, 
     so.CustomerId,
     ISNULL(c.Name,'')   AS CustomerName,
-    so.WarehouseId,
-    ISNULL(w.Name,'')   AS WarehouseName,
     so.RequestedDate,
     so.DeliveryDate,
     so.Status,
@@ -40,7 +38,6 @@ SELECT
     so.UpdatedDate,
     so.IsActive
 FROM SalesOrder so
-LEFT JOIN Warehouse w ON so.WarehouseId = w.Id
 LEFT JOIN Customer  c ON so.CustomerId = c.Id
 WHERE so.IsActive = 1
 ORDER BY so.Id;";
@@ -90,8 +87,6 @@ SELECT TOP (1)
     so.QuotationNo, 
     so.CustomerId,
     ISNULL(c.Name,'')   AS CustomerName,
-    so.WarehouseId,
-    ISNULL(w.Name,'')   AS WarehouseName,
     so.RequestedDate,
     so.DeliveryDate,
     so.Status,
@@ -104,7 +99,6 @@ SELECT TOP (1)
     so.UpdatedDate,
     so.IsActive
 FROM SalesOrder so
-LEFT JOIN Warehouse w ON so.WarehouseId = w.Id
 LEFT JOIN Customer  c ON so.CustomerId = c.Id
 WHERE so.Id = @Id AND so.IsActive = 1;";
 
@@ -149,14 +143,14 @@ ORDER BY Id;";
             const string insertHeaderSql = @"
 INSERT INTO SalesOrder
 (
-    QuotationNo, CustomerId, WarehouseId, RequestedDate, DeliveryDate,
+    QuotationNo, CustomerId, RequestedDate, DeliveryDate,
     Status, Shipping, Discount, GstPct,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
 (
-    @QuotationNo, @CustomerId, @WarehouseId, @RequestedDate, @DeliveryDate,
+    @QuotationNo, @CustomerId, @RequestedDate, @DeliveryDate,
     @Status, @Shipping, @Discount, @GstPct,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
@@ -187,7 +181,6 @@ VALUES
                     {
                         so.QuotationNo,
                         so.CustomerId,
-                        so.WarehouseId,
                         so.RequestedDate,
                         so.DeliveryDate,
                         so.Status,
@@ -247,7 +240,6 @@ UPDATE SalesOrder
 SET
     QuotationNo  = @QuotationNo,
     CustomerId   = @CustomerId,
-    WarehouseId  = @WarehouseId,
     RequestedDate= @RequestedDate,
     DeliveryDate = @DeliveryDate,
     Status       = @Status,
@@ -307,7 +299,6 @@ WHERE SalesOrderId = @SalesOrderId
                 {
                     so.QuotationNo,
                     so.CustomerId,
-                    so.WarehouseId,
                     so.RequestedDate,
                     so.DeliveryDate,
                     so.Status,

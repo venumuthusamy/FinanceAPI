@@ -17,7 +17,7 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<CustomerMasterDTO>> GetAllAsync()
         {
             const string query = @"
-                SELECT * from Customer";
+                SELECT c.*, c.CountryId from Customer c";
 
             return await Connection.QueryAsync<CustomerMasterDTO>(query);
         }
@@ -82,7 +82,7 @@ namespace FinanceApi.Repositories
         {
             const string query = @"
               select 
-c.Id as CustomerId,c.CustomerName,c.ContactNumber,c.PointOfContactPerson,c.Email,c.CreditAmount,
+c.Id as CustomerId,c.CustomerName,c.CountryId,c.ContactNumber,c.PointOfContactPerson,c.Email,c.CreditAmount,
 pt.PaymentTermsName,
 cg.Name as CustomerGroupName,
 cn.CountryName,
