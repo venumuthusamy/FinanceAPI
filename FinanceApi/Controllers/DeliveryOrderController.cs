@@ -1,13 +1,13 @@
-﻿using FinanceApi.Data;
+﻿// File: Controllers/DeliveryOrderController.cs
+using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
-using FinanceApi.Services;
-using Microsoft.AspNetCore.Http;
+using FinanceApi.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using static FinanceApi.ModelDTO.DeliveryOrderDtos;
 
 namespace FinanceApi.Controllers
 {
-    // Controllers/DeliveryOrderController.cs
     [ApiController]
     [Route("api/[controller]")]
     public class DeliveryOrderController : ControllerBase
@@ -15,65 +15,82 @@ namespace FinanceApi.Controllers
         private readonly IDeliveryOrderService _svc;
         public DeliveryOrderController(IDeliveryOrderService svc) => _svc = svc;
 
+        private IActionResult OkData(object? data, string msg = "Success", bool ok = true)
+            => Ok(new { isSuccess = ok, message = msg, data });
+
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] DoCreateRequest req)
         {
-            var userId = 1; // get from auth in real life
-            var id = await _svc.CreateAsync(req, userId);
-            return Ok(new ResponseResult(true, "Created", id));
+            var id = await _svc.CreateAsync(req, userId: 1);
+            return OkData(id, "Created");
         }
 
-        [HttpGet("{id}")]
-        public async Task<IActionResult> Get(int id)
+        [HttpGet("GetAll")]
+        public async Task<IActionResult> GetAll()
+        {
+            var rows = await _svc.GetAllAsync();
+            return OkData(rows);
+        }
+
+        [HttpGet("GetById/{id:int}")]
+        public async Task<IActionResult> GetById(int id)
         {
             var (hdr, lines) = await _svc.GetAsync(id);
-            return Ok(new ResponseResult(hdr != null, hdr != null ? "OK" : "Not found", new { header = hdr, lines }));
+            if (hdr is null) return NotFound(new { isSuccess = false, message = "Not found" });
+            return OkData(new { header = hdr, lines });
         }
 
-        [HttpPut("{id}/Header")]
-        public async Task<IActionResult> UpdateHeader(int id, DoUpdateHeaderRequest req)
+        [HttpGet("GetLines/{id:int}")]
+        public async Task<IActionResult> GetLines(int id)
         {
-            var userId = 1;
-            await _svc.UpdateHeaderAsync(id, req, userId);
-            return Ok(new ResponseResult(true, "Updated", null));
+            var lines = await _svc.GetLinesAsync(id);
+            return OkData(lines);
+        }
+
+        [HttpPut("Update/{id:int}/Header")]
+        public async Task<IActionResult> UpdateHeader(int id, [FromBody] DoUpdateHeaderRequest req)
+        {
+            await _svc.UpdateHeaderAsync(id, req, userId: 1);
+            return OkData(true, "Updated");
         }
 
         [HttpPost("AddLine")]
-        public async Task<IActionResult> AddLine(DoAddLineRequest req)
+        public async Task<IActionResult> AddLine([FromBody] DoAddLineRequest req)
         {
-            var userId = 1;
-            var lineId = await _svc.AddLineAsync(req, userId);
-            return Ok(new ResponseResult(true, "Line added", lineId));
+            var lineId = await _svc.AddLineAsync(req, userId: 1);
+            return OkData(lineId, "Line added");
         }
 
-        [HttpDelete("RemoveLine/{lineId}")]
+        [HttpDelete("RemoveLine/{lineId:int}")]
         public async Task<IActionResult> RemoveLine(int lineId)
         {
             await _svc.RemoveLineAsync(lineId);
-            return Ok(new ResponseResult(true, "Removed", null));
+            return OkData(true, "Removed");
         }
 
-        [HttpPost("{id}/Submit")] public Task<IActionResult> Submit(int id) => setStat(id, 1);
-        [HttpPost("{id}/Approve")] public Task<IActionResult> Approve(int id) => setStat(id, 2);
-        [HttpPost("{id}/Reject")] public Task<IActionResult> Reject(int id) => setStat(id, 3);
+        [HttpPost("Submit/{id:int}")]
+        public async Task<IActionResult> Submit(int id) { await _svc.SubmitAsync(id, 1); return OkData(true); }
 
-        [HttpPost("{id}/Post")]
-        public async Task<IActionResult> Post(int id)
+        [HttpPost("Approve/{id:int}")]
+        public async Task<IActionResult> Approve(int id) { await _svc.ApproveAsync(id, 1); return OkData(true); }
+
+        [HttpPost("Reject/{id:int}")]
+        public async Task<IActionResult> Reject(int id) { await _svc.RejectAsync(id, 1); return OkData(true); }
+
+        [HttpPost("Post/{id:int}")]
+        public async Task<IActionResult> Post(int id) { await _svc.PostAsync(id, 1); return OkData(true, "Posted"); }
+        // Controllers/DeliveryOrderController.cs
+        [HttpGet("SoSnapshot/{id}")]
+        public async Task<IActionResult> GetSoSnapshot(int id, [FromServices] IDeliveryOrderRepository repo)
         {
-            var userId = 1;
-            await _svc.PostAsync(id, userId);
-            return Ok(new ResponseResult(true, "Posted", null));
+            var hdr = await repo.GetHeaderAsync(id);
+            if (hdr == null || hdr.SoId is null)
+                return Ok(new ResponseResult(true, "OK", Array.Empty<object>()));
+
+            // returns: SoLineId, ItemId, ItemName, Uom, Ordered, DeliveredBefore, DeliveredOnThisDo, Pending
+            var rows = await (repo as DeliveryOrderRepository)!.GetSoRedeliveryViewAsync(id, hdr.SoId.Value);
+            return Ok(new ResponseResult(true, "OK", rows));
         }
 
-        private async Task<IActionResult> setStat(int id, int status)
-        {
-            var userId = 1;
-            await (_svc as DeliveryOrderService)!.SubmitAsync(id, userId);
-            if (status == 2) await _svc.ApproveAsync(id, userId);
-            if (status == 3) await _svc.RejectAsync(id, userId);
-            if (status == 1) await _svc.SubmitAsync(id, userId);
-            return Ok(new ResponseResult(true, "OK", null));
-        }
     }
-
 }

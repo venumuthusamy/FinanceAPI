@@ -215,5 +215,47 @@ VALUES
             const string sql = "UPDATE dbo.Quotation SET IsActive=0, UpdatedBy=@UserId, UpdatedDate=GETDATE() WHERE Id=@Id;";
             await Connection.ExecuteAsync(sql, new { Id = id, UserId = userId });
         }
+        private static decimal R2(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
+
+        private static void ComputeLine(QuotationLineDTO l, decimal headerTaxPct,
+                                        out decimal lineNet, out decimal lineTax, out decimal lineTotal)
+        {
+            var qty = l.Qty;
+            var price = l.UnitPrice;
+            var disc = Math.Clamp(l.DiscountPct, 0m, 100m);
+            var baseAmt = qty * price * (1 - disc / 100m);
+
+            var mode = (l.TaxMode ?? "EXCLUSIVE").ToUpperInvariant();
+            var rate = mode == "EXEMPT" ? 0m : (headerTaxPct / 100m);
+
+            if (mode == "INCLUSIVE" && rate > 0m)
+            {
+                var divisor = 1m + rate;
+                var net = baseAmt / divisor;
+                var tax = baseAmt - net;
+                lineNet = R2(net); lineTax = R2(tax); lineTotal = R2(baseAmt);
+            }
+            else
+            {
+                var net = baseAmt;
+                var tax = rate > 0m ? baseAmt * rate : 0m;
+                lineNet = R2(net); lineTax = R2(tax); lineTotal = R2(net + tax);
+            }
+        }
+
+        private static void ComputeHeaderTotals(QuotationDTO dto)
+        {
+            decimal sub = 0, tax = 0;
+            foreach (var l in dto.Lines)
+            {
+                ComputeLine(l, dto.TaxAmount, out var ln, out var lt, out var ltTot);
+                sub += ln; tax += lt;
+                // (optional) if you persist line breakdowns, set them here via anonymous params when inserting
+            }
+            dto.Subtotal = R2(sub);
+            dto.TaxAmount = R2(tax);
+            dto.GrandTotal = R2(dto.Subtotal + dto.TaxAmount + dto.Rounding);
+        }
+
     }
 }

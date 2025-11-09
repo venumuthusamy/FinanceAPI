@@ -41,10 +41,5 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id, updatedBy);
         }
-
-        public async Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id)
-        {
-            return await _repository.GetByQuatitonDetails(id);
-        }
     }
 }
