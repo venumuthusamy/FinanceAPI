@@ -11,5 +11,7 @@ namespace FinanceApi.Interfaces
         Task UpdateAsync(SalesOrder salesOrder);
         Task DeactivateAsync(int id, int updatedBy);
 
+        Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id);
+
     }
 }
