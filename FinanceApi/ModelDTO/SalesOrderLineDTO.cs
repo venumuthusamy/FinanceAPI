@@ -1,6 +1,6 @@
-﻿namespace FinanceApi.Models
+﻿namespace FinanceApi.ModelDTO
 {
-    public class SalesOrderLines : BaseEntity
+    public class SalesOrderLineDTO
     {
         public int Id { get; set; }
         public int SalesOrderId { get; set; }
@@ -13,10 +13,7 @@
         public string? Tax { get; set; }
         public decimal Total { get; set; }
 
-        /* From UI */
-        public int? SelectedWarehouseId { get; set; }
-
-        /* Stored (computed on server) */
+        /* New (read-back) */
         public int? WarehouseId { get; set; }
         public int? BinId { get; set; }
         public decimal? Available { get; set; }

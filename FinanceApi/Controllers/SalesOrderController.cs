@@ -57,5 +57,13 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
+        [HttpGet("GetByQuatitonDetails/{id}")]
+        public async Task<IActionResult> GetByQuatitonDetails(int id)
+        {
+            var licenseObj = await _service.GetByQuatitonDetails(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
+
     }
 }

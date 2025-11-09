@@ -11,5 +11,7 @@ namespace FinanceApi.InterfaceService
         Task UpdateAsync(SalesOrder salesOrder);
         Task DeleteLicense(int id, int updatedBy);
 
+        Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id);
+
     }
 }
