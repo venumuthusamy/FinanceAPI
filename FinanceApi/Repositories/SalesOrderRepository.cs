@@ -144,6 +144,7 @@ ORDER BY s.Id;";
 
         public async Task<int> CreateAsync(SalesOrder so)
         {
+
             if (so is null) throw new ArgumentNullException(nameof(so));
 
             var now = DateTime.UtcNow;
