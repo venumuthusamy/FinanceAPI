@@ -688,7 +688,6 @@ CREATE TABLE SalesOrder (
     Id               INT IDENTITY(1,1) PRIMARY KEY,
     QuotationNo INT           NOT NULL,
     CustomerId  INT           NOT NULL,
-    WarehouseId  INT           NOT NULL,
     RequestedDate DATETIME NOT NULL,
     DeliveryDate DATETIME NOT NULL,
     Status           TINYINT       null,

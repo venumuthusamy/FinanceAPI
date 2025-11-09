@@ -5,7 +5,6 @@
         public int Id { get; set; }
         public int QuotationNo { get; set; }
         public int CustomerId { get; set; }
-        public int WarehouseId { get; set; }
         public DateTime RequestedDate { get; set; }
         public DateTime DeliveryDate { get; set; }
         public int? Status { get; set; }
