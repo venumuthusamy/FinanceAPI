@@ -23,11 +23,10 @@ namespace FinanceApi.Repositories
             const string headersSql = @"
 SELECT
     so.Id,
+    so.SalesOrderNo,
     so.QuotationNo, 
     so.CustomerId,
-    ISNULL(c.Name,'')   AS CustomerName,
-    so.WarehouseId,
-    ISNULL(w.Name,'')   AS WarehouseName,
+    ISNULL(c.CustomerName,'')   AS CustomerName,
     so.RequestedDate,
     so.DeliveryDate,
     so.Status,
@@ -40,7 +39,6 @@ SELECT
     so.UpdatedDate,
     so.IsActive
 FROM SalesOrder so
-LEFT JOIN Warehouse w ON so.WarehouseId = w.Id
 LEFT JOIN Customer  c ON so.CustomerId = c.Id
 WHERE so.IsActive = 1
 ORDER BY so.Id;";
@@ -89,10 +87,8 @@ SELECT TOP (1)
     so.Id,
     so.QuotationNo, 
     so.CustomerId,
-    ISNULL(c.Name,'')   AS CustomerName,
-    so.WarehouseId,
-    ISNULL(w.Name,'')   AS WarehouseName,
-    so.RequestedDate,
+    ISNULL(c.CustomerName,'')   AS CustomerName,
+     so.RequestedDate,
     so.DeliveryDate,
     so.Status,
     so.Shipping,
@@ -104,7 +100,7 @@ SELECT TOP (1)
     so.UpdatedDate,
     so.IsActive
 FROM SalesOrder so
-LEFT JOIN Warehouse w ON so.WarehouseId = w.Id
+
 LEFT JOIN Customer  c ON so.CustomerId = c.Id
 WHERE so.Id = @Id AND so.IsActive = 1;";
 
@@ -113,27 +109,29 @@ WHERE so.Id = @Id AND so.IsActive = 1;";
 
             const string linesSql = @"
 SELECT
-    Id,
-    SalesOrderId,
-    ItemId,
-    ItemName,
-    Uom,
-    Quantity,
-    UnitPrice,
-    Discount,
-    Tax,
-    Total,
-    CreatedBy,
-    CreatedDate,
-    UpdatedBy,
-    UpdatedDate,
-    IsActive
-FROM SalesOrderLines
-WHERE SalesOrderId = @Id AND IsActive = 1
-ORDER BY Id;";
+    s.Id,
+    s.SalesOrderId,
+    s.ItemId,
+    s.ItemName,
+    s.Uom,
+	u.Name as UomName,
+    s.Quantity,
+    s.UnitPrice,
+    s.Discount,
+    s.Tax,
+    s.Total,
+    s.CreatedBy,
+    s.CreatedDate,
+    s.UpdatedBy,
+    s.UpdatedDate,
+    s.IsActive
+FROM SalesOrderLines as s 
+inner join Uom as u on u.Id = s.Uom
+WHERE SalesOrderId = @Id AND s.IsActive = 1
+ORDER BY s.Id;";
 
-            var lines = await Connection.QueryAsync<SalesOrderLines>(linesSql, new { Id = id });
-            header.LineItems = lines.ToList();
+            var lines = await Connection.QueryAsync<SalesOrderLinesList>(linesSql, new { Id = id });
+            header.LineItemsList = lines.ToList();
 
             return header;
         }

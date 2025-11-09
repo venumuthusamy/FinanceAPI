@@ -20,7 +20,7 @@ public class QuotationService : IQuotationService
     public async Task<int> CreateAsync(QuotationDTO dto, int userId)
     {
         // Optional: fetch tax rates by Id using a quick Dapper call
-        QuotationCalculator.Compute(dto);
+       // QuotationCalculator.Compute(dto);
         if (string.IsNullOrWhiteSpace(dto.Number))
             dto.Number = $"QT-{DateTime.UtcNow:yyyyMMdd-HHmmss}";
         return await _repo.CreateAsync(dto, userId);
