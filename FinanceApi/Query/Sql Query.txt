@@ -723,6 +723,42 @@ CREATE TABLE SalesOrderLines (
     IsActive         BIT            DEFAULT 1,
 );
 
+CREATE TABLE Picking ( 
+Id INT IDENTITY(1,1) PRIMARY KEY, 
+SoId INT NOT NULL, 
+SoDate DATE NULL, 
+BarCode NVARCHAR(100) NULL, 
+QrCode NVARCHAR(400) NULL, 
+BarCodeSrc VARBINARY(MAX) NULL, 
+QrCodeSrc VARBINARY(MAX) NULL, 
+Status TINYINT NOT NULL DEFAULT 0, 
+CreatedBy INT NULL, 
+CreatedOn DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(), 
+UpdatedBy INT NULL, 
+UpdatedOn DATETIME2(7) NULL, 
+IsActive BIT NOT NULL DEFAULT 1 ); 
+
+CREATE TABLE PickingLine ( 
+Id INT IDENTITY(1,1) PRIMARY KEY, 
+PickId INT NOT NULL, 
+SoLineId INT NOT NULL, 
+ItemId BIGINT NOT NULL, 
+WarehouseId INT NOT NULL, 
+SupplierId INT NULL, 
+BinId INT NULL, 
+DeliverQty DECIMAL(18,4) NOT NULL, 
+CartonId INT NULL, 
+CreatedBy INT NULL, 
+CreatedOn DATETIME2(7) NOT NULL DEFAULT SYSUTCDATETIME(), 
+UpdatedBy INT NULL, 
+UpdatedOn DATETIME2(7) NULL, 
+IsActive BIT NOT NULL DEFAULT 1 );
+
+IF OBJECT_ID('dbo.PickingSerial', 'U') IS NULL
+CREATE TABLE dbo.PickingSerial (
+  DateKey     char(8)  NOT NULL PRIMARY KEY,  -- yyyymmdd
+  LastNumber  int      NOT NULL
+);
 
 
 

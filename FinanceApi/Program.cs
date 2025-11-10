@@ -70,6 +70,10 @@ builder.Services.AddScoped<IStockAdjustmentServices, StockAdjustmentServices>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
 //builder.Services.AddScoped<IVehicleService, VehicleService>();
 builder.Services.AddScoped<IDeliveryOrderService, DeliveryOrderService>();
+builder.Services.AddScoped<IRunningNumberRepository, RunningNumberRepository>();
+builder.Services.AddScoped<IPickingRepository, PickingRepository>();
+builder.Services.AddScoped<IPickingService, PickingService>();
+builder.Services.AddSingleton<ICodeImageService, CodeImageService>();
 
 builder.Services.AddHttpContextAccessor();
 
