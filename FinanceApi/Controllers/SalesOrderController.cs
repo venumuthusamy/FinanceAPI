@@ -1,5 +1,6 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.InterfaceService;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -61,6 +62,15 @@ namespace FinanceApi.Controllers
         {
             var licenseObj = await _service.GetByQuatitonDetails(id);
             ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
+        }
+
+
+        [HttpPost("preview-allocation")]
+        public async Task<IActionResult> PreviewAllocation([FromBody] AllocationPreviewRequest req)
+        {
+            var result = await _service.PreviewAllocationAsync(req);
+            var data = new ResponseResult(true, "Success", result);
             return Ok(data);
         }
 

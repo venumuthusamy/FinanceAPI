@@ -2,6 +2,7 @@
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using static FinanceApi.ModelDTO.AllocationPreviewRequest;
 
 namespace FinanceApi.Services
 {
@@ -44,6 +45,11 @@ namespace FinanceApi.Services
         public async Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id)
         {
             return await _repository.GetByQuatitonDetails(id);
+        }
+
+        public async Task<AllocationPreviewResponse> PreviewAllocationAsync(AllocationPreviewRequest req)
+        {
+            return await _repository.PreviewAllocationAsync(req); // ensure your repo has this
         }
     }
 }

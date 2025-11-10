@@ -58,6 +58,7 @@ builder.Services.AddScoped<IStockAdjustmentRepository, StockAdjustmentRepository
 //builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
 builder.Services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
 builder.Services.AddScoped<ISalesInvoiceRepository, SalesInvoiceRepository>();
+builder.Services.AddScoped<IPurchaseAlertRepository, PurchaseAlertRepository>();
 
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
 builder.Services.AddScoped<IIncotermsService, IncotermsService>();
@@ -76,7 +77,7 @@ builder.Services.AddScoped<IPickingRepository, PickingRepository>();
 builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddSingleton<ICodeImageService, CodeImageService>();
 builder.Services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
-
+builder.Services.AddScoped<IPurchaseAlertService, PurchaseAlertService>();
 builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddControllers();
