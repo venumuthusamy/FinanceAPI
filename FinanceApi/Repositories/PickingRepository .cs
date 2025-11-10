@@ -17,12 +17,14 @@ namespace FinanceApi.Repositories
         {
             const string hdrSql = @"
 SELECT
-    Id, SoId, SoDate,
-    BarCode, QrCode, BarCodeSrc, QrCodeSrc,
-    Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
-FROM Picking
-WHERE IsActive = 1
-ORDER BY Id DESC;";
+    p.Id, p.SoId, p.SoDate,p.DeliveryDate,c.CustomerName,s.salesOrderNo,
+    p.BarCode, p.QrCode, p.BarCodeSrc,p.QrCodeSrc,
+    p.Status, p.CreatedBy, p.CreatedDate, p.UpdatedBy, p.UpdatedDate,p.IsActive
+FROM Picking p 
+LEFT JOIN dbo.salesorder s ON s.Id = p.SoId
+LEFT JOIN dbo.Customer c ON c.Id = s.CustomerId
+WHERE p.IsActive = 1
+ORDER BY p.Id DESC;";
 
             var headers = (await Connection.QueryAsync<PickingDTO>(hdrSql)).ToList();
             if (headers.Count == 0) return headers;
@@ -33,7 +35,7 @@ ORDER BY Id DESC;";
 SELECT
     Id, PickId, SoLineId, ItemId,
     WarehouseId, SupplierId, BinId,
-    DeliverQty, CartonId,
+    Quantity, CartonId,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 FROM PickingLine
 WHERE PickId IN @Ids AND IsActive = 1
@@ -54,7 +56,7 @@ ORDER BY Id;";
         {
             const string hdrSql = @"
 SELECT TOP (1)
-    Id, SoId, SoDate,
+    Id, SoId, SoDate,DeliveryDate,
     BarCode, QrCode, BarCodeSrc, QrCodeSrc,
     Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 FROM Picking
@@ -65,13 +67,18 @@ WHERE Id = @Id AND IsActive = 1;";
 
             const string lineSql = @"
 SELECT
-    Id, PickId, SoLineId, ItemId,
-    WarehouseId, SupplierId, BinId,
-    DeliverQty, CartonId,
-    CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
-FROM PickingLine
-WHERE PickId = @Id AND IsActive = 1
-ORDER BY Id;";
+    pl.Id, pl.PickId, pl.SoLineId, pl.ItemId,i.ItemName,ISNULL(w.Name, '') AS WarehouseName, 
+    ISNULL(s.Name, '') AS SupplierName,ISNULL(b.BinName, '') AS Bin,
+    pl.WarehouseId, pl.SupplierId, pl.BinId,
+    pl.Quantity, pl.CartonId,
+    pl.CreatedBy, pl.CreatedDate, pl.UpdatedBy, pl.UpdatedDate, pl.IsActive
+FROM PickingLine pl
+LEFT JOIN dbo.Item      i ON i.Id = pl.ItemId
+LEFT JOIN dbo.Warehouse      w ON w.Id = pl.WarehouseId
+LEFT JOIN dbo.Suppliers       s ON s.Id = pl.SupplierId
+LEFT JOIN dbo.Bin            b ON b.Id = pl.BinId
+WHERE pl.PickId = @Id AND pl.IsActive = 1
+ORDER BY pl.Id;";
 
             var lines = await Connection.QueryAsync<PickingLineDTO>(lineSql, new { Id = id });
             header.LineItems = lines.ToList();
@@ -90,7 +97,7 @@ ORDER BY Id;";
             const string insertHdr = @"
 INSERT INTO Picking
 (
-    SoId, SoDate,
+    SoId, SoDate,DeliveryDate,
     BarCode, QrCode, BarCodeSrc, QrCodeSrc,
     Status,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
@@ -98,7 +105,7 @@ INSERT INTO Picking
 OUTPUT INSERTED.Id
 VALUES
 (
-    @SoId, @SoDate,
+    @SoId, @SoDate,@DeliveryDate,
     @BarCode, @QrCode, @BarCodeSrc, @QrCodeSrc,
     @Status,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
@@ -109,14 +116,14 @@ INSERT INTO PickingLine
 (
     PickId, SoLineId, ItemId,
     WarehouseId, SupplierId, BinId,
-    DeliverQty, CartonId,
+    Quantity, CartonId,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 VALUES
 (
     @PickId, @SoLineId, @ItemId,
     @WarehouseId, @SupplierId, @BinId,
-    @DeliverQty, @CartonId,
+    @Quantity, @CartonId,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );";
 
@@ -131,6 +138,7 @@ VALUES
                 {
                     p.SoId,
                     p.SoDate,
+                    p.DeliveryDate,
                     p.BarCode,
                     p.QrCode,
                     p.BarCodeSrc,
@@ -152,7 +160,7 @@ VALUES
                         l.WarehouseId,
                         l.SupplierId,
                         l.BinId,
-                        l.DeliverQty,
+                        l.Quantity,
                         l.CartonId,
                         CreatedBy = p.CreatedBy,
                         CreatedDate = p.CreatedDate,
@@ -183,6 +191,7 @@ UPDATE Picking
 SET
     SoId       = @SoId,
     SoDate     = @SoDate,
+    DeliveryDate = @DeliveryDate,
     BarCode    = @BarCode,
     QrCode     = @QrCode,
     BarCodeSrc = @BarCodeSrc,
@@ -200,7 +209,7 @@ SET
     WarehouseId= @WarehouseId,
     SupplierId = @SupplierId,
     BinId      = @BinId,
-    DeliverQty = @DeliverQty,
+    Quantity = @Quantity,
     CartonId   = @CartonId,
     UpdatedBy  = @UpdatedBy,
     UpdatedDate  = @UpdatedDate,
@@ -212,7 +221,7 @@ INSERT INTO PickingLine
 (
     PickId, SoLineId, ItemId,
     WarehouseId, SupplierId, BinId,
-    DeliverQty, CartonId,
+    Quantity, CartonId,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 OUTPUT INSERTED.Id
@@ -220,7 +229,7 @@ VALUES
 (
     @PickId, @SoLineId, @ItemId,
     @WarehouseId, @SupplierId, @BinId,
-    @DeliverQty, @CartonId,
+    @Quantity, @CartonId,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );";
 
@@ -242,6 +251,7 @@ WHERE PickId = @PickId
                 {
                     p.SoId,
                     p.SoDate,
+                    p.DeliveryDate,
                     p.BarCode,
                     p.QrCode,
                     p.BarCodeSrc,
@@ -268,7 +278,7 @@ WHERE PickId = @PickId
                                 l.WarehouseId,
                                 l.SupplierId,
                                 l.BinId,
-                                l.DeliverQty,
+                                l.Quantity,
                                 l.CartonId,
                                 p.UpdatedBy,
                                 UpdatedDate = now
@@ -285,7 +295,7 @@ WHERE PickId = @PickId
                                 l.WarehouseId,
                                 l.SupplierId,
                                 l.BinId,
-                                l.DeliverQty,
+                                l.Quantity,
                                 l.CartonId,
                                 CreatedBy = p.UpdatedBy ?? p.CreatedBy,
                                 CreatedDate = now,

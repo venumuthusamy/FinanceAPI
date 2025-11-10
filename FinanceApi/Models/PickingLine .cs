@@ -11,7 +11,7 @@
         public int? SupplierId { get; set; }
         public int? BinId { get; set; }
 
-        public decimal DeliverQty { get; set; }
+        public decimal Quantity { get; set; }
         public int? CartonId { get; set; }
     }
 }
