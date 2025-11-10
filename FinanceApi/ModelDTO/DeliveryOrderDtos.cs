@@ -1,5 +1,4 @@
-﻿// File: ModelDTO/DeliveryOrderDtos.cs
-namespace FinanceApi.ModelDTO
+﻿namespace FinanceApi.ModelDTO
 {
     public static class DeliveryOrderDtos
     {
@@ -14,17 +13,18 @@ namespace FinanceApi.ModelDTO
 
         public record DoLineDto(
             int Id, int DoId, int? SoLineId, int? PackLineId,
-            int? ItemId, string ItemName, string? Uom, decimal Qty, string? Notes
+            int? ItemId, string ItemName, string? Uom, decimal Qty, string? Notes,
+            string? WarehouseId, string? BinId, string? SupplierId   // ← nullable
         );
 
         public class DoCreateRequest
         {
             public int? SoId { get; set; }
             public int? PackId { get; set; }
-            public int DriverId { get; set; }             // NOT NULL in DB
+            public int DriverId { get; set; }
             public int? VehicleId { get; set; }
-            public string? RouteName { get; set; }        // free text
-            public DateTime? DeliveryDate { get; set; }   // date only or datetime
+            public string? RouteName { get; set; }
+            public DateTime? DeliveryDate { get; set; }
             public List<DoCreateLine> Lines { get; set; } = new();
 
             public class DoCreateLine
@@ -32,19 +32,14 @@ namespace FinanceApi.ModelDTO
                 public int? SoLineId { get; set; }
                 public int? PackLineId { get; set; }
                 public int? ItemId { get; set; }
-                public string ItemName { get; set; } = "";
+                public string? ItemName { get; set; }
                 public string? Uom { get; set; }
                 public decimal Qty { get; set; }
                 public string? Notes { get; set; }
+                public string? WarehouseId { get; set; }  // ← nullable
+                public string? BinId { get; set; }        // ← nullable
+                public string? SupplierId { get; set; }   // ← nullable
             }
-        }
-
-        public class DoUpdateHeaderRequest
-        {
-            public int? DriverId { get; set; }
-            public int? VehicleId { get; set; }
-            public string? RouteName { get; set; }
-            public DateTime? DeliveryDate { get; set; }
         }
 
         public class DoAddLineRequest
@@ -53,10 +48,21 @@ namespace FinanceApi.ModelDTO
             public int? SoLineId { get; set; }
             public int? PackLineId { get; set; }
             public int? ItemId { get; set; }
-            public string ItemName { get; set; } = "";
+            public string? ItemName { get; set; }
             public string? Uom { get; set; }
             public decimal Qty { get; set; }
             public string? Notes { get; set; }
+            public string? WarehouseId { get; set; }  // ← nullable
+            public string? BinId { get; set; }        // ← nullable
+            public string? SupplierId { get; set; }   // ← nullable
+        }
+
+        public class DoUpdateHeaderRequest
+        {
+            public int? DriverId { get; set; }
+            public int? VehicleId { get; set; }
+            public string? RouteName { get; set; }
+            public DateTime? DeliveryDate { get; set; }
         }
     }
 }

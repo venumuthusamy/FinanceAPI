@@ -1,7 +1,5 @@
-﻿// File: Controllers/DeliveryOrderController.cs
-using FinanceApi.Data;
+﻿using FinanceApi.InterfaceService;
 using FinanceApi.Interfaces;
-using FinanceApi.InterfaceService;
 using FinanceApi.Repositories;
 using Microsoft.AspNetCore.Mvc;
 using static FinanceApi.ModelDTO.DeliveryOrderDtos;
@@ -68,8 +66,8 @@ namespace FinanceApi.Controllers
             return OkData(true, "Removed");
         }
 
-        [HttpPost("Submit/{id:int}")]
-        public async Task<IActionResult> Submit(int id) { await _svc.SubmitAsync(id, 1); return OkData(true); }
+        //[HttpPost("Submit/{id:int}")]
+        //public async Task<IActionResult> Submit(int id) { await _svc.submit(id, 1); return OkData(true); } // optional
 
         [HttpPost("Approve/{id:int}")]
         public async Task<IActionResult> Approve(int id) { await _svc.ApproveAsync(id, 1); return OkData(true); }
@@ -79,18 +77,17 @@ namespace FinanceApi.Controllers
 
         [HttpPost("Post/{id:int}")]
         public async Task<IActionResult> Post(int id) { await _svc.PostAsync(id, 1); return OkData(true, "Posted"); }
-        // Controllers/DeliveryOrderController.cs
-        [HttpGet("SoSnapshot/{id}")]
+
+        // Redelivery snapshot for the edit view
+        [HttpGet("SoSnapshot/{id:int}")]
         public async Task<IActionResult> GetSoSnapshot(int id, [FromServices] IDeliveryOrderRepository repo)
         {
             var hdr = await repo.GetHeaderAsync(id);
             if (hdr == null || hdr.SoId is null)
-                return Ok(new ResponseResult(true, "OK", Array.Empty<object>()));
+                return Ok(new { isSuccess = true, message = "OK", data = Array.Empty<object>() });
 
-            // returns: SoLineId, ItemId, ItemName, Uom, Ordered, DeliveredBefore, DeliveredOnThisDo, Pending
             var rows = await (repo as DeliveryOrderRepository)!.GetSoRedeliveryViewAsync(id, hdr.SoId.Value);
-            return Ok(new ResponseResult(true, "OK", rows));
+            return Ok(new { isSuccess = true, message = "OK", data = rows });
         }
-
     }
 }
