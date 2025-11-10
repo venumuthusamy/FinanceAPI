@@ -12,6 +12,7 @@
         public decimal Discount { get; set; }
         public string? Tax { get; set; }
         public decimal Total { get; set; }
+        public decimal? LockedQty { get; set; }
 
         /* From UI */
         public int? SelectedWarehouseId { get; set; }

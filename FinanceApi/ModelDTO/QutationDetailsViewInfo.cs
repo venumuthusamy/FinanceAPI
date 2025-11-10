@@ -22,6 +22,7 @@
 
         public string CurrencyName { get; set; } = "";
         public string PaymentTermsName { get; set; } = "";
+        public decimal GstPct { get; set; }
 
         public List<QuotationLineDetailsViewInfo> Lines { get; set; } = new();
 

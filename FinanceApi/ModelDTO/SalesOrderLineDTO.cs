@@ -12,11 +12,19 @@
         public decimal Discount { get; set; }
         public string? Tax { get; set; }
         public decimal Total { get; set; }
+        public decimal? LockedQty { get; set; }
 
         /* New (read-back) */
         public int? WarehouseId { get; set; }
         public int? BinId { get; set; }
         public decimal? Available { get; set; }
         public int? SupplierId { get; set; }
+
+
+        public string? WarehouseName { get; set; }
+        public string? Bin { get; set; }
+
+        public string? SupplierName { get; set; }
+
     }
 }

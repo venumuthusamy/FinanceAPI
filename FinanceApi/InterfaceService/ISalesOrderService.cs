@@ -1,5 +1,6 @@
 ﻿using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using static FinanceApi.ModelDTO.AllocationPreviewRequest;
 
 namespace FinanceApi.InterfaceService
 {
@@ -11,6 +12,8 @@ namespace FinanceApi.InterfaceService
         Task UpdateAsync(SalesOrder salesOrder);
         Task DeleteLicense(int id, int updatedBy);
         Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id);
+
+        Task<AllocationPreviewResponse> PreviewAllocationAsync(AllocationPreviewRequest req);
 
     }
 }
