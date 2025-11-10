@@ -7,6 +7,9 @@ namespace FinanceApi.ModelDTO
         public int Id { get; set; }
         public int SoId { get; set; }
         public DateTime? SoDate { get; set; }
+        public DateTime? DeliveryDate { get; set; }
+        public string? CustomerName { get; set; }
+        public string? salesOrderNo { get; set; }        
         public string? BarCode { get; set; }
         public string? QrCode { get; set; }
         public byte[]? BarCodeSrc { get; set; }
@@ -22,10 +25,14 @@ namespace FinanceApi.ModelDTO
         public int PickId { get; set; }
         public int SoLineId { get; set; }
         public long ItemId { get; set; }
+        public string ItemName { get; set; }
         public int WarehouseId { get; set; }
+        public string WarehouseName { get; set; }
         public int? SupplierId { get; set; }
+        public string SupplierName { get; set; }
         public int? BinId { get; set; }
-        public decimal DeliverQty { get; set; }
+        public string Bin { get; set; }
+        public decimal Quantity { get; set; }
         public int? CartonId { get; set; }
     }
 }

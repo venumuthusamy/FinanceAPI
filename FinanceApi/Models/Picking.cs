@@ -5,7 +5,7 @@
         public int Id { get; set; }
         public int SoId { get; set; }
         public DateTime? SoDate { get; set; }
-
+        public DateTime? DeliveryDate { get; set; }       
         public string? BarCode { get; set; }
         public string? QrCode { get; set; }
         public byte[]? BarCodeSrc { get; set; }  // PNG bytes
