@@ -106,5 +106,12 @@ namespace FinanceApi.Controllers
             var data = new ResponseResult(true, "Success", list);
             return Ok(data);
         }
+        [HttpGet("GetByStatus/{id}")]
+        public async Task<IActionResult> GetByStatus(byte id)
+        {
+            var obj = await _service.GetAllByStatusAsync(id);
+            var data = new ResponseResult(true, "Success", obj);
+            return Ok(data);
+        }
     }
 }

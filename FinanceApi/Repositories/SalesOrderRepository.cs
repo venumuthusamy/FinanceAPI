@@ -1217,5 +1217,51 @@ ORDER BY so.Id DESC, sol.Id DESC;";
             // Reason is constant; if needed, you can set here too (already defaulted in DTO).
             return rows;
         }
+        public async Task<IEnumerable<SalesOrderDTO>> GetAllByStatusAsync(byte status)
+        {
+            const string headersSql = @"
+SELECT
+    so.Id, so.QuotationNo, so.CustomerId,
+    ISNULL(c.CustomerName,'') AS CustomerName,
+    so.RequestedDate, so.DeliveryDate, so.Status,
+    so.Shipping, so.Discount, so.GstPct,
+    so.CreatedBy, so.CreatedDate, so.UpdatedBy, so.UpdatedDate,
+    so.IsActive, so.SalesOrderNo,
+    ISNULL(so.Subtotal,0)   AS Subtotal,
+    ISNULL(so.GrandTotal,0) AS GrandTotal,
+    so.ApprovedBy
+FROM dbo.SalesOrder so
+LEFT JOIN dbo.Customer c ON c.Id = so.CustomerId
+WHERE so.IsActive = 1
+  AND so.Status   = @Status
+ORDER BY so.Id;";
+
+            var headers = (await Connection.QueryAsync<SalesOrderDTO>(headersSql, new { Status = status }))
+                .ToList();
+
+            if (headers.Count == 0) return headers;
+
+            var ids = headers.Select(h => h.Id).ToArray();
+
+            const string linesSql = @"
+SELECT
+    Id, SalesOrderId, ItemId, ItemName, Uom,
+    Quantity, UnitPrice, Discount, Tax, Total,
+    WarehouseId, BinId, Available, SupplierId,
+    LockedQty,
+    CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
+FROM dbo.SalesOrderLines
+WHERE SalesOrderId IN @Ids
+  AND IsActive = 1;";
+
+            var lines = await Connection.QueryAsync<SalesOrderLineDTO>(linesSql, new { Ids = ids });
+
+            var map = headers.ToDictionary(h => h.Id);
+            foreach (var ln in lines)
+                if (map.TryGetValue(ln.SalesOrderId, out var parent))
+                    parent.LineItems.Add(ln);
+
+            return headers;
+        }
     }
 }

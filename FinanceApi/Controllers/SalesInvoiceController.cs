@@ -1,5 +1,7 @@
-﻿using FinanceApi.Data;
+﻿// Controllers/SalesInvoiceController.cs
+using FinanceApi.Data;
 using FinanceApi.InterfaceService;
+using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using static FinanceApi.ModelDTO.SalesInvoiceDtos;
 
@@ -38,7 +40,7 @@ namespace FinanceApi.Controllers
         [HttpPost("Create")]
         public async Task<IActionResult> Create([FromBody] SiCreateRequest req)
         {
-            int userId = 1; // TODO auth
+            int userId = 1;
             var id = await _svc.CreateAsync(userId, req);
             return Ok(new ResponseResult(true, "Sales Invoice created", id));
         }
@@ -50,24 +52,21 @@ namespace FinanceApi.Controllers
             return Ok(new ResponseResult(true, "Sales Invoice deleted", null));
         }
 
-        // -------- EDIT (no currency) --------
-
-        public class UpdateHeaderDto
-        {
-            public DateTime InvoiceDate { get; set; }
-        }
+        // --- Edit header (date only) ---
+        public class HeaderUpdateDto { public DateTime InvoiceDate { get; set; } }
 
         [HttpPut("UpdateHeader/{id:int}")]
-        public async Task<IActionResult> UpdateHeader(int id, [FromBody] UpdateHeaderDto body)
+        public async Task<IActionResult> UpdateHeader(int id, [FromBody] HeaderUpdateDto body)
         {
-            if (body == null) return BadRequest(new ResponseResult(false, "Body required", null));
             int userId = 1;
             await _svc.UpdateHeaderAsync(id, body.InvoiceDate, userId);
             return Ok(new ResponseResult(true, "Header updated", null));
         }
 
+        // --- Lines ---
         public class LineAddDto
         {
+            public int SiId { get; set; }
             public int? SourceLineId { get; set; }
             public int? ItemId { get; set; }
             public string? ItemName { get; set; }
@@ -76,6 +75,7 @@ namespace FinanceApi.Controllers
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
             public int? TaxCodeId { get; set; }
+            public string? Description { get; set; }   // <— NEW
         }
 
         [HttpPost("AddLine/{id:int}")]
@@ -93,7 +93,8 @@ namespace FinanceApi.Controllers
                 Qty = l.Qty,
                 UnitPrice = l.UnitPrice,
                 DiscountPct = l.DiscountPct,
-                TaxCodeId = l.TaxCodeId
+                TaxCodeId = l.TaxCodeId,
+                Description = l.Description
             }, (byte)hdr.SourceType);
 
             return Ok(new ResponseResult(true, "Line added", lineId));
@@ -105,13 +106,14 @@ namespace FinanceApi.Controllers
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
             public int? TaxCodeId { get; set; }
+            public string? Description { get; set; }   // <— NEW
         }
 
         [HttpPut("UpdateLine/{lineId:int}")]
         public async Task<IActionResult> UpdateLine(int lineId, [FromBody] LineUpdateDto dto)
         {
             int userId = 1;
-            await _svc.UpdateLineAsync(lineId, dto.Qty, dto.UnitPrice, dto.DiscountPct, dto.TaxCodeId, userId);
+            await _svc.UpdateLineAsync(lineId, dto.Qty, dto.UnitPrice, dto.DiscountPct, dto.TaxCodeId, dto.Description, userId);
             return Ok(new ResponseResult(true, "Line updated", null));
         }
 

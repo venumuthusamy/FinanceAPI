@@ -11,10 +11,9 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<SiLineDto>> GetLinesAsync(int id);
         Task<IEnumerable<SiListRowDto>> GetListAsync();
         Task DeactivateAsync(int id);
-
         Task UpdateHeaderAsync(int id, DateTime invoiceDate, int userId);
         Task<int> AddLineAsync(int siId, SiCreateLine l, byte sourceType);
-        Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, int userId);
+        Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, string? description, int userId); // <— desc
         Task RemoveLineAsync(int lineId);
     }
 }

@@ -313,6 +313,18 @@ VALUES
 
                 if (l.SoLineId.HasValue)
                     await DecreaseLockedQtyAsync(l.SoLineId.Value, l.Qty).ConfigureAwait(false);
+
+                if (req.SoId.HasValue && isPosted)
+                {
+                    await Connection.ExecuteAsync(@"
+UPDATE dbo.SalesOrder
+SET Status = 3,
+    UpdatedBy = @UserId,
+    UpdatedDate = SYSUTCDATETIME()
+WHERE Id = @SoId;",
+                        new { SoId = req.SoId.Value, UserId = userId }).ConfigureAwait(false);
+                }
+
             }
 
             return doId;
