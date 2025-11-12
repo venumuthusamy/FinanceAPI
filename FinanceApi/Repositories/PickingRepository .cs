@@ -29,19 +29,30 @@ ORDER BY p.Id DESC;";
             var headers = (await Connection.QueryAsync<PickingDTO>(hdrSql)).ToList();
             if (headers.Count == 0) return headers;
 
+            // collect header ids
             var ids = headers.Select(h => h.Id).ToArray();
+            if (ids.Length == 0) return headers; // guard against empty IN ()
 
             const string lineSql = @"
 SELECT
-    Id, PickId, SoLineId, ItemId,
-    WarehouseId, SupplierId, BinId,
-    Quantity, CartonId,
-    CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
-FROM PickingLine
-WHERE PickId IN @Ids AND IsActive = 1
-ORDER BY Id;";
+    pl.Id, pl.PickId, pl.SoLineId, pl.ItemId, i.ItemName,
+    ISNULL(w.Name,'')  AS WarehouseName,
+    ISNULL(s.Name,'')  AS SupplierName,
+    ISNULL(b.BinName,'') AS Bin,
+    pl.WarehouseId, pl.SupplierId, pl.BinId,
+    pl.Quantity, pl.CartonId,
+    pl.CreatedBy, pl.CreatedDate, pl.UpdatedBy, pl.UpdatedDate, pl.IsActive
+FROM dbo.PickingLine pl
+LEFT JOIN dbo.Item      i ON i.Id = pl.ItemId
+LEFT JOIN dbo.Warehouse w ON w.Id = pl.WarehouseId
+LEFT JOIN dbo.Suppliers s ON s.Id = pl.SupplierId
+LEFT JOIN dbo.Bin       b ON b.Id = pl.BinId
+WHERE pl.PickId IN @Ids AND pl.IsActive = 1   -- Dapper expands @Ids
+ORDER BY pl.Id;";
 
-            var lines = await Connection.QueryAsync<PickingLineDTO>(lineSql, new { Ids = ids });
+            // ✅ param name MUST match @Ids for Dapper list expansion
+            var lines = (await Connection.QueryAsync<PickingLineDTO>(lineSql, new { Ids = ids })).ToList();
+
             var byId = headers.ToDictionary(h => h.Id);
             foreach (var ln in lines)
             {
@@ -50,6 +61,7 @@ ORDER BY Id;";
             }
 
             return headers;
+
         }
 
         public async Task<PickingDTO?> GetByIdAsync(int id)
