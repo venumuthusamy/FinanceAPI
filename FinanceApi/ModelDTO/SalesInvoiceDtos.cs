@@ -1,33 +1,49 @@
-﻿// ModelDTO/SalesInvoiceDtos.cs
-namespace FinanceApi.ModelDTO
+﻿namespace FinanceApi.ModelDTO
 {
     public static class SalesInvoiceDtos
     {
-        public record SiHeaderDto(
-            int Id, string InvoiceNo, DateTime InvoiceDate,
-            byte SourceType, int? SoId, int? DoId,
-            int? CurrencyId, byte Status, bool IsActive
-        );
-
-        public record SiLineDto(
-            int Id, int SiId, byte SourceType, int? SourceLineId,
-            int ItemId, string ItemName, string? Uom,
-            decimal Qty, decimal UnitPrice, decimal DiscountPct,
-            int? TaxCodeId, int? CurrencyId
-        );
-
-        public record SiListRowDto(      // for list grid if needed
-            int Id, string InvoiceNo, DateTime InvoiceDate, byte SourceType, string SourceRef, decimal Total
-        );
-
-        public class SiCreateRequest
+        // MUST have parameterless ctor + settable props
+        public class SiHeaderDto
         {
-            public byte SourceType { get; set; }  // 1=SO, 2=DO
-            public int? SoId { get; set; }
-            public int? DoId { get; set; }
+            public int Id { get; set; }
+            public string InvoiceNo { get; set; } = "";
             public DateTime InvoiceDate { get; set; }
-            public int? CurrencyId { get; set; }  // header default (optional)
-            public List<SiCreateLine> Lines { get; set; } = new();
+            public byte SourceType { get; set; }
+            public int? SoId { get; set; }      // nullable
+            public int? DoId { get; set; }      // nullable
+            public byte Status { get; set; }
+            public bool IsActive { get; set; }
+
+            public SiHeaderDto() { } // important for Dapper
+        }
+
+        public class SiLineDto
+        {
+            public int Id { get; set; }
+            public int SiId { get; set; }
+            public byte SourceType { get; set; }
+            public int? SourceLineId { get; set; }
+            public int? ItemId { get; set; }
+            public string? ItemName { get; set; }
+            public string? Uom { get; set; }
+            public decimal Qty { get; set; }
+            public decimal UnitPrice { get; set; }
+            public decimal DiscountPct { get; set; }
+            public int? TaxCodeId { get; set; }
+
+            public SiLineDto() { }
+        }
+
+        public class SiListRowDto
+        {
+            public int Id { get; set; }
+            public string InvoiceNo { get; set; } = "";
+            public DateTime InvoiceDate { get; set; }
+            public byte SourceType { get; set; }
+            public string SourceRef { get; set; } = "";
+            public decimal Total { get; set; }
+
+            public SiListRowDto() { }
         }
 
         public class SiCreateLine
@@ -40,9 +56,18 @@ namespace FinanceApi.ModelDTO
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
             public int? TaxCodeId { get; set; }
-            public int? CurrencyId { get; set; }  // per-line currency
+
+            public SiCreateLine() { }
         }
 
+        public class SiCreateRequest
+        {
+            public byte SourceType { get; set; } // 1 or 2
+            public int? SoId { get; set; }
+            public int? DoId { get; set; }
+            public DateTime InvoiceDate { get; set; }
+            public List<SiCreateLine> Lines { get; set; } = new();
+        }
         public class SiSourceLineDto
         {
             public int SourceLineId { get; set; }
@@ -54,9 +79,8 @@ namespace FinanceApi.ModelDTO
             public decimal QtyOpen { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
-            public string TaxCodeId { get; set; }             // allow null
+            public decimal GstPct { get; set; }
             public int? DefaultCurrencyId { get; set; }     // allow null
         }
-
     }
 }

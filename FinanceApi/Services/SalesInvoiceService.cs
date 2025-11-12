@@ -1,6 +1,6 @@
 ﻿// Services/SalesInvoiceService.cs
-using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
+using FinanceApi.Interfaces;
 using static FinanceApi.ModelDTO.SalesInvoiceDtos;
 
 namespace FinanceApi.Services
@@ -23,5 +23,17 @@ namespace FinanceApi.Services
         public Task<IEnumerable<SiListRowDto>> GetListAsync() => _repo.GetListAsync();
 
         public Task DeleteAsync(int id) => _repo.DeactivateAsync(id);
+
+        public Task UpdateHeaderAsync(int id, DateTime invoiceDate, int userId)
+            => _repo.UpdateHeaderAsync(id, invoiceDate, userId);
+
+        public Task<int> AddLineAsync(int siId, SiCreateLine l, byte sourceType)
+            => _repo.AddLineAsync(siId, l, sourceType);
+
+        public Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, int userId)
+            => _repo.UpdateLineAsync(lineId, qty, unitPrice, discountPct, taxCodeId, userId);
+
+        public Task RemoveLineAsync(int lineId)
+            => _repo.RemoveLineAsync(lineId);
     }
 }
