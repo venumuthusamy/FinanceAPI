@@ -95,11 +95,13 @@ builder.Services.AddCors(options =>
             .WithOrigins(
                 "http://localhost:4200",
                 "http://localhost:5000",
-                "http://localhost:51898"
-            //,"https://your-prod-ui-domain.com"
+                "http://localhost:51898",
+                "http://192.168.6.218:4200",
+            "https://your-prod-ui-domain.com"
 
-            // add your real UI domain if needed
+
             )
+        //policy.AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod();
         // If you use cookie auth: .AllowCredentials();  (then remove localhost:5000 if same-origin)
@@ -138,6 +140,7 @@ if (!string.IsNullOrEmpty(port))
 {
     builder.WebHost.UseUrls($"http://*:{port}");
 }
+builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(7182));
 
 var app = builder.Build();
 

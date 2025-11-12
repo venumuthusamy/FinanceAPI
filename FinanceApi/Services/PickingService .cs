@@ -12,13 +12,14 @@ namespace FinanceApi.Services
         private readonly IPickingRepository _repository;
         private readonly IRunningNumberRepository _seq;
         private readonly ICodeImageService _img;
-
+        private readonly IConfiguration _config;
         public PickingService(IPickingRepository repository, IRunningNumberRepository seq,
-        ICodeImageService img)
+        ICodeImageService img, IConfiguration config)
         {
             _repository = repository;
             _seq = seq;
             _img = img;
+            _config = config;
         }
 
         public Task<IEnumerable<PickingDTO>> GetAllAsync() => _repository.GetAllAsync();
@@ -61,12 +62,21 @@ namespace FinanceApi.Services
             var countryYear = $"{req.Country}{yy}";                         // SG25
             var barText = $"{req.Prefix}-{countryYear}-{mmdd}-{serial4}-{req.SoId}";   // PKL-SG25-1108-0012
 
+            var apiBase = _config["PublicApiBaseUrl"] ?? "http://192.168.6.218:7182";
+            //var barPayload = $"{_frontend.BaseUrl}/Sales/Scan/So/{req.SoId}?code={Uri.EscapeDataString(barText)}";
+            var barPayload =  $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}";
+
             // QR human-readable text (two lines)
             var qrText = $"Packing List No: {barText}\nDate: {dt:dd-MMM-yyyy}";
 
+            //var qrPayload = $"{_frontend.BaseUrl}/Sales/Scan/So/{req.SoId}?code={Uri.EscapeDataString(barText)}";
+
+            var qrPayload = $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}";
+
+
             // images -> base64 data urls
-            var barPng = _img.MakeBarcodePng(barText, width: 520, height: 140);
-            var qrPng = _img.MakeQrPng(qrText, pixelsPerModule: 8);
+            var barPng = _img.MakeBarcodePng(barPayload, width: 520, height: 140);
+            var qrPng = _img.MakeQrPng(qrPayload, pixelsPerModule: 8);
 
             string ToDataUrl(byte[] bytes) => $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
 
