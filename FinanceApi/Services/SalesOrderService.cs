@@ -66,5 +66,10 @@ namespace FinanceApi.Services
 
         public Task<IEnumerable<DraftLineDTO>> GetDraftLinesAsync()
     => _repository.GetDraftLinesAsync();
+
+        public Task<IEnumerable<SalesOrderDTO>> GetAllByStatusAsync(byte status)
+        {
+            return _repository.GetAllByStatusAsync(status);
+        }
     }
 }

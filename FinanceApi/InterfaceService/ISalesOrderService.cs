@@ -22,5 +22,6 @@ namespace FinanceApi.InterfaceService
         Task RejectAsync(int id);
 
         Task<IEnumerable<DraftLineDTO>> GetDraftLinesAsync();
+        Task<IEnumerable<SalesOrderDTO>> GetAllByStatusAsync(byte status);
     }
 }

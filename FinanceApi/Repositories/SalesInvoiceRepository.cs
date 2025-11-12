@@ -1,6 +1,7 @@
-﻿using Dapper;
-using FinanceApi.Interfaces;
+﻿// Repositories/SalesInvoiceRepository.cs
+using Dapper;
 using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using static FinanceApi.ModelDTO.SalesInvoiceDtos;
 
 namespace FinanceApi.Repositories
@@ -22,7 +23,6 @@ namespace FinanceApi.Repositories
 
         public async Task<int> CreateAsync(int userId, SiCreateRequest req)
         {
-            // Insert header (no CurrencyId)
             const string insHead = @"
 INSERT INTO dbo.SalesInvoice
 (InvoiceDate, SourceType, SoId, DoId, Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
@@ -41,12 +41,11 @@ VALUES (@InvoiceDate, @SourceType, @SoId, @DoId, 0, @UserId, SYSUTCDATETIME(), @
                 }
             );
 
-            // Insert lines (no CurrencyId)
             const string insLine = @"
 INSERT INTO dbo.SalesInvoiceLine
-(SiId, SourceType, SourceLineId, ItemId, ItemName, Uom, Qty, UnitPrice, DiscountPct, TaxCodeId)
+(SiId, SourceType, SourceLineId, ItemId, ItemName, Uom, Qty, UnitPrice, DiscountPct, TaxCodeId, Description)
 VALUES
-(@SiId, @SourceType, @SourceLineId, @ItemId, @ItemName, @Uom, @Qty, @UnitPrice, @DiscountPct, @TaxCodeId);";
+(@SiId, @SourceType, @SourceLineId, @ItemId, @ItemName, @Uom, @Qty, @UnitPrice, @DiscountPct, @TaxCodeId, @Description);";
 
             foreach (var l in req.Lines)
             {
@@ -63,12 +62,12 @@ VALUES
                         l.Qty,
                         l.UnitPrice,
                         l.DiscountPct,
-                        l.TaxCodeId
+                        l.TaxCodeId,
+                        Description = string.IsNullOrWhiteSpace(l.Description) ? l.ItemName : l.Description
                     }
                 );
             }
 
-            // Optional invoice number pattern
             await Connection.ExecuteAsync(
                 @"UPDATE dbo.SalesInvoice SET InvoiceNo = CONCAT('SI-', RIGHT(CONVERT(VARCHAR(8), Id + 100000), 6))
                   WHERE Id=@Id", new { Id = siId });
@@ -85,7 +84,7 @@ VALUES
 
         public async Task<IEnumerable<SiLineDto>> GetLinesAsync(int id)
         {
-            const string sql = @"SELECT Id, SiId, SourceType, SourceLineId, ItemId, ItemName, Uom, Qty, UnitPrice, DiscountPct, TaxCodeId
+            const string sql = @"SELECT Id, SiId, SourceType, SourceLineId, ItemId, ItemName, Uom, Qty, UnitPrice, DiscountPct, TaxCodeId, Description
                                  FROM dbo.SalesInvoiceLine WHERE SiId=@Id";
             return await Connection.QueryAsync<SiLineDto>(sql, new { Id = id });
         }
@@ -130,9 +129,9 @@ WHERE Id=@Id;";
         {
             const string sql = @"
 INSERT INTO dbo.SalesInvoiceLine
-(SiId, SourceType, SourceLineId, ItemId, ItemName, Uom, Qty, UnitPrice, DiscountPct, TaxCodeId)
+(SiId, SourceType, SourceLineId, ItemId, ItemName, Uom, Qty, UnitPrice, DiscountPct, TaxCodeId, Description)
 OUTPUT INSERTED.Id
-VALUES (@SiId, @SourceType, @SourceLineId, @ItemId, @ItemName, @Uom, @Qty, @UnitPrice, @DiscountPct, @TaxCodeId);";
+VALUES (@SiId, @SourceType, @SourceLineId, @ItemId, @ItemName, @Uom, @Qty, @UnitPrice, @DiscountPct, @TaxCodeId, @Description);";
 
             return await Connection.ExecuteScalarAsync<int>(sql, new
             {
@@ -145,20 +144,30 @@ VALUES (@SiId, @SourceType, @SourceLineId, @ItemId, @ItemName, @Uom, @Qty, @Unit
                 l.Qty,
                 l.UnitPrice,
                 l.DiscountPct,
-                l.TaxCodeId
+                l.TaxCodeId,
+                Description = string.IsNullOrWhiteSpace(l.Description) ? l.ItemName : l.Description
             });
         }
 
-        public async Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, int userId)
+        public async Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, string? description, int userId)
         {
             const string sql = @"
 UPDATE dbo.SalesInvoiceLine
 SET Qty=@Qty,
     UnitPrice=@UnitPrice,
     DiscountPct=@DiscountPct,
-    TaxCodeId=@TaxCodeId
+    TaxCodeId=@TaxCodeId,
+    Description=@Description
 WHERE Id=@Id;";
-            await Connection.ExecuteAsync(sql, new { Id = lineId, Qty = qty, UnitPrice = unitPrice, DiscountPct = discountPct, TaxCodeId = taxCodeId });
+            await Connection.ExecuteAsync(sql, new
+            {
+                Id = lineId,
+                Qty = qty,
+                UnitPrice = unitPrice,
+                DiscountPct = discountPct,
+                TaxCodeId = taxCodeId,
+                Description = description
+            });
         }
 
         public async Task RemoveLineAsync(int lineId)
