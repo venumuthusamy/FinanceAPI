@@ -36,9 +36,9 @@
                 public string? Uom { get; set; }
                 public decimal Qty { get; set; }
                 public string? Notes { get; set; }
-                public string? WarehouseId { get; set; }  // ← nullable
-                public string? BinId { get; set; }        // ← nullable
-                public string? SupplierId { get; set; }   // ← nullable
+                public int WarehouseId { get; set; }  // ← nullable
+                public int BinId { get; set; }        // ← nullable
+                public int SupplierId { get; set; }   // ← nullable
             }
         }
 

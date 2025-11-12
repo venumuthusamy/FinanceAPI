@@ -85,5 +85,20 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt retrieved successfully", list);
             return Ok(data);
         }
+
+
+        [HttpPost("apply-grn-update-salesorder")]
+        public async Task<IActionResult> ApplyGrnAndUpdateSalesOrder([FromBody] ApplyGrnAndSalesOrderRequest req)
+        {
+            try
+            {
+                await _service.ApplyGrnAndUpdateSalesOrderAsync(req);
+                return Ok(new { message = "Sales order lines and purchase alerts updated successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error updating sales order lines", error = ex.Message });
+            }
+        }
     }
 }

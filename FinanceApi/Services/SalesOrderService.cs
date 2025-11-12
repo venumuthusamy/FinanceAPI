@@ -15,41 +15,56 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<IEnumerable<SalesOrderDTO>> GetAllAsync()
+        public Task<IEnumerable<SalesOrderDTO>> GetAllAsync()
+            => _repository.GetAllAsync();
+
+        public Task<SalesOrderDTO?> GetByIdAsync(int id)
+            => _repository.GetByIdAsync(id);
+
+        public Task<int> CreateAsync(SalesOrder so)
         {
-            return await _repository.GetAllAsync();
-        }
-        public async Task<SalesOrderDTO?> GetByIdAsync(int id)
-        {
-            return await _repository.GetByIdAsync(id);
+            if (so == null) throw new ArgumentNullException(nameof(so));
+            if (so.LineItems == null || so.LineItems.Count == 0)
+                throw new InvalidOperationException("Sales Order needs at least one line.");
+
+            return _repository.CreateAsync(so);
         }
 
-        public async Task<int> CreateAsync(SalesOrder salesOrder)
+        public async Task UpdateAsync(SalesOrder so, bool reallocate)
         {
-            // Example validation logic you might add later
-            if (salesOrder.LineItems == null || !salesOrder.LineItems.Any())
-                throw new ArgumentException("At least one line item is required.");
+            if (so == null) throw new ArgumentNullException(nameof(so));
+            if (so.Id <= 0) throw new ArgumentException("Invalid SO Id.", nameof(so.Id));
 
-            return await _repository.CreateAsync(salesOrder);
-        }
-
-        public async Task UpdateAsync(SalesOrder salesOrder)
-        {
-            await _repository.UpdateAsync(salesOrder);
+            if (reallocate)
+                await _repository.UpdateWithReallocationAsync(so);
+            else
+                await _repository.UpdateAsync(so);
         }
 
-        public async Task DeleteLicense(int id, int updatedBy)
+        public Task DeactivateAsync(int id, int updatedBy)
+            => _repository.DeactivateAsync(id, updatedBy);
+
+        public Task<AllocationPreviewResponse> PreviewAllocationAsync(AllocationPreviewRequest req)
+            => _repository.PreviewAllocationAsync(req);
+
+        public Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int quotationId)
+            => _repository.GetByQuatitonDetails(quotationId);
+
+        public async Task ApproveAsync(int id, int approvedBy)
         {
-            await _repository.DeactivateAsync(id, updatedBy);
-        }
-        public async Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id)
-        {
-            return await _repository.GetByQuatitonDetails(id);
+            var rows = await _repository.ApproveAsync(id, approvedBy);
+            if (rows == 0)
+                throw new KeyNotFoundException("Sales Order not found or inactive.");
         }
 
-        public async Task<AllocationPreviewResponse> PreviewAllocationAsync(AllocationPreviewRequest req)
+        public async Task RejectAsync(int id)
         {
-            return await _repository.PreviewAllocationAsync(req); // ensure your repo has this
+            var rows = await _repository.RejectAsync(id);
+            if (rows == 0)
+                throw new KeyNotFoundException("Sales Order not found.");
         }
+
+        public Task<IEnumerable<DraftLineDTO>> GetDraftLinesAsync()
+    => _repository.GetDraftLinesAsync();
     }
 }

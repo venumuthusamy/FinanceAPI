@@ -7,6 +7,7 @@ namespace FinanceApi.ModelDTO
         public int Id { get; set; }
         public int QuotationNo { get; set; }
         public int CustomerId { get; set; }
+        public string Number {  get; set; }
         public string? CustomerName { get; set; }
 
         public DateTime? RequestedDate { get; set; }
