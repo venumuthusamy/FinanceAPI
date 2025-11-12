@@ -17,5 +17,7 @@ namespace FinanceApi.Interfaces
 
         Task DeleteAsync(int id);
         Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllGRNByPoId();
+
+        Task ApplyGrnAndUpdateSalesOrderAsync(ApplyGrnAndSalesOrderRequest request);
     }
 }

@@ -50,5 +50,22 @@ namespace FinanceApi.Services
         {
             return await _repository.GetAllGRNByPoId();
         }
+
+        public async Task ApplyGrnAndUpdateSalesOrderAsync(ApplyGrnAndSalesOrderRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request), "Request cannot be null.");
+
+            if (string.IsNullOrWhiteSpace(request.ItemCode))
+                throw new ArgumentException("ItemCode cannot be empty.");
+
+            await _repository.ApplyGrnAndUpdateSalesOrderAsync(
+                request.ItemCode,
+                request.WarehouseId,
+                request.SupplierId,
+                request.BinId,
+                request.ReceivedQty
+            );
+        }
     }
 }

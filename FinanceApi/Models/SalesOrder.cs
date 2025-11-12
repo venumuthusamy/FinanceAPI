@@ -8,6 +8,8 @@
         public DateTime? RequestedDate { get; set; }
         public DateTime? DeliveryDate { get; set; }
         public byte Status { get; set; } = 1;
+        public int? ApprovedBy { get; set; }
+
         public decimal Shipping { get; set; }
         public decimal Discount { get; set; }
         public decimal GstPct { get; set; }

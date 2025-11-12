@@ -16,5 +16,7 @@ namespace FinanceApi.Interfaces
 
         Task DeactivateAsync(int id);
         Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllGRNByPoId();
+
+        Task ApplyGrnAndUpdateSalesOrderAsync(string itemCode, int? warehouseId, int? supplierId, int? binId, decimal receivedQty);
     }
 }
