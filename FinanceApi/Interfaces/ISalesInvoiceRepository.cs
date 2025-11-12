@@ -1,4 +1,5 @@
-﻿using static FinanceApi.ModelDTO.SalesInvoiceDtos;
+﻿// Interfaces/ISalesInvoiceRepository.cs
+using static FinanceApi.ModelDTO.SalesInvoiceDtos;
 
 namespace FinanceApi.Interfaces
 {
@@ -10,5 +11,10 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<SiLineDto>> GetLinesAsync(int id);
         Task<IEnumerable<SiListRowDto>> GetListAsync();
         Task DeactivateAsync(int id);
+
+        Task UpdateHeaderAsync(int id, DateTime invoiceDate, int userId);
+        Task<int> AddLineAsync(int siId, SiCreateLine l, byte sourceType);
+        Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, int userId);
+        Task RemoveLineAsync(int lineId);
     }
 }
