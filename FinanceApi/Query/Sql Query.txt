@@ -762,5 +762,50 @@ CREATE TABLE dbo.PickingSerial (
 );
 
 
+CREATE TABLE dbo.CreditNote (
+  Id               INT IDENTITY(1,1) PRIMARY KEY,
+  CreditNoteNo     VARCHAR(30)  NOT NULL,  -- e.g. CN-0001
+  DoId             INT          NOT NULL,  -- Delivery Order Id (source)
+  DoNumber         VARCHAR(50)  NULL,      -- denormalized for display
+  SiId             INT          NOT NULL,      -- optional: SalesInvoice linked to DO (read-only)
+  SiNumber         VARCHAR(50)  NULL,
+  CustomerId       INT          NOT NULL,
+  CustomerName     VARCHAR(200) NULL,
+  CreditNoteDate   DATE         NOT NULL,  -- doc date
+  Status           TINYINT      NULL DEFAULT 1, -- 1=Draft,2=Approved,3=Posted
+  Subtotal         DECIMAL(18,2)NULL DEFAULT 0, -- before tax (per requirement)
+  CreatedBy        INT          NULL,
+  CreatedDate      DATETIME     NOT NULL DEFAULT SYSUTCDATETIME(),
+  UpdatedBy        INT          NULL,
+  UpdatedDate      DATETIME     NULL,
+  IsActive         BIT          NOT NULL DEFAULT 1
+);
+
+
+
+CREATE TABLE dbo.CreditNoteLine (
+  Id               INT IDENTITY(1,1) PRIMARY KEY,
+  CreditNoteId     INT          NOT NULL ,
+  DoId         INT        NOT  NULL,  
+  SiId  INT        NOT  NULL,
+  ItemId           INT          NOT NULL,
+  ItemName         VARCHAR(200) NOT NULL,
+  Uom              VARCHAR(50)  NULL,
+  DeliveredQty     DECIMAL(18,4) NOT NULL DEFAULT 0,   -- from DO (read-only on UI)
+  ReturnedQty      DECIMAL(18,4) NOT NULL DEFAULT 0,   -- editable
+  UnitPrice        DECIMAL(18,4) NULL DEFAULT 0,
+  DiscountPct      DECIMAL(9,4)   NULL DEFAULT 0,
+  TaxCodeId        INT           NULL,                  -- FK to TaxCode table if you have it
+  LineNet          DECIMAL(18,2)  NULL DEFAULT 0,   -- ReturnedQty * Price * (1-Disc)
+  ReasonId         INT           NULL ,
+  RestockDispositionId TINYINT   NULL ,
+  CreatedBy        INT           NULL,
+  CreatedDate      DATETIME      NOT NULL DEFAULT SYSUTCDATETIME(),
+  UpdatedBy        INT           NULL,
+  UpdatedDate      DATETIME      NULL,
+  IsActive         BIT           NOT NULL DEFAULT 1
+);
+
+
 
 

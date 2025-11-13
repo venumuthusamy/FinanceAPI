@@ -104,7 +104,7 @@ WHERE Id=@Id;", new { Id = soLineId, Qty = qty });
 
             // ItemWarehouseStock
             var upd = await Connection.ExecuteAsync(@"
-UPDATE Finance.dbo.ItemWarehouseStock
+UPDATE dbo.ItemWarehouseStock
 SET
   OnHand    = CASE 
                 WHEN @QtyDelta >= 0 
@@ -129,7 +129,7 @@ WHERE ItemId=@ItemId AND WarehouseId=@WarehouseId AND ISNULL(BinId,0)=ISNULL(@Bi
             if (upd == 0)
             {
                 await Connection.ExecuteAsync(@"
-INSERT INTO Finance.dbo.ItemWarehouseStock
+INSERT INTO dbo.ItemWarehouseStock
 (ItemId, WarehouseId, BinId, StrategyId, OnHand, Reserved, MinQty, MaxQty, ReorderQty, LeadTimeDays,
  BatchFlag, SerialFlag, Available, IsTransfered, IsApproved, StockIssueID, IsFullTransfer, IsPartialTransfer)
 VALUES
@@ -137,7 +137,7 @@ VALUES
                     new { ItemId = itemId.Value, WarehouseId = warehouseId.Value, BinId = (object?)binId ?? DBNull.Value });
 
                 await Connection.ExecuteAsync(@"
-UPDATE Finance.dbo.ItemWarehouseStock
+UPDATE dbo.ItemWarehouseStock
 SET
   OnHand    = CASE 
                 WHEN @QtyDelta >= 0 THEN CASE WHEN OnHand >= @QtyDelta THEN OnHand - @QtyDelta ELSE 0 END
@@ -161,7 +161,7 @@ WHERE ItemId=@ItemId AND WarehouseId=@WarehouseId AND ISNULL(BinId,0)=ISNULL(@Bi
 
             // ItemPrice
             var upd2 = await Connection.ExecuteAsync(@"
-UPDATE Finance.dbo.ItemPrice
+UPDATE dbo.ItemPrice
 SET Qty = CASE 
             WHEN ISNULL(Qty,0) - @QtyDelta >= 0 THEN Qty - @QtyDelta 
             ELSE 0 
@@ -179,7 +179,7 @@ WHERE ItemId=@ItemId AND WarehouseId=@WarehouseId AND ISNULL(SupplierId,0)=ISNUL
             {
                 var price = 0m;   // safe default when inserting a new price row
                 await Connection.ExecuteAsync(@"
-INSERT INTO Finance.dbo.ItemPrice
+INSERT INTO dbo.ItemPrice
 (ItemId, SupplierId, Price, Barcode, Qty, WarehouseId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
 VALUES
 (@ItemId, @SupplierId, @Price, @Barcode, 0, @WarehouseId, NULL, SYSUTCDATETIME(), NULL, NULL);",
@@ -193,7 +193,7 @@ VALUES
                     });
 
                 await Connection.ExecuteAsync(@"
-UPDATE Finance.dbo.ItemPrice
+UPDATE dbo.ItemPrice
 SET Qty = CASE 
             WHEN ISNULL(Qty,0) - @QtyDelta >= 0 THEN Qty - @QtyDelta 
             ELSE 0 
@@ -354,10 +354,11 @@ WHERE DoId=@doId;", new { doId });
 
         public Task<IEnumerable<DoHeaderDto>> GetAllAsync()
             => Connection.QueryAsync<DoHeaderDto>(@"
-SELECT d.Id, d.DoNumber, d.Status, d.SoId, d.PackId, d.DriverId, d.VehicleId,
-       d.RouteName, d.DeliveryDate, d.PodFileUrl, d.IsPosted, s.SalesOrderNo
+SELECT d.Id, d.DoNumber, d.Status, d.SoId, d.PackId,SI.InvoiceNo,SI.Id AS SiId, d.DriverId, d.VehicleId,
+       d.RouteName, d.DeliveryDate, d.PodFileUrl, d.IsPosted, s.SalesOrderNo,s.CustomerId
 FROM dbo.DeliveryOrder d 
 LEFT JOIN dbo.SalesOrder s ON s.Id = d.SoId
+LEFT JOIN dbo.SalesInvoice SI ON SI.DoId = d.Id
 ORDER BY d.Id DESC;");
 
         // =============== UPDATE HEADER ===============

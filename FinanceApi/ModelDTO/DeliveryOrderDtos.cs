@@ -4,11 +4,11 @@
     {
         public record DoHeaderDto(
             int Id, string DoNumber, int Status,
-            int? SoId, int? PackId,
+            int? SoId, int? PackId, string? InvoiceNo,int SiId,
             int? DriverId, int? VehicleId,
             string? RouteName, DateTime? DeliveryDate,
             string? PodFileUrl, bool IsPosted,
-            string SalesOrderNo
+            string SalesOrderNo,int? CustomerId
         );
 
         public record DoLineDto(
