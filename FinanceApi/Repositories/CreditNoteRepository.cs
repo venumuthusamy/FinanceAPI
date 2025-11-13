@@ -85,7 +85,7 @@ SELECT
     l.ItemId, l.ItemName, l.Uom,
     l.DeliveredQty, l.ReturnedQty,
     l.UnitPrice, l.DiscountPct, l.TaxCodeId,
-    l.LineNet, l.ReasonId, l.RestockDispositionId,
+    l.LineNet, l.ReasonId, l.RestockDispositionId,l.WarehouseId,l.SupplierId,l.BinId,
     l.IsActive
 FROM dbo.CreditNoteLine l
 WHERE l.CreditNoteId = @Id AND l.IsActive = 1
@@ -167,7 +167,7 @@ INSERT INTO dbo.CreditNoteLine
     ItemId, ItemName, Uom,
     DeliveredQty, ReturnedQty,
     UnitPrice, DiscountPct, TaxCodeId,
-    LineNet, ReasonId, RestockDispositionId,
+    LineNet, ReasonId, RestockDispositionId,WarehouseId,SupplierId,BinId,
     IsActive
 )
 VALUES
@@ -176,7 +176,7 @@ VALUES
     @ItemId, @ItemName, @Uom,
     @DeliveredQty, @ReturnedQty,
     @UnitPrice, @DiscountPct, @TaxCodeId,
-    @LineNet, @ReasonId, @RestockDispositionId,
+    @LineNet, @ReasonId, @RestockDispositionId,@WarehouseId,@SupplierId,@BinId,
     1
 );";
 
@@ -263,7 +263,10 @@ SELECT CONCAT('CN-', RIGHT(CONCAT(REPLICATE('0', 6), @n), 6));";
                         l.TaxCodeId,
                         l.LineNet,
                         l.ReasonId,
-                        l.RestockDispositionId
+                        l.RestockDispositionId,
+                        l.WarehouseId,
+                        l.SupplierId,
+                        l.BinId
                     });
                     await conn.ExecuteAsync(insertLine, rows, tx);
                 }
@@ -304,7 +307,7 @@ SET
     ItemId=@ItemId, ItemName=@ItemName, Uom=@Uom,
     DeliveredQty=@DeliveredQty, ReturnedQty=@ReturnedQty,
     UnitPrice=@UnitPrice, DiscountPct=@DiscountPct, TaxCodeId=@TaxCodeId,
-    LineNet=@LineNet, ReasonId=@ReasonId, RestockDispositionId=@RestockDispositionId,
+    LineNet=@LineNet, ReasonId=@ReasonId, RestockDispositionId=@RestockDispositionId,WarehouseId = @WarehouseId,SupplierId=@SupplierId,BinId=@BinId,
     IsActive=1
 WHERE Id=@Id AND CreditNoteId=@CreditNoteId;";
 
@@ -315,7 +318,7 @@ INSERT INTO dbo.CreditNoteLine
     ItemId, ItemName, Uom,
     DeliveredQty, ReturnedQty,
     UnitPrice, DiscountPct, TaxCodeId,
-    LineNet, ReasonId, RestockDispositionId, IsActive
+    LineNet, ReasonId, RestockDispositionId,WarehouseId,SupplierId,BinId, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
@@ -324,7 +327,7 @@ VALUES
     @ItemId, @ItemName, @Uom,
     @DeliveredQty, @ReturnedQty,
     @UnitPrice, @DiscountPct, @TaxCodeId,
-    @LineNet, @ReasonId, @RestockDispositionId, 1
+    @LineNet, @ReasonId, @RestockDispositionId,@WarehouseId,@SupplierId,@BinId, 1
 );";
 
             const string softDeleteMissing = @"
@@ -386,7 +389,10 @@ WHERE CreditNoteId=@CreditNoteId AND IsActive=1
                                 l.TaxCodeId,
                                 l.LineNet,
                                 l.ReasonId,
-                                l.RestockDispositionId
+                                l.RestockDispositionId,
+                                l.WarehouseId,
+                                l.SupplierId,
+                                l.BinId
                             }, tx);
                             keepIds.Add(l.Id);
                         }
@@ -407,7 +413,10 @@ WHERE CreditNoteId=@CreditNoteId AND IsActive=1
                                 l.TaxCodeId,
                                 l.LineNet,
                                 l.ReasonId,
-                                l.RestockDispositionId
+                                l.RestockDispositionId,
+                                l.WarehouseId,
+                                l.SupplierId,
+                                l.BinId
                             }, tx);
                             keepIds.Add(newLineId);
                         }
@@ -472,6 +481,9 @@ SELECT
     dl.ItemId,
     i.ItemName,
     dl.Uom,
+    dl.WarehouseId,
+    dl.BinId,
+    dl.SupplierId,
     dl.Qty                      AS QtyDelivered,
     COALESCE(si.UnitPrice, 0)   AS UnitPrice,
     COALESCE(si.DiscountPct, 0) AS DiscountPct,

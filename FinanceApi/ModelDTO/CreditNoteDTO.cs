@@ -35,6 +35,9 @@
         public decimal LineNet { get; set; }
         public int? ReasonId { get; set; }
         public byte? RestockDispositionId { get; set; }
+        public int? WarehouseId { get; set; }
+        public int? SupplierId { get; set; }
+        public int? BinId { get; set; }
         public bool IsActive { get; set; }
     }
 }
