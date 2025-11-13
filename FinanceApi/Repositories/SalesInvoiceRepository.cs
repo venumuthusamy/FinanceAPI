@@ -13,9 +13,9 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<SiSourceLineDto>> GetSourceLinesAsync(byte sourceType, int sourceId)
         {
             var sql = sourceType == 1
-                ? @"SELECT SourceLineId, SourceType, SourceId, ItemId, ItemName, UomName, QtyOpen, UnitPrice, DiscountPct, GstPct
+                ? @"SELECT SourceLineId, SourceType, SourceId, ItemId, ItemName, UomName, QtyOpen, UnitPrice, DiscountPct
                     FROM dbo.vw_SI_SourceFromSO WHERE SourceId=@Id"
-                : @"SELECT SourceLineId, SourceType, SourceId, ItemId, ItemName, UomName, QtyOpen, UnitPrice, DiscountPct, GstPct
+                : @"SELECT SourceLineId, SourceType, SourceId, ItemId, ItemName, UomName, QtyOpen, UnitPrice, DiscountPct
                     FROM dbo.vw_SI_SourceFromDO WHERE SourceId=@Id";
 
             return await Connection.QueryAsync<SiSourceLineDto>(sql, new { Id = sourceId });
