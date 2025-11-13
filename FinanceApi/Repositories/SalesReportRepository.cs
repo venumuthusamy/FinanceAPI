@@ -18,8 +18,8 @@ SELECT
     sol.ItemName,
     sol.Uom,
     sol.Quantity,
-    sol.CreatedBy AS SalesPerson,
-    sol.CreatedDate,
+    u.Username AS SalesPerson,
+	sol.CreatedDate,
     sol.Discount,
     sol.Tax,
     sol.UnitPrice,
@@ -64,6 +64,8 @@ INNER JOIN Customer AS cr
     ON cr.Id = so.CustomerId
 INNER JOIN Location AS l 
     ON l.Id = cr.LocationId
+INNER JOIN [User] AS u
+    ON u.Id = sol.CreatedBy	
 
 LEFT JOIN (
     SELECT SoId, MIN(Id) AS Id
@@ -117,7 +119,7 @@ so.GrandTotal AS NetSales,
     ip.Price      AS PurchaseCost,
 	l.Name as Location,
     so.GstPct,
-	sol.CreatedBy AS SalesPerson,
+	 u.Username AS SalesPerson,
 
     CASE 
         WHEN UPPER(sol.Tax) = 'EXCLUSIVE' THEN 
@@ -148,6 +150,8 @@ INNER JOIN Customer AS cr
     ON cr.Id = so.CustomerId
 INNER JOIN Location AS l 
     ON l.Id = cr.LocationId
+INNER JOIN [User] AS u
+    ON u.Id = sol.CreatedBy	
 
 LEFT JOIN (
     SELECT SoId, MIN(Id) AS Id
