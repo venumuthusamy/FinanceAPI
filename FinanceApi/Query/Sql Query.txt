@@ -788,6 +788,7 @@ CREATE TABLE dbo.CreditNoteLine (
   CreditNoteId     INT          NOT NULL ,
   DoId         INT        NOT  NULL,  
   SiId  INT        NOT  NULL,
+  DoLineId INT NULL
   ItemId           INT          NOT NULL,
   ItemName         VARCHAR(200) NOT NULL,
   Uom              VARCHAR(50)  NULL,

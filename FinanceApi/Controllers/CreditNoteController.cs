@@ -56,10 +56,10 @@ namespace FinanceApi.Controllers
 
         // ---------- DO → SI enriched lines (for UI pool) ----------
         // Returns DO lines with UnitPrice/DiscountPct/TaxCodeId pulled from SalesInvoiceLine
-        [HttpGet("do-lines/{doId}")]
-        public async Task<IActionResult> GetDoLines(int doId)
+        [HttpGet("dolines/{doId}")]
+        public async Task<IActionResult> GetDoLines(int doId, [FromQuery] int? excludeCnId = null)
         {
-            var rows = await _service.GetDoLinesAsync(doId);
+            var rows = await _service.GetDoLinesAsync(doId, excludeCnId);
             return Ok(rows);
         }
     }

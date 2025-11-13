@@ -12,6 +12,6 @@ namespace FinanceApi.InterfaceService
         Task DeactivateAsync(int id, int updatedBy);
 
         // DO pool (UI)
-        Task<IEnumerable<object>> GetDoLinesAsync(int doId);
+        Task<IEnumerable<object>> GetDoLinesAsync(int doId, int? excludeCnId = null);
     }
 }

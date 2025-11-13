@@ -825,6 +825,7 @@ ORDER BY w.Name, b.BinName";
     ip.ItemId,
     ip.SupplierId,
     ip.Barcode,
+    ip.BadCountedQty,
     s.Name AS SupplierName,
     ip.Price,
     ip.Qty,
