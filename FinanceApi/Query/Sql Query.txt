@@ -799,6 +799,9 @@ CREATE TABLE dbo.CreditNoteLine (
   LineNet          DECIMAL(18,2)  NULL DEFAULT 0,   -- ReturnedQty * Price * (1-Disc)
   ReasonId         INT           NULL ,
   RestockDispositionId TINYINT   NULL ,
+  WarehouseId       INT           NULL ,
+  SupplierId        INT           NULL , 
+  BinId             INT           NULL ,
   CreatedBy        INT           NULL,
   CreatedDate      DATETIME      NOT NULL DEFAULT SYSUTCDATETIME(),
   UpdatedBy        INT           NULL,
