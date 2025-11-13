@@ -29,6 +29,7 @@ namespace FinanceApi.Services
 
         public Task DeactivateAsync(int id, int updatedBy) => _repo.DeactivateAsync(id, updatedBy);
 
-        public Task<IEnumerable<object>> GetDoLinesAsync(int doId) => _repo.GetDoLinesAsync(doId);
+        public Task<IEnumerable<object>> GetDoLinesAsync(int doId, int? excludeCnId = null)
+       => _repo.GetDoLinesAsync(doId, excludeCnId);
     }
 }

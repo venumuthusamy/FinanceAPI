@@ -30,7 +30,7 @@
         public int CreditNoteId { get; set; }
         public int? DoId { get; set; }
         public int? SiId { get; set; }
-        
+        public int? DoLineId { get; set; }      
         public int ItemId { get; set; }
         public string ItemName { get; set; } = "";
         public string? Uom { get; set; }

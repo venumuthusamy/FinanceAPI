@@ -39,11 +39,12 @@ ORDER BY cn.Id DESC;";
             const string lineSql = @"
 SELECT
     l.Id, l.CreditNoteId,
-    l.DoId AS DId, l.SiId,
+    l.DoId AS DId, l.SiId,l.DoLineId,
     l.ItemId, l.ItemName, l.Uom,
     l.DeliveredQty, l.ReturnedQty,
     l.UnitPrice, l.DiscountPct, l.TaxCodeId,
     l.LineNet, l.ReasonId, l.RestockDispositionId,
+l.WarehouseId, l.SupplierId, l.BinId,
     l.IsActive
 FROM dbo.CreditNoteLine l
 WHERE l.CreditNoteId IN @Ids AND l.IsActive = 1
@@ -81,7 +82,7 @@ WHERE cn.Id = @Id AND cn.IsActive = 1;";
             const string lineSql = @"
 SELECT
     l.Id, l.CreditNoteId,
-    l.DoId AS DId, l.SiId,
+    l.DoId AS DId, l.SiId, l.DoLineId,
     l.ItemId, l.ItemName, l.Uom,
     l.DeliveredQty, l.ReturnedQty,
     l.UnitPrice, l.DiscountPct, l.TaxCodeId,
@@ -99,20 +100,66 @@ ORDER BY l.Id;";
         // ===================== CREATE =====================
         public async Task<int> CreateAsync(CreditNote cn)
         {
+
+            // (A) ItemWarehouseStock.Available upsert by (ItemId, WarehouseId, BinId)
+            const string adjustWarehouseAvailableSql = @"
+UPDATE S
+   SET S.Available = ISNULL(S.Available,0) + @Delta
+FROM dbo.ItemWarehouseStock S
+WHERE S.ItemId      = @ItemId
+  AND S.WarehouseId = @WarehouseId
+  AND ( (S.BinId = @BinId) OR (S.BinId IS NULL AND @BinId IS NULL) );
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ItemWarehouseStock
+        (ItemId, WarehouseId, BinId, OnHand, Reserved, MinQty, MaxQty, ReorderQty, Available)
+    VALUES
+        (@ItemId, @WarehouseId, @BinId, 0, 0, 0, 0, 0, @Delta);
+END;";
+
+            // (B1) ItemPrice: increment Qty (RESTOCK/EXCESS) by (ItemId,SupplierId,WarehouseId)
+            const string adjustSupplierQtySql = @"
+;WITH ip AS (
+    SELECT TOP(1) *
+    FROM dbo.ItemPrice
+    WHERE ItemId=@ItemId AND SupplierId=@SupplierId AND ISNULL(WarehouseId,0)=ISNULL(@WarehouseId,0)
+    ORDER BY Id DESC
+)
+UPDATE ip SET Qty = ISNULL(Qty,0) + @Delta;
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId, Price, Barcode, Qty, BadCountedQty)
+    VALUES (@ItemId, @SupplierId, @WarehouseId, 0, NULL, @Delta, 0);
+END;";
+
+            // (B2) ItemPrice: increment BadCountedQty (DAMAGED/SCRAP)
+            const string adjustSupplierBadSql = @"
+;WITH ip AS (
+    SELECT TOP(1) *
+    FROM dbo.ItemPrice
+    WHERE ItemId=@ItemId AND SupplierId=@SupplierId AND ISNULL(WarehouseId,0)=ISNULL(@WarehouseId,0)
+    ORDER BY Id DESC
+)
+UPDATE ip SET BadCountedQty = ISNULL(BadCountedQty,0) + @Delta;
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId, Price, Barcode, Qty, BadCountedQty)
+    VALUES (@ItemId, @SupplierId, @WarehouseId, 0, NULL, 0, @Delta);
+END;";
+
             if (cn is null) throw new ArgumentNullException(nameof(cn));
 
             var now = DateTime.UtcNow;
             if (cn.CreatedDate == default) cn.CreatedDate = now;
             if (cn.UpdatedDate == null) cn.UpdatedDate = now;
 
-            // --- DO context WITHOUT using d.SoId or d.Sold ---
-            // Customer via: DO -> DO Line -> SalesOrderLines -> SalesOrder -> Customer
-            // SI via: latest SalesInvoice where SourceType=2 and DoId = DO.Id
             const string doInfoSql = @"
 SELECT
     d.Id               AS DoId,
     d.DoNumber,
-    d.DeliveryDate,
     soctx.SoId,
     soctx.CustomerId,
     soctx.CustomerName,
@@ -136,9 +183,7 @@ OUTER APPLY (
         s.Id        AS SiId,
         s.InvoiceNo AS SiNumber
     FROM dbo.SalesInvoice s
-    WHERE s.IsActive = 1
-      AND s.SourceType = 2
-      AND s.DoId = d.Id
+    WHERE s.IsActive = 1 AND s.SourceType = 2 AND s.DoId = d.Id
     ORDER BY s.Id DESC
 ) AS sictx
 WHERE d.Id = @DoId;";
@@ -155,7 +200,7 @@ OUTPUT INSERTED.Id
 VALUES
 (
     @CreditNoteNo, @DoId, @DoNumber, @SiId, @SiNumber,
-    @CustomerId, @CustomerName,@CreditNoteDate,
+    @CustomerId, @CustomerName, @CreditNoteDate,
     @Status, @Subtotal,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1
 );";
@@ -163,21 +208,22 @@ VALUES
             const string insertLine = @"
 INSERT INTO dbo.CreditNoteLine
 (
-    CreditNoteId, DoId, SiId,
+    CreditNoteId, DoId, SiId, DoLineId,
     ItemId, ItemName, Uom,
     DeliveredQty, ReturnedQty,
     UnitPrice, DiscountPct, TaxCodeId,
-    LineNet, ReasonId, RestockDispositionId,WarehouseId,SupplierId,BinId,
-    IsActive
+    LineNet, ReasonId, RestockDispositionId,
+    WarehouseId, SupplierId, BinId, IsActive
 )
+OUTPUT INSERTED.Id
 VALUES
 (
-    @CreditNoteId, @DoId, @SiId,
+    @CreditNoteId, @DoId, @SiId,@DoLineId,
     @ItemId, @ItemName, @Uom,
     @DeliveredQty, @ReturnedQty,
     @UnitPrice, @DiscountPct, @TaxCodeId,
-    @LineNet, @ReasonId, @RestockDispositionId,@WarehouseId,@SupplierId,@BinId,
-    1
+    @LineNet, @ReasonId, @RestockDispositionId,
+    @WarehouseId, @SupplierId, @BinId, 1
 );";
 
             const string nextNo = @"
@@ -193,40 +239,28 @@ SELECT CONCAT('CN-', RIGHT(CONCAT(REPLICATE('0', 6), @n), 6));";
             using var tx = conn.BeginTransaction();
             try
             {
-                // 1) Pull context
+                // 1) enrich header
                 var info = await conn.QueryFirstOrDefaultAsync(
-                    new CommandDefinition(doInfoSql, new { DoId = cn.DoId }, transaction: tx)
-                );
-                if (info is null)
-                    throw new InvalidOperationException("Delivery Order not found.");
+                    new CommandDefinition(doInfoSql, new { DoId = cn.DoId }, transaction: tx));
+                if (info is null) throw new InvalidOperationException("Delivery Order not found.");
 
-                // 2) Fill header from context (do NOT assume DO has CustomerId/SiId columns)
                 cn.DoNumber ??= (string?)info.DoNumber;
                 cn.SiId = cn.SiId != 0 ? cn.SiId : (int?)info.SiId ?? 0;
                 cn.SiNumber ??= (string?)info.SiNumber;
                 cn.CustomerId = cn.CustomerId != 0 ? cn.CustomerId : (int?)info.CustomerId ?? 0;
                 cn.CustomerName ??= (string?)info.CustomerName ?? "";
-               
 
-                // 3) Generate CN number
+                // 2) numbering + totals
                 cn.CreditNoteNo = await conn.ExecuteScalarAsync<string>(nextNo, transaction: tx);
 
-                // 4) Recompute line nets + subtotal server-side
-                if (cn.Lines is { Count: > 0 })
+                foreach (var l in cn.Lines ?? Enumerable.Empty<CreditNoteLine>())
                 {
-                    foreach (var l in cn.Lines)
-                    {
-                        var net = l.ReturnedQty * l.UnitPrice * (1 - (l.DiscountPct / 100m));
-                        l.LineNet = Math.Round(net, 2, MidpointRounding.AwayFromZero);
-                    }
-                    cn.Subtotal = Math.Round(cn.Lines.Sum(x => x.LineNet), 2, MidpointRounding.AwayFromZero);
+                    var net = l.ReturnedQty * l.UnitPrice * (1 - (l.DiscountPct / 100m));
+                    l.LineNet = Math.Round(net, 2, MidpointRounding.AwayFromZero);
                 }
-                else
-                {
-                    cn.Subtotal = 0m;
-                }
+                cn.Subtotal = Math.Round((cn.Lines ?? new()).Sum(x => x.LineNet), 2, MidpointRounding.AwayFromZero);
 
-                // 5) Insert header
+                // 3) insert header
                 var newId = await conn.ExecuteScalarAsync<int>(insertHdr, new
                 {
                     cn.CreditNoteNo,
@@ -245,14 +279,16 @@ SELECT CONCAT('CN-', RIGHT(CONCAT(REPLICATE('0', 6), @n), 6));";
                     UpdatedDate = cn.UpdatedDate ?? now
                 }, tx);
 
-                // 6) Insert lines
-                if (cn.Lines is { Count: > 0 })
+                // 4) insert lines
+                var approved = (byte)cn.Status == 2;
+                foreach (var l in cn.Lines ?? Enumerable.Empty<CreditNoteLine>())
                 {
-                    var rows = cn.Lines.Select(l => new
+                    var lineId = await conn.ExecuteScalarAsync<int>(insertLine, new
                     {
                         CreditNoteId = newId,
                         DoId = (int?)cn.DoId,
                         SiId = (int?)cn.SiId,
+                        l.DoLineId,
                         l.ItemId,
                         l.ItemName,
                         Uom = l.Uom,
@@ -267,8 +303,25 @@ SELECT CONCAT('CN-', RIGHT(CONCAT(REPLICATE('0', 6), @n), 6));";
                         l.WarehouseId,
                         l.SupplierId,
                         l.BinId
-                    });
-                    await conn.ExecuteAsync(insertLine, rows, tx);
+                    }, tx);
+
+                    // 5) STOCK EFFECTS only if Approved at create-time
+                    if (!approved) continue;
+
+                    var qty = Math.Max(0m, l.ReturnedQty);
+                    var w = l.WarehouseId ?? 0;
+                    var s = l.SupplierId ?? 0;
+                    var b = l.BinId;
+
+                    if (l.RestockDispositionId == 1) // RESTOCK/EXCESS
+                    {
+                        await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = l.ItemId, WarehouseId = w, BinId = b, Delta = qty }, tx);
+                        await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = l.ItemId, SupplierId = s, WarehouseId = w, Delta = qty }, tx);
+                    }
+                    else if (l.RestockDispositionId == 2) // DAMAGED/SCRAP
+                    {
+                        await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = l.ItemId, SupplierId = s, WarehouseId = w, Delta = qty }, tx);
+                    }
                 }
 
                 tx.Commit();
@@ -283,16 +336,72 @@ SELECT CONCAT('CN-', RIGHT(CONCAT(REPLICATE('0', 6), @n), 6));";
 
 
 
+
         // ===================== UPDATE =====================
         public async Task UpdateAsync(CreditNote cn)
         {
+
+            // (A) ItemWarehouseStock.Available upsert by (ItemId, WarehouseId, BinId)
+            const string adjustWarehouseAvailableSql = @"
+UPDATE S
+   SET S.Available = ISNULL(S.Available,0) + @Delta
+FROM dbo.ItemWarehouseStock S
+WHERE S.ItemId      = @ItemId
+  AND S.WarehouseId = @WarehouseId
+  AND ( (S.BinId = @BinId) OR (S.BinId IS NULL AND @BinId IS NULL) );
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ItemWarehouseStock
+        (ItemId, WarehouseId, BinId, OnHand, Reserved, MinQty, MaxQty, ReorderQty, Available)
+    VALUES
+        (@ItemId, @WarehouseId, @BinId, 0, 0, 0, 0, 0, @Delta);
+END;";
+
+            // (B1) ItemPrice: increment Qty (RESTOCK/EXCESS) by (ItemId,SupplierId,WarehouseId)
+            const string adjustSupplierQtySql = @"
+;WITH ip AS (
+    SELECT TOP(1) *
+    FROM dbo.ItemPrice
+    WHERE ItemId=@ItemId AND SupplierId=@SupplierId AND ISNULL(WarehouseId,0)=ISNULL(@WarehouseId,0)
+    ORDER BY Id DESC
+)
+UPDATE ip SET Qty = ISNULL(Qty,0) + @Delta;
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId, Price, Barcode, Qty, BadCountedQty)
+    VALUES (@ItemId, @SupplierId, @WarehouseId, 0, NULL, @Delta, 0);
+END;";
+
+            // (B2) ItemPrice: increment BadCountedQty (DAMAGED/SCRAP)
+            const string adjustSupplierBadSql = @"
+;WITH ip AS (
+    SELECT TOP(1) *
+    FROM dbo.ItemPrice
+    WHERE ItemId=@ItemId AND SupplierId=@SupplierId AND ISNULL(WarehouseId,0)=ISNULL(@WarehouseId,0)
+    ORDER BY Id DESC
+)
+UPDATE ip SET BadCountedQty = ISNULL(BadCountedQty,0) + @Delta;
+
+IF @@ROWCOUNT = 0
+BEGIN
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId, Price, Barcode, Qty, BadCountedQty)
+    VALUES (@ItemId, @SupplierId, @WarehouseId, 0, NULL, 0, @Delta);
+END;";
+
             if (cn is null) throw new ArgumentNullException(nameof(cn));
             var now = DateTime.UtcNow;
 
+            const string getOldHdr = @"SELECT CAST(Status AS tinyint) AS Status FROM dbo.CreditNote WHERE Id=@Id AND IsActive=1;";
+            const string getOldLines = @"
+SELECT Id, ItemId, ReturnedQty, RestockDispositionId, WarehouseId, SupplierId, BinId
+FROM dbo.CreditNoteLine
+WHERE CreditNoteId=@Id AND IsActive=1;";
+
             const string updHdr = @"
 UPDATE dbo.CreditNote
-SET
-    DoId=@DoId, DoNumber=@DoNumber,
+SET DoId=@DoId, DoNumber=@DoNumber,
     SiId=@SiId, SiNumber=@SiNumber,
     CustomerId=@CustomerId, CustomerName=@CustomerName,
     CreditNoteDate=@CreditNoteDate,
@@ -302,47 +411,49 @@ WHERE Id=@Id AND IsActive=1;";
 
             const string updLine = @"
 UPDATE dbo.CreditNoteLine
-SET
-    DoId=@DoId, SiId=@SiId,
+SET DoId=@DoId, SiId=@SiId,DoLineId = @DoLineId,
     ItemId=@ItemId, ItemName=@ItemName, Uom=@Uom,
     DeliveredQty=@DeliveredQty, ReturnedQty=@ReturnedQty,
     UnitPrice=@UnitPrice, DiscountPct=@DiscountPct, TaxCodeId=@TaxCodeId,
-    LineNet=@LineNet, ReasonId=@ReasonId, RestockDispositionId=@RestockDispositionId,WarehouseId = @WarehouseId,SupplierId=@SupplierId,BinId=@BinId,
+    LineNet=@LineNet, ReasonId=@ReasonId, RestockDispositionId=@RestockDispositionId,
+    WarehouseId=@WarehouseId, SupplierId=@SupplierId, BinId=@BinId,
     IsActive=1
 WHERE Id=@Id AND CreditNoteId=@CreditNoteId;";
 
             const string insLine = @"
 INSERT INTO dbo.CreditNoteLine
 (
-    CreditNoteId, DoId, SiId,
+    CreditNoteId, DoId, SiId,DoLineId,
     ItemId, ItemName, Uom,
     DeliveredQty, ReturnedQty,
     UnitPrice, DiscountPct, TaxCodeId,
-    LineNet, ReasonId, RestockDispositionId,WarehouseId,SupplierId,BinId, IsActive
+    LineNet, ReasonId, RestockDispositionId,
+    WarehouseId, SupplierId, BinId, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
 (
-    @CreditNoteId, @DoId, @SiId,
+    @CreditNoteId, @DoId, @SiId,@DoLineId,
     @ItemId, @ItemName, @Uom,
     @DeliveredQty, @ReturnedQty,
     @UnitPrice, @DiscountPct, @TaxCodeId,
-    @LineNet, @ReasonId, @RestockDispositionId,@WarehouseId,@SupplierId,@BinId, 1
+    @LineNet, @ReasonId, @RestockDispositionId,
+    @WarehouseId, @SupplierId, @BinId, 1
 );";
 
             const string softDeleteMissing = @"
 UPDATE dbo.CreditNoteLine
-SET IsActive=0, ReasonId=ReasonId, RestockDispositionId=RestockDispositionId
+SET IsActive=0
 WHERE CreditNoteId=@CreditNoteId AND IsActive=1
   AND (@KeepIdsCount=0 OR Id NOT IN @KeepIds);";
 
-            // recompute server-side
-            foreach (var l in cn.Lines)
+            // recompute totals
+            foreach (var l in cn.Lines ?? Enumerable.Empty<CreditNoteLine>())
             {
                 var net = l.ReturnedQty * l.UnitPrice * (1 - (l.DiscountPct / 100m));
                 l.LineNet = Math.Round(net, 2, MidpointRounding.AwayFromZero);
             }
-            cn.Subtotal = Math.Round(cn.Lines.Sum(x => x.LineNet), 2, MidpointRounding.AwayFromZero);
+            cn.Subtotal = Math.Round((cn.Lines ?? new()).Sum(x => x.LineNet), 2, MidpointRounding.AwayFromZero);
 
             var conn = Connection;
             if (conn.State != ConnectionState.Open) await (conn as SqlConnection)!.OpenAsync();
@@ -350,6 +461,35 @@ WHERE CreditNoteId=@CreditNoteId AND IsActive=1
             using var tx = conn.BeginTransaction();
             try
             {
+                var oldStatus = await conn.ExecuteScalarAsync<byte?>(getOldHdr, new { cn.Id }, tx) ?? 1;
+                var newStatus = (byte)cn.Status;
+
+                var oldLines = (await conn.QueryAsync(getOldLines, new { Id = cn.Id }, tx)).ToList();
+                var oldMap = oldLines.ToDictionary(x => (int)x.Id);
+
+                // 1) If we’re moving from Approved->Draft, REVERT all old effects first
+                if (oldStatus == 2 && newStatus == 1)
+                {
+                    foreach (var d in oldLines)
+                    {
+                        var qty = Math.Max(0m, (decimal)d.ReturnedQty);
+                        var w = (int?)d.WarehouseId ?? 0;
+                        var s = (int?)d.SupplierId ?? 0;
+                        var b = (int?)d.BinId;
+
+                        if ((int)d.RestockDispositionId == 1)
+                        {
+                            await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)d.ItemId, WarehouseId = w, BinId = b, Delta = -qty }, tx);
+                            await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)d.ItemId, SupplierId = s, WarehouseId = w, Delta = -qty }, tx);
+                        }
+                        else if ((int)d.RestockDispositionId == 2)
+                        {
+                            await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)d.ItemId, SupplierId = s, WarehouseId = w, Delta = -qty }, tx);
+                        }
+                    }
+                }
+
+                // 2) Update header
                 await conn.ExecuteAsync(updHdr, new
                 {
                     cn.DoId,
@@ -359,76 +499,217 @@ WHERE CreditNoteId=@CreditNoteId AND IsActive=1
                     cn.CustomerId,
                     cn.CustomerName,
                     cn.CreditNoteDate,
-                    Status = (byte)cn.Status,
+                    Status = newStatus,
                     cn.Subtotal,
                     cn.UpdatedBy,
                     UpdatedDate = now,
                     cn.Id
                 }, tx);
 
+                // 3) Upsert lines
                 var keepIds = new List<int>();
-                if (cn.Lines?.Count > 0)
+                foreach (var l in cn.Lines ?? Enumerable.Empty<CreditNoteLine>())
                 {
-                    foreach (var l in cn.Lines)
+                    if (l.Id > 0)
                     {
-                        if (l.Id > 0)
+                        await conn.ExecuteAsync(updLine, new
                         {
-                            await conn.ExecuteAsync(updLine, new
-                            {
-                                l.Id,
-                                CreditNoteId = cn.Id,
-                                DoId = (int?)cn.DoId,
-                                SiId = (int?)cn.SiId,
-                                l.ItemId,
-                                l.ItemName,
-                                Uom = l.Uom,
-                                l.DeliveredQty,
-                                l.ReturnedQty,
-                                l.UnitPrice,
-                                l.DiscountPct,
-                                l.TaxCodeId,
-                                l.LineNet,
-                                l.ReasonId,
-                                l.RestockDispositionId,
-                                l.WarehouseId,
-                                l.SupplierId,
-                                l.BinId
-                            }, tx);
-                            keepIds.Add(l.Id);
-                        }
-                        else
+                            l.Id,
+                            CreditNoteId = cn.Id,
+                            DoId = (int?)cn.DoId,
+                            SiId = (int?)cn.SiId,
+                            l.DoLineId,
+                            l.ItemId,
+                            l.ItemName,
+                            Uom = l.Uom,
+                            l.DeliveredQty,
+                            l.ReturnedQty,
+                            l.UnitPrice,
+                            l.DiscountPct,
+                            l.TaxCodeId,
+                            l.LineNet,
+                            l.ReasonId,
+                            l.RestockDispositionId,
+                            l.WarehouseId,
+                            l.SupplierId,
+                            l.BinId
+                        }, tx);
+                        keepIds.Add(l.Id);
+                    }
+                    else
+                    {
+                        var newLineId = await conn.ExecuteScalarAsync<int>(insLine, new
                         {
-                            var newLineId = await conn.ExecuteScalarAsync<int>(insLine, new
-                            {
-                                CreditNoteId = cn.Id,
-                                DoId = (int?)cn.DoId,
-                                SiId = (int?)cn.SiId,
-                                l.ItemId,
-                                l.ItemName,
-                                Uom = l.Uom,
-                                l.DeliveredQty,
-                                l.ReturnedQty,
-                                l.UnitPrice,
-                                l.DiscountPct,
-                                l.TaxCodeId,
-                                l.LineNet,
-                                l.ReasonId,
-                                l.RestockDispositionId,
-                                l.WarehouseId,
-                                l.SupplierId,
-                                l.BinId
-                            }, tx);
-                            keepIds.Add(newLineId);
-                        }
+                            CreditNoteId = cn.Id,
+                            DoId = (int?)cn.DoId,
+                            SiId = (int?)cn.SiId,
+                            l.DoLineId,
+                            l.ItemId,
+                            l.ItemName,
+                            Uom = l.Uom,
+                            l.DeliveredQty,
+                            l.ReturnedQty,
+                            l.UnitPrice,
+                            l.DiscountPct,
+                            l.TaxCodeId,
+                            l.LineNet,
+                            l.ReasonId,
+                            l.RestockDispositionId,
+                            l.WarehouseId,
+                            l.SupplierId,
+                            l.BinId
+                        }, tx);
+                        keepIds.Add(newLineId);
                     }
                 }
 
+                // 4) Soft-delete removed lines (and revert effects if needed later)
                 await conn.ExecuteAsync(softDeleteMissing, new
                 {
                     CreditNoteId = cn.Id,
                     KeepIds = keepIds.Count == 0 ? new[] { -1 } : keepIds.ToArray(),
                     KeepIdsCount = keepIds.Count
                 }, tx);
+
+                // 5) STOCK EFFECTS only if newStatus == Approved
+                if (newStatus == 2)
+                {
+                    if (oldStatus != 2)
+                    {
+                        // Draft->Approved: apply full effects of current lines
+                        var curLines = await conn.QueryAsync(getOldLines, new { Id = cn.Id }, tx);
+                        foreach (var l in curLines)
+                        {
+                            var qty = Math.Max(0m, (decimal)l.ReturnedQty);
+                            var w = (int?)l.WarehouseId ?? 0;
+                            var s = (int?)l.SupplierId ?? 0;
+                            var b = (int?)l.BinId;
+
+                            if ((int)l.RestockDispositionId == 1)
+                            {
+                                await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)l.ItemId, WarehouseId = w, BinId = b, Delta = qty }, tx);
+                                await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = qty }, tx);
+                            }
+                            else if ((int)l.RestockDispositionId == 2)
+                            {
+                                await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = qty }, tx);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Approved->Approved: apply deltas vs oldMap
+                        var curLines = await conn.QueryAsync(getOldLines, new { Id = cn.Id }, tx);
+                        var curMap = curLines.ToDictionary(x => (int)x.Id);
+
+                        // Changes / additions
+                        foreach (var l in curLines)
+                        {
+                            if (!oldMap.TryGetValue((int)l.Id, out var old)) // new line: full effect
+                            {
+                                var qty = Math.Max(0m, (decimal)l.ReturnedQty);
+                                var w = (int?)l.WarehouseId ?? 0;
+                                var s = (int?)l.SupplierId ?? 0;
+                                var b = (int?)l.BinId;
+
+                                if ((int)l.RestockDispositionId == 1)
+                                {
+                                    await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)l.ItemId, WarehouseId = w, BinId = b, Delta = qty }, tx);
+                                    await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = qty }, tx);
+                                }
+                                else if ((int)l.RestockDispositionId == 2)
+                                {
+                                    await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = qty }, tx);
+                                }
+                                continue;
+                            }
+
+                            // same id — check key/disposition changes or qty delta
+                            bool keyChanged =
+                                (int?)old.WarehouseId != (int?)l.WarehouseId ||
+                                (int?)old.SupplierId != (int?)l.SupplierId ||
+                                (int?)old.BinId != (int?)l.BinId ||
+                                (int)old.RestockDispositionId != (int)l.RestockDispositionId ||
+                                (int)old.ItemId != (int)l.ItemId;
+
+                            var oldQty = Math.Max(0m, (decimal)old.ReturnedQty);
+                            var newQty = Math.Max(0m, (decimal)l.ReturnedQty);
+
+                            if (keyChanged)
+                            {
+                                // revert old, apply new
+                                var ow = (int?)old.WarehouseId ?? 0;
+                                var os = (int?)old.SupplierId ?? 0;
+                                var ob = (int?)old.BinId;
+
+                                if ((int)old.RestockDispositionId == 1)
+                                {
+                                    await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)old.ItemId, WarehouseId = ow, BinId = ob, Delta = -oldQty }, tx);
+                                    await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)old.ItemId, SupplierId = os, WarehouseId = ow, Delta = -oldQty }, tx);
+                                }
+                                else if ((int)old.RestockDispositionId == 2)
+                                {
+                                    await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)old.ItemId, SupplierId = os, WarehouseId = ow, Delta = -oldQty }, tx);
+                                }
+
+                                var w = (int?)l.WarehouseId ?? 0;
+                                var s = (int?)l.SupplierId ?? 0;
+                                var b = (int?)l.BinId;
+
+                                if ((int)l.RestockDispositionId == 1)
+                                {
+                                    await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)l.ItemId, WarehouseId = w, BinId = b, Delta = newQty }, tx);
+                                    await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = newQty }, tx);
+                                }
+                                else if ((int)l.RestockDispositionId == 2)
+                                {
+                                    await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = newQty }, tx);
+                                }
+                            }
+                            else
+                            {
+                                // delta only
+                                var delta = newQty - oldQty;
+                                if (delta == 0m) continue;
+
+                                var w = (int?)l.WarehouseId ?? 0;
+                                var s = (int?)l.SupplierId ?? 0;
+                                var b = (int?)l.BinId;
+
+                                if ((int)l.RestockDispositionId == 1)
+                                {
+                                    await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)l.ItemId, WarehouseId = w, BinId = b, Delta = delta }, tx);
+                                    await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = delta }, tx);
+                                }
+                                else if ((int)l.RestockDispositionId == 2)
+                                {
+                                    await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)l.ItemId, SupplierId = s, WarehouseId = w, Delta = delta }, tx);
+                                }
+                            }
+                        }
+
+                        // Deletions: revert deleted lines
+                        var curIds = new HashSet<int>(curMap.Keys);
+                        var deleted = oldLines.Where(o => !curIds.Contains((int)o.Id));
+                        foreach (var d in deleted)
+                        {
+                            var qty = Math.Max(0m, (decimal)d.ReturnedQty);
+                            var w = (int?)d.WarehouseId ?? 0;
+                            var s = (int?)d.SupplierId ?? 0;
+                            var b = (int?)d.BinId;
+
+                            if ((int)d.RestockDispositionId == 1)
+                            {
+                                await conn.ExecuteAsync(adjustWarehouseAvailableSql, new { ItemId = (int)d.ItemId, WarehouseId = w, BinId = b, Delta = -qty }, tx);
+                                await conn.ExecuteAsync(adjustSupplierQtySql, new { ItemId = (int)d.ItemId, SupplierId = s, WarehouseId = w, Delta = -qty }, tx);
+                            }
+                            else if ((int)d.RestockDispositionId == 2)
+                            {
+                                await conn.ExecuteAsync(adjustSupplierBadSql, new { ItemId = (int)d.ItemId, SupplierId = s, WarehouseId = w, Delta = -qty }, tx);
+                            }
+                        }
+                    }
+                }
 
                 tx.Commit();
             }
@@ -438,6 +719,7 @@ WHERE CreditNoteId=@CreditNoteId AND IsActive=1
                 throw;
             }
         }
+
 
         // ===================== SOFT DELETE =====================
         public async Task DeactivateAsync(int id, int updatedBy)
@@ -473,24 +755,79 @@ WHERE CreditNoteId=@Id AND IsActive=1;";
         // ===================== DO → SI LINE ENRICH =====================
         // Prefer exact DO line → SI link (SourceType=2 + SourceLineId)
         // Fallback: same SI + same ItemId
-        public async Task<IEnumerable<object>> GetDoLinesAsync(int doId)
+        public async Task<IEnumerable<object>> GetDoLinesAsync(int doId, int? excludeCnId = null)
         {
             const string sql = @"
+;WITH Used AS (
+    SELECT
+        COALESCE(cnl.DoLineId, -1) AS DoLineId,
+        cnl.ItemId,
+        ISNULL(cnl.WarehouseId, 0) AS WarehouseId,
+        ISNULL(cnl.SupplierId, 0)  AS SupplierId,
+        cnl.BinId,
+        SUM(COALESCE(cnl.ReturnedQty,0)) AS UsedQty
+    FROM dbo.CreditNoteLine cnl
+    JOIN dbo.CreditNote    cn  ON cn.Id = cnl.CreditNoteId
+    WHERE cn.IsActive = 1
+      AND cn.DoId = @DoId
+      AND cn.Status IN (1,2)           -- subtract DRAFT + APPROVED
+      AND (@ExcludeCnId IS NULL OR cn.Id <> @ExcludeCnId)
+      AND cnl.IsActive = 1
+    GROUP BY COALESCE(cnl.DoLineId,-1), cnl.ItemId, ISNULL(cnl.WarehouseId,0), ISNULL(cnl.SupplierId,0), cnl.BinId
+)
 SELECT 
-    dl.Id            AS DoLineId,
+    dl.Id                      AS DoLineId,
     dl.ItemId,
     i.ItemName,
     dl.Uom,
     dl.WarehouseId,
     dl.BinId,
     dl.SupplierId,
-    dl.Qty                      AS QtyDelivered,
+
+    -- original delivered qty on the DO line
+    CAST(dl.Qty AS decimal(18,4))                    AS QtyDelivered,
+
+    -- compute how much already used in CNs:
+    -- prefer exact DoLineId match; if no DoLineId was stored, fall back to item+wh+sup+bin
+    CAST((
+        COALESCE(
+            (SELECT u.UsedQty
+             FROM Used u
+             WHERE u.DoLineId = dl.Id),
+            (SELECT u2.UsedQty
+             FROM Used u2
+             WHERE u2.DoLineId = -1
+               AND u2.ItemId      = dl.ItemId
+               AND u2.WarehouseId = ISNULL(dl.WarehouseId,0)
+               AND u2.SupplierId  = ISNULL(dl.SupplierId,0)
+               AND ( (u2.BinId = dl.BinId) OR (u2.BinId IS NULL AND dl.BinId IS NULL) )
+            ),
+            0
+        )
+    ) AS decimal(18,4)) AS QtyUsed,
+
+    -- remaining = delivered - used
+    CAST( (dl.Qty
+          - COALESCE(
+              (SELECT u.UsedQty FROM Used u WHERE u.DoLineId = dl.Id),
+              (SELECT u2.UsedQty FROM Used u2
+               WHERE u2.DoLineId = -1
+                 AND u2.ItemId      = dl.ItemId
+                 AND u2.WarehouseId = ISNULL(dl.WarehouseId,0)
+                 AND u2.SupplierId  = ISNULL(dl.SupplierId,0)
+                 AND ( (u2.BinId = dl.BinId) OR (u2.BinId IS NULL AND dl.BinId IS NULL) )
+              ),
+              0
+          )
+    ) AS decimal(18,4)) AS QtyRemaining,
+
+    -- pull last known unit price/discount/tax from SI lines
     COALESCE(si.UnitPrice, 0)   AS UnitPrice,
     COALESCE(si.DiscountPct, 0) AS DiscountPct,
     si.TaxCodeId
 FROM dbo.DeliveryOrderLine dl
-JOIN dbo.DeliveryOrder d    ON d.Id = dl.DoId
-LEFT JOIN dbo.Item i        ON i.Id = dl.ItemId
+JOIN dbo.DeliveryOrder     d  ON d.Id = dl.DoId
+LEFT JOIN dbo.Item         i  ON i.Id = dl.ItemId
 OUTER APPLY (
     SELECT TOP (1) sil.UnitPrice, sil.DiscountPct, sil.TaxCodeId
     FROM dbo.SalesInvoiceLine sil
@@ -505,10 +842,25 @@ OUTER APPLY (
         END,
         sil.Id DESC
 ) si
-WHERE dl.DoId = @doId
+WHERE dl.DoId = @DoId
+  AND (dl.Qty
+       - COALESCE(
+           (SELECT u.UsedQty FROM Used u WHERE u.DoLineId = dl.Id),
+           (SELECT u2.UsedQty FROM Used u2
+            WHERE u2.DoLineId = -1
+              AND u2.ItemId      = dl.ItemId
+              AND u2.WarehouseId = ISNULL(dl.WarehouseId,0)
+              AND u2.SupplierId  = ISNULL(dl.SupplierId,0)
+              AND ( (u2.BinId = dl.BinId) OR (u2.BinId IS NULL AND dl.BinId IS NULL) )
+           ),
+           0
+       )
+  ) > 0
 ORDER BY dl.Id;";
-            return await Connection.QueryAsync(sql, new { doId });
-        }
 
+            return await Connection.QueryAsync(sql, new { DoId = doId, ExcludeCnId = excludeCnId });
+        }
     }
 }
+
+
