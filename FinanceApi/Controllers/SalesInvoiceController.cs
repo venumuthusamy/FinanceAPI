@@ -74,6 +74,7 @@ namespace FinanceApi.Controllers
             public decimal Qty { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
+            public decimal LineAmount { get; set; }
             public int? TaxCodeId { get; set; }
             public string? Description { get; set; }   // <— NEW
         }
@@ -92,6 +93,7 @@ namespace FinanceApi.Controllers
                 Uom = l.Uom,
                 Qty = l.Qty,
                 UnitPrice = l.UnitPrice,
+                LineAmount = l.LineAmount,
                 DiscountPct = l.DiscountPct,
                 TaxCodeId = l.TaxCodeId,
                 Description = l.Description
@@ -105,7 +107,10 @@ namespace FinanceApi.Controllers
             public decimal Qty { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
+            public decimal GstPct { get; set; }
+            public string? Tax { get; set; }
             public int? TaxCodeId { get; set; }
+            public decimal? LineAmount { get; set; }
             public string? Description { get; set; }   // <— NEW
         }
 
@@ -113,7 +118,7 @@ namespace FinanceApi.Controllers
         public async Task<IActionResult> UpdateLine(int lineId, [FromBody] LineUpdateDto dto)
         {
             int userId = 1;
-            await _svc.UpdateLineAsync(lineId, dto.Qty, dto.UnitPrice, dto.DiscountPct, dto.TaxCodeId, dto.Description, userId);
+            await _svc.UpdateLineAsync(lineId, dto.Qty, dto.UnitPrice, dto.DiscountPct,dto.GstPct,dto.Tax, dto.TaxCodeId,dto.LineAmount, dto.Description, userId);
             return Ok(new ResponseResult(true, "Line updated", null));
         }
 

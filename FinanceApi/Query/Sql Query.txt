@@ -810,6 +810,76 @@ CREATE TABLE dbo.CreditNoteLine (
   IsActive         BIT           NOT NULL DEFAULT 1
 );
 
+CREATE TABLE dbo.ArReceipt
+(
+    Id             INT IDENTITY(1,1) PRIMARY KEY,
+    ReceiptNo      NVARCHAR(30) NOT NULL,       -- e.g. RC-2025-000001
+    CustomerId     INT          NOT NULL,
+    ReceiptDate    DATE         NOT NULL,
+    PaymentMode    NVARCHAR(20) NOT NULL,       -- 'CASH' or 'BANK'
+    BankId         INT          NULL,           -- FK if PaymentMode = BANK
+    AmountReceived DECIMAL(18,2) NOT NULL,      -- header amount
+    TotalAllocated DECIMAL(18,2) NOT NULL,      -- sum of allocations
+    Unallocated    DECIMAL(18,2) NOT NULL,      -- AmountReceived - TotalAllocated
+    ReferenceNo    NVARCHAR(50)  NULL,          -- cheque no / UTR / etc
+    Remarks        NVARCHAR(200) NULL,
+    Status         NVARCHAR(20)  NOT NULL DEFAULT('Posted'),
+    IsActive       BIT           NOT NULL DEFAULT(1),
+
+    CreatedBy      INT           NOT NULL,
+    CreatedDate    DATETIME2     NOT NULL DEFAULT(SYSUTCDATETIME()),
+    UpdatedBy      INT           NULL,
+    UpdatedDate    DATETIME2     NULL
+);
+CREATE TABLE dbo.ArReceiptAllocation
+(
+    Id              INT IDENTITY(1,1) PRIMARY KEY,
+    ReceiptId       INT           NOT NULL,
+    InvoiceId       INT           NOT NULL,         -- FK to dbo.salesinvoice.Id
+    AllocatedAmount DECIMAL(18,2) NOT NULL,
+
+    IsActive        BIT           NOT NULL DEFAULT(1),
+    CreatedBy       INT           NOT NULL,
+    CreatedDate     DATETIME2     NOT NULL DEFAULT(SYSUTCDATETIME()),
+    UpdatedBy      INT           NULL,
+    UpdatedDate    DATETIME2     NULL
+);
+CREATE OR ALTER VIEW dbo.vwSalesInvoiceOpenForReceipt
+AS
+SELECT
+    si.Id                          AS Id,
+    si.InvoiceNo                   AS InvoiceNo,
+    si.InvoiceDate                 AS InvoiceDate,
+    inv.Amount                     AS Amount,
+    ISNULL(pay.PaidAmount, 0)      AS PaidAmount,
+    inv.Amount - ISNULL(pay.PaidAmount, 0) AS Balance,
+    so.CustomerId
+FROM dbo.salesinvoice si
+    INNER JOIN dbo.salesorder so
+        ON so.Id = si.SoId
+
+    INNER JOIN (
+        SELECT
+            sil.SiId            AS SalesInvoiceId,
+            SUM(sil.LineAmount) AS Amount
+        FROM dbo.salesinvoiceline sil
+        GROUP BY sil.SiId
+    ) inv ON inv.SalesInvoiceId = si.Id
+
+    LEFT JOIN (
+        SELECT
+            ra.InvoiceId,
+            SUM(ra.AllocatedAmount) AS PaidAmount
+        FROM dbo.ArReceiptAllocation ra
+        INNER JOIN dbo.ArReceipt r
+            ON r.Id = ra.ReceiptId
+           AND r.IsActive = 1           -- header has IsActive (recommended)
+        GROUP BY ra.InvoiceId
+    ) pay ON pay.InvoiceId = si.Id
+WHERE si.IsActive = 1;                   -- salesinvoice has IsActive
+GO
+
+
 
 
 

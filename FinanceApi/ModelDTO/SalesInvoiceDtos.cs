@@ -11,6 +11,7 @@ namespace FinanceApi.ModelDTO
             public byte SourceType { get; set; }
             public int? SoId { get; set; }
             public int? DoId { get; set; }
+            public decimal Total { get; set; }
             public byte Status { get; set; }
             public bool IsActive { get; set; }
             public SiHeaderDto() { }
@@ -28,6 +29,8 @@ namespace FinanceApi.ModelDTO
             public decimal Qty { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
+            public decimal GstPct { get; set; }
+            public string? Tax { get; set; }
             public int? TaxCodeId { get; set; }
             public string? Description { get; set; }   // <— NEW
             public SiLineDto() { }
@@ -53,7 +56,10 @@ namespace FinanceApi.ModelDTO
             public decimal Qty { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
+            public decimal GstPct { get; set; }
+            public string? Tax { get; set; }
             public int? TaxCodeId { get; set; }
+            public decimal LineAmount { get; set; }            
             public string? Description { get; set; }   // <— NEW
             public SiCreateLine() { }
         }
@@ -64,6 +70,7 @@ namespace FinanceApi.ModelDTO
             public int? SoId { get; set; }
             public int? DoId { get; set; }
             public DateTime InvoiceDate { get; set; }
+            public decimal? Total { get; set; }
             public List<SiCreateLine> Lines { get; set; } = new();
         }
 
@@ -79,6 +86,7 @@ namespace FinanceApi.ModelDTO
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
             public decimal GstPct { get; set; }
+            public string? Tax { get; set; }
             // DefaultCurrencyId intentionally removed
         }
     }

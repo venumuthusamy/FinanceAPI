@@ -13,7 +13,7 @@ namespace FinanceApi.Interfaces
         Task DeactivateAsync(int id);
         Task UpdateHeaderAsync(int id, DateTime invoiceDate, int userId);
         Task<int> AddLineAsync(int siId, SiCreateLine l, byte sourceType);
-        Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, int? taxCodeId, string? description, int userId); // <— desc
+        Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, decimal gstPct, string tax, int? taxCodeId, decimal? lineAmount,string? description, int userId); // <— desc
         Task RemoveLineAsync(int lineId);
     }
 }

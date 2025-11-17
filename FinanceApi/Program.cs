@@ -17,6 +17,8 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using FinanceApi.Models;
+using UnityWorksERP.Finance.AR;
 
 // -------- Pick the correct web root (Angular UI location) --------
 var vuexyPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "dist", "vuexy");
@@ -81,6 +83,8 @@ builder.Services.AddScoped<IPickingService, PickingService>();
 builder.Services.AddSingleton<ICodeImageService, CodeImageService>();
 builder.Services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
 builder.Services.AddScoped<IPurchaseAlertService, PurchaseAlertService>();
+builder.Services.AddScoped<IArReceiptRepository, ArReceiptRepository>();
+builder.Services.AddScoped<IArReceiptService, ArReceiptService>();
 builder.Services.AddHttpContextAccessor();
 
 builder.Services.AddControllers();
