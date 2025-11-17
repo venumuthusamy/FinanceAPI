@@ -1,24 +1,22 @@
 // Program.cs
+using FinanceApi.Data;
+using FinanceApi.Interfaces;
+using FinanceApi.InterfaceService;
+using FinanceApi.Models;
+using FinanceApi.Repositories;
+using FinanceApi.Services;
+// NEW: FluentScheduler
+using FluentScheduler;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
 using System;
 using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
-
-using FinanceApi.Data;
-using FinanceApi.InterfaceService;
-using FinanceApi.Interfaces;
-using FinanceApi.Repositories;
-using FinanceApi.Services;
-
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders;
-using Microsoft.IdentityModel.Tokens;
-
-// NEW: FluentScheduler
-using FluentScheduler;
-using Microsoft.Extensions.DependencyInjection;
 
 // -------- Pick the correct web root (Angular UI location) --------
 var vuexyPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "dist", "vuexy");
@@ -63,6 +61,7 @@ builder.Services.AddScoped<IStockAdjustmentRepository, StockAdjustmentRepository
 builder.Services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
 builder.Services.AddScoped<ISalesInvoiceRepository, SalesInvoiceRepository>();
 builder.Services.AddScoped<IPurchaseAlertRepository, PurchaseAlertRepository>();
+builder.Services.AddScoped<IAccountsPayableRepository, AccountsPayableRepository>();
 
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
 builder.Services.AddScoped<IIncotermsService, IncotermsService>();

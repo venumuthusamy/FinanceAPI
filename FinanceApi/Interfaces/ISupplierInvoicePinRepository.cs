@@ -10,5 +10,8 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(SupplierInvoicePin pin);
         Task UpdateAsync(SupplierInvoicePin pin);
         Task DeactivateAsync(int id);
+        Task<ThreeWayMatchDTO?> GetThreeWayMatchAsync(int pinId);
+        Task FlagForReviewAsync(int pinId, string userName);
+        Task PostToApAsync(int pinId, string userName);
     }
 }
