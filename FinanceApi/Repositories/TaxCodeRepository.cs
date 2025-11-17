@@ -35,14 +35,17 @@ namespace FinanceApi.Repositories
         {
             const string query = @"
         INSERT INTO TaxCode 
-            (Name, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive) 
+            (Name,Description,Rate,TypeId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive) 
         OUTPUT INSERTED.Id 
         VALUES 
-            (@Name, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)
+            (@Name, @Description,@Rate,@TypeId,@CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)
     ";
 
             var parameters = new DynamicParameters();
             parameters.Add("@Name", taxCode.Name);
+            parameters.Add("@Description", taxCode.Description);
+            parameters.Add("@Rate", taxCode.Rate);
+            parameters.Add("@TypeId", taxCode.TypeId);
             parameters.Add("@CreatedBy", taxCode.CreatedBy);
             parameters.Add("@CreatedDate", taxCode.CreatedDate);
             parameters.Add("@UpdatedBy", taxCode.UpdatedBy);
@@ -57,7 +60,7 @@ namespace FinanceApi.Repositories
 
         public async Task UpdateAsync(TaxCode taxCode)
         {
-            const string query = "UPDATE TaxCode SET Name = @Name WHERE Id = @Id";
+            const string query = "UPDATE TaxCode SET Name = @Name, Description = @Description, Rate = @Rate, TypeId = @TypeId WHERE Id = @Id";
             await Connection.ExecuteAsync(query, taxCode);
         }
 

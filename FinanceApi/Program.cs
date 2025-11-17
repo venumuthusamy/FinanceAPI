@@ -16,6 +16,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 
+// NEW: FluentScheduler
+using FluentScheduler;
+using Microsoft.Extensions.DependencyInjection;
+
 // -------- Pick the correct web root (Angular UI location) --------
 var vuexyPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "dist", "vuexy");
 var plainWwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
@@ -97,11 +101,9 @@ builder.Services.AddCors(options =>
                 "http://localhost:5000",
                 "http://localhost:51898",
                 "http://192.168.6.218:4200",
-            "https://your-prod-ui-domain.com"
-
-
+                "https://your-prod-ui-domain.com"
             )
-        //policy.AllowAnyOrigin()
+            //policy.AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod();
         // If you use cookie auth: .AllowCredentials();  (then remove localhost:5000 if same-origin)
@@ -184,5 +186,33 @@ app.MapControllers();
 
 // Then SPA fallback (serves index.html)
 app.MapFallbackToFile("index.html");
+
+// ===================== FluentScheduler – Recurring Journal Job =====================
+
+// Initialize scheduler once
+JobManager.Initialize();
+
+// Take scope factory from DI
+var scopeFactory = app.Services.GetRequiredService<IServiceScopeFactory>();
+
+// EXACT style you asked: ToRunEvery(1).Days().At(23, 00)
+JobManager.AddJob(
+    async () =>
+    {
+        using var scope = scopeFactory.CreateScope();
+        var journalService = scope.ServiceProvider.GetRequiredService<IJournalService>();
+
+        // India time (IST) calculate pannrom
+        var indiaTz = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+        var nowIndia = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTz);
+        var today = nowIndia.Date;
+
+        // Your existing recurring logic
+        await journalService.ProcessRecurringAsync(today);
+    },
+    s => s.ToRunEvery(1).Minutes()
+);
+
+// ================================================================================
 
 app.Run();
