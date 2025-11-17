@@ -15,5 +15,20 @@ namespace FinanceApi.Services
         public Task<int> CreateAsync(SupplierInvoicePin pin) => _repo.CreateAsync(pin);
         public Task UpdateAsync(SupplierInvoicePin pin) => _repo.UpdateAsync(pin);
         public Task DeleteAsync(int id) => _repo.DeactivateAsync(id);
+
+        public Task<ThreeWayMatchDTO?> GetThreeWayMatchAsync(int pinId)
+        {
+          return  _repo.GetThreeWayMatchAsync(pinId);
+        }
+
+        public Task FlagForReviewAsync(int pinId, string userName)
+        {
+          return _repo.FlagForReviewAsync(pinId, userName);
+        }
+
+        public Task PostToApAsync(int pinId, string userName)
+        {
+           return _repo.PostToApAsync(pinId, userName);
+        }
     }
 }
