@@ -796,6 +796,8 @@ CREATE TABLE dbo.CreditNoteLine (
   ReturnedQty      DECIMAL(18,4) NOT NULL DEFAULT 0,   -- editable
   UnitPrice        DECIMAL(18,4) NULL DEFAULT 0,
   DiscountPct      DECIMAL(9,4)   NULL DEFAULT 0,
+GstPct DECIMAL(18,2)  NULL DEFAULT(0),
+Tax  NVARCHAR(20)  NULL,
   TaxCodeId        INT           NULL,                  -- FK to TaxCode table if you have it
   LineNet          DECIMAL(18,2)  NULL DEFAULT 0,   -- ReturnedQty * Price * (1-Disc)
   ReasonId         INT           NULL ,
