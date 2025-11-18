@@ -38,6 +38,8 @@
         public decimal ReturnedQty { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal DiscountPct { get; set; }
+        public decimal GstPct { get; set; }
+        public string? Tax { get; set; }
         public int? TaxCodeId { get; set; }
         public decimal LineNet { get; set; }
         public int? ReasonId { get; set; }
