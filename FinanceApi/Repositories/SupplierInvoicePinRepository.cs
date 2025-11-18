@@ -19,7 +19,7 @@ namespace FinanceApi.Repositories
             const string sql = @"
 SELECT *
 FROM dbo.SupplierInvoicePin
-WHERE IsActive = 0
+WHERE IsActive = 1
 ORDER BY Id DESC;";
 
             return await Connection.QueryAsync<SupplierInvoicePin>(sql);
@@ -28,9 +28,10 @@ ORDER BY Id DESC;";
         public async Task<SupplierInvoicePinDTO> GetByIdAsync(int id)
         {
             const string sql = @"
-    SELECT si.*,grp.GrnNo,po.Tax FROM SupplierInvoicePin as si
+    SELECT si.*,grp.GrnNo,po.Tax,s.Id   AS SupplierId,s.Name as SupplierName FROM SupplierInvoicePin as si
 inner join PurchaseGoodReceipt as grp on grp.Id = si.grnid
 inner join PurchaseOrder as po on po.Id= grp.POID
+inner join Suppliers as s on  s.id = si.supplierid
 WHERE si.Id = @Id;";
             return await Connection.QuerySingleAsync<SupplierInvoicePinDTO>(sql, new { Id = id });
         }
@@ -60,11 +61,11 @@ ORDER BY Id DESC;";
             const string insert = @"
 INSERT INTO dbo.SupplierInvoicePin
 (InvoiceNo, InvoiceDate, Amount, Tax, CurrencyId, Status, LinesJson,
- IsActive, CreatedDate, UpdatedDate, CreatedBy, UpdatedBy, GrnId)
+ IsActive, CreatedDate, UpdatedDate, CreatedBy, UpdatedBy, GrnId,SupplierId)
 OUTPUT INSERTED.Id
 VALUES
 (@InvoiceNo, @InvoiceDate, @Amount, @Tax, @CurrencyId, @Status, @LinesJson,
- 0, @CreatedDate, @UpdatedDate, @CreatedBy, @UpdatedBy, @GrnId);";
+ 1, @CreatedDate, @UpdatedDate, @CreatedBy, @UpdatedBy, @GrnId,@SupplierId);";
 
             return await Connection.QueryFirstAsync<int>(insert, pin);
         }
@@ -93,7 +94,7 @@ WHERE Id = @Id;";
         // ---------- DEACTIVATE ----------
         public async Task DeactivateAsync(int id)
         {
-            const string sql = @"UPDATE dbo.SupplierInvoicePin SET IsActive = 1 WHERE Id = @Id;";
+            const string sql = @"UPDATE dbo.SupplierInvoicePin SET IsActive = 0 WHERE Id = @Id;";
             await Connection.ExecuteAsync(sql, new { Id = id });
         }
         public async Task<ThreeWayMatchDTO?> GetThreeWayMatchAsync(int pinId)
@@ -105,16 +106,13 @@ WITH PoAgg AS (
         po.Id              AS PoId,
         po.PurchaseOrderNo AS PoNo,
         SUM(TRY_CONVERT(decimal(18,4), JSON_VALUE(l.value, '$.qty')))   AS PoQty,
-        SUM(
-            TRY_CONVERT(decimal(18,4), JSON_VALUE(l.value, '$.qty')) *
-            TRY_CONVERT(decimal(18,4), JSON_VALUE(l.value, '$.price'))
-        )                                                               AS PoTotal
+       po.NetTotal AS PoTotal
     FROM dbo.SupplierInvoicePin sip
     INNER JOIN dbo.PurchaseGoodReceipt gr ON gr.Id = sip.GrnId
     INNER JOIN dbo.PurchaseOrder po       ON po.Id = gr.POID
     CROSS APPLY OPENJSON(po.PoLines) AS l
     WHERE sip.Id = @PinId
-    GROUP BY po.Id, po.PurchaseOrderNo
+    GROUP BY po.Id, po.PurchaseOrderNo,po.NetTotal
 ),
 -- 2) GRN aggregate from GRNJson JSON
 GrnAgg AS (
@@ -135,14 +133,11 @@ PinAgg AS (
         sip.Id        AS PinId,
         sip.InvoiceNo AS PinNo,
         SUM(TRY_CONVERT(decimal(18,4), JSON_VALUE(j.value, '$.qty')))  AS PinQty,
-        SUM(
-            TRY_CONVERT(decimal(18,4), JSON_VALUE(j.value, '$.qty')) *
-            TRY_CONVERT(decimal(18,4), JSON_VALUE(j.value, '$.price'))
-        )                                                             AS PinTotal
+       sip.Amount AS PinTotal
     FROM dbo.SupplierInvoicePin sip
     CROSS APPLY OPENJSON(sip.LinesJson) AS j
     WHERE sip.Id = @PinId
-    GROUP BY sip.Id, sip.InvoiceNo
+    GROUP BY sip.Id, sip.InvoiceNo,sip.Amount
 )
 SELECT TOP 1
     pa.PoId,

@@ -18,5 +18,7 @@
         public string PoLines { get; set; }
         public int CurrencyId { get; set; }
         public decimal Tax { get; set; }
+        public string SupplierName {get; set; }
+        public int SupplierId { get; set; }
     }
 }

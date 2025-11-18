@@ -121,9 +121,9 @@ VALUES (@Number, @Status, @CustomerId, @CurrencyId, @FxRate, @PaymentTermsId, @V
             // ---------- 4) Insert lines (UomId included) ----------
             const string insertLine = @"
 INSERT INTO dbo.QuotationLine
-(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy)
+(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy,TaxCodeId)
 VALUES
-(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId);";
+(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId,@TaxCodeId);";
 
             foreach (var l in dto.Lines)
             {
@@ -139,7 +139,8 @@ VALUES
                     l.LineNet,
                     l.LineTax,
                     l.LineTotal,
-                    UserId = userId
+                    UserId = userId,
+                    l.TaxCodeId
                 });
             }
 
@@ -185,9 +186,9 @@ WHERE Id=@Id;";
             // ✅ Use UomId column (was Uom)
             const string insertLine = @"
 INSERT INTO dbo.QuotationLine
-(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy)
+(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy,TaxCodeId)
 VALUES
-(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId);";
+(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId,@TaxCodeId);";
 
             foreach (var l in dto.Lines)
             {
@@ -203,7 +204,8 @@ VALUES
                     l.LineNet,
                     l.LineTax,
                     l.LineTotal,
-                    UserId = userId
+                    UserId = userId,
+                    l.TaxCodeId
                 });
             }
 
