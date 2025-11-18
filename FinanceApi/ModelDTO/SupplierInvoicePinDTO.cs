@@ -17,6 +17,8 @@
         public string? UpdatedBy { get; set; }
         public int? GrnId { get; set; }
         public string GrnNo { get; set; }
+        public string SupplierName { get; set; }    
+        public int SupplierId { get; set; }
         
     }
 }
