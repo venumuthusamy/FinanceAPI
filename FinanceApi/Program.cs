@@ -17,7 +17,8 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
-using FinanceApi.Models;
+using System.Threading.Tasks;          // <-- added
+using Microsoft.Extensions.Logging;   // <-- added
 using UnityWorksERP.Finance.AR;
 
 // -------- Pick the correct web root (Angular UI location) --------
@@ -97,19 +98,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(name: CorsPolicy, policy =>
     {
-        // Same-origin doesn't need CORS, but this policy also allows dev split-ports.
         policy
-            .WithOrigins(
-                "http://localhost:4200",
-                "http://localhost:5000",
-                "http://localhost:51898",
-                "http://192.168.6.218:4200",
-                "https://your-prod-ui-domain.com"
-            )
-            //policy.AllowAnyOrigin()
+            .AllowAnyOrigin()
             .AllowAnyHeader()
             .AllowAnyMethod();
-        // If you use cookie auth: .AllowCredentials();  (then remove localhost:5000 if same-origin)
     });
 });
 
@@ -145,6 +137,8 @@ if (!string.IsNullOrEmpty(port))
 {
     builder.WebHost.UseUrls($"http://*:{port}");
 }
+
+// Local Kestrel listen
 builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(7182));
 
 var app = builder.Build();
@@ -198,22 +192,37 @@ JobManager.Initialize();
 // Take scope factory from DI
 var scopeFactory = app.Services.GetRequiredService<IServiceScopeFactory>();
 
-// EXACT style you asked: ToRunEvery(1).Days().At(23, 00)
 JobManager.AddJob(
-    async () =>
+    () =>
     {
-        using var scope = scopeFactory.CreateScope();
-        var journalService = scope.ServiceProvider.GetRequiredService<IJournalService>();
+        // Run async work inside Task.Run so scheduler stays sync
+        Task.Run(async () =>
+        {
+            using var scope = scopeFactory.CreateScope();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+            var journalService = scope.ServiceProvider.GetRequiredService<IJournalService>();
 
-        // India time (IST) calculate pannrom
-        var indiaTz = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
-        var nowIndia = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTz);
-        var today = nowIndia.Date;
+            try
+            {
+                // India time (IST)
+                var indiaTz = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
+                var nowIndia = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTz);
+                var today = nowIndia.Date;
 
-        // Your existing recurring logic
-        await journalService.ProcessRecurringAsync(today);
+                await journalService.ProcessRecurringAsync(today);
+            }
+            catch (Exception ex)
+            {
+                // IMPORTANT: log, don't crash the process
+                logger.LogError(ex, "Error in recurring Journal job");
+            }
+        });
     },
-    s => s.ToRunEvery(1).Minutes()
+    // Prod: run once per day at 23:00 IST
+    s => s.ToRunEvery(1).Days().At(23, 0)
+
+    // If you want to test every minute, temporarily use:
+    // s => s.ToRunEvery(1).Minutes()
 );
 
 // ================================================================================
