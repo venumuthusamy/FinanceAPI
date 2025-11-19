@@ -11,6 +11,7 @@
         public decimal UnitPrice { get; set; }
         public decimal Discount { get; set; }
         public string? Tax { get; set; }
+        public int? TaxCodeId { get; set; }
         public decimal Total { get; set; }
         public decimal? LockedQty { get; set; }
 

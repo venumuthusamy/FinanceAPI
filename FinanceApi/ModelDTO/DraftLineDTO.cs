@@ -7,6 +7,8 @@ namespace FinanceApi.ModelDTO
         public string SalesOrderNo { get; set; } = "";
         public int LineId { get; set; }
         public int ItemId { get; set; }
+        public string? Tax { get; set; }
+        public int? TaxCodeId { get; set; }
         public string ItemName { get; set; } = "";
         public string? Uom { get; set; }
         public decimal Quantity { get; set; }

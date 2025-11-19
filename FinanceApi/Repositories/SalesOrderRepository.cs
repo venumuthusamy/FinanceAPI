@@ -1,4 +1,4 @@
-﻿// SalesOrderRepository.cs
+﻿// Repositories/SalesOrderRepository.cs
 using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
@@ -29,7 +29,7 @@ SELECT
     so.CreatedBy, so.CreatedDate, so.UpdatedBy, so.UpdatedDate, so.IsActive, so.SalesOrderNo,
     ISNULL(so.Subtotal,0)   AS Subtotal,
     ISNULL(so.GrandTotal,0) AS GrandTotal,
-    so.ApprovedBy                           -- NEW
+    so.ApprovedBy
 FROM dbo.SalesOrder so
 LEFT JOIN dbo.Customer c ON c.Id = so.CustomerId
 WHERE so.IsActive = 1
@@ -43,12 +43,13 @@ ORDER BY so.Id;";
             const string linesSql = @"
 SELECT
     Id, SalesOrderId, ItemId, ItemName, Uom,
-    Quantity, UnitPrice, Discount, Tax, Total,
+    Quantity, UnitPrice, Discount, Tax, TaxCodeId, Total,
     WarehouseId, BinId, Available, SupplierId,
     LockedQty,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 FROM dbo.SalesOrderLines
 WHERE SalesOrderId IN @Ids AND IsActive = 1;";
+
             var lines = await Connection.QueryAsync<SalesOrderLineDTO>(linesSql, new { Ids = ids });
 
             var map = headers.ToDictionary(h => h.Id);
@@ -70,7 +71,7 @@ SELECT TOP(1)
     so.CreatedBy, so.CreatedDate, so.UpdatedBy, so.UpdatedDate, so.IsActive, so.SalesOrderNo,
     ISNULL(so.Subtotal,0)   AS Subtotal,
     ISNULL(so.GrandTotal,0) AS GrandTotal,
-    so.ApprovedBy                           -- NEW
+    so.ApprovedBy
 FROM dbo.SalesOrder so
 LEFT JOIN dbo.Customer c ON c.Id = so.CustomerId
 LEFT JOIN Quotation Q ON Q.Id = so.QuotationNo
@@ -88,8 +89,9 @@ SELECT
     sl.Uom,
     sl.Quantity,
     sl.UnitPrice,
-    sl.Discount,
+    sl.Discount,          -- stored as PERCENT
     sl.Tax,
+    sl.TaxCodeId,
     sl.Total,
     sl.WarehouseId,
     ISNULL(w.Name,'')    AS WarehouseName,
@@ -111,6 +113,7 @@ LEFT JOIN dbo.Bin       b ON b.Id = sl.BinId
 WHERE sl.SalesOrderId = @Id
   AND sl.IsActive = 1
 ORDER BY sl.Id;";
+
             var lines = await Connection.QueryAsync<SalesOrderLineDTO>(linesSql, new { Id = id });
             head.LineItems = lines.ToList();
             return head;
@@ -122,7 +125,6 @@ ORDER BY sl.Id;";
         private readonly record struct AllocCandidate(int WarehouseId, int? BinId, int SupplierId, decimal WhAvail, decimal SupplierQty);
         private readonly record struct Allocation(int WarehouseId, int? BinId, int SupplierId, decimal Qty);
 
-        // Map UI ItemId -> ItemMaster.Id (via SKU)
         private async Task<int?> GetItemMasterIdAsync(IDbConnection conn, IDbTransaction tx, int itemId)
         {
             const string sql = @"
@@ -133,7 +135,6 @@ WHERE i.Id = @ItemId;";
             return await conn.ExecuteScalarAsync<int?>(sql, new { ItemId = itemId }, tx);
         }
 
-        // Effective total available across ALL warehouses (OnHand-Reserved) - LockedQty across active SOs
         private async Task<decimal> GetEffectiveTotalAvailableAsync(IDbConnection conn, IDbTransaction tx, int itemMasterId)
         {
             const string sql = @"
@@ -156,7 +157,6 @@ FROM STOCK s CROSS JOIN LOCKED l;";
             return await conn.ExecuteScalarAsync<decimal>(sql, new { ItemMasterId = itemMasterId }, tx);
         }
 
-        // Candidates per (Warehouse,Supplier,Bin) with effective availability
         private async Task<List<AllocCandidate>> GetAllocCandidatesAsync(IDbConnection conn, IDbTransaction tx, int itemMasterId)
         {
             const string sql = @"
@@ -200,7 +200,6 @@ ORDER BY WhAvail DESC, ip.Qty DESC;";
             return rows.ToList();
         }
 
-        // Greedy allocator
         private static List<Allocation> MakeAllocation(List<AllocCandidate> cands, decimal requiredQty)
         {
             var left = requiredQty;
@@ -216,12 +215,16 @@ ORDER BY WhAvail DESC, ip.Qty DESC;";
             return res;
         }
 
-        // ---------- Amount helper ----------
-        private static (decimal net, decimal taxAmt, decimal total) ComputeAmounts(
+        // Amount helper – discountPct is PERCENT; returns discount VALUE separately
+        private static (decimal net, decimal taxAmt, decimal total, decimal discountValue) ComputeAmounts(
             decimal qty, decimal unitPrice, decimal discountPct, string taxMode, decimal gstPct)
         {
             var sub = qty * unitPrice;
-            var afterDisc = sub - (sub * discountPct / 100m);
+
+            var discountValue = Round2(sub * (discountPct / 100m));
+            var afterDisc = sub - discountValue;
+            if (afterDisc < 0) afterDisc = 0;
+
             var rate = gstPct / 100m;
 
             decimal net, tax, tot;
@@ -229,57 +232,109 @@ ORDER BY WhAvail DESC, ip.Qty DESC;";
             {
                 case "EXCLUSIVE":
                     net = afterDisc;
-                    tax = Math.Round(net * rate, 2, MidpointRounding.AwayFromZero);
+                    tax = Round2(net * rate);
                     tot = net + tax;
                     break;
+
                 case "INCLUSIVE":
                     tot = afterDisc;
-                    net = rate > 0 ? Math.Round(tot / (1 + rate), 2, MidpointRounding.AwayFromZero) : tot;
+                    net = rate > 0 ? Round2(tot / (1 + rate)) : tot;
                     tax = tot - net;
                     break;
+
                 default: // EXEMPT
                     net = afterDisc;
                     tax = 0;
                     tot = afterDisc;
                     break;
             }
-            return (net, tax, tot);
+
+            return (net, tax, tot, discountValue);
         }
 
         private static decimal Round2(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
-        // Header totals recompute + set Status=1
+        // recompute header from LINES (which store PERCENT)
         private async Task RecomputeAndSetHeaderTotalsAsync(
-            IDbConnection conn, IDbTransaction tx, int salesOrderId, decimal gstPct, decimal shipping, decimal headerDiscount)
+            IDbConnection conn, IDbTransaction tx, int salesOrderId,
+            decimal gstPct, decimal shipping, decimal headerExtraDiscount)
         {
             const string q = @"
-SELECT Total, UPPER(ISNULL(Tax,'EXEMPT')) AS TaxMode
+SELECT 
+    Quantity,
+    UnitPrice,
+    ISNULL(Discount,0)          AS DiscountPct,
+    UPPER(ISNULL(Tax,'EXEMPT')) AS TaxMode
 FROM dbo.SalesOrderLines WITH (NOLOCK)
 WHERE SalesOrderId = @Id AND IsActive = 1;";
 
-            var rows = await conn.QueryAsync<(decimal Total, string TaxMode)>(q, new { Id = salesOrderId }, tx);
+            var rows = await conn.QueryAsync<(decimal Quantity, decimal UnitPrice, decimal DiscountPct, string TaxMode)>(
+                q, new { Id = salesOrderId }, tx);
 
             var rate = gstPct / 100m;
-            decimal sumTotal = 0m, sumNet = 0m;
 
-            foreach (var (Total, TaxMode) in rows)
+            decimal sumGross = 0m;
+            decimal sumDiscVal = 0m;
+            decimal sumTax = 0m;
+
+            foreach (var row in rows)
             {
-                sumTotal += Total;
-                if (TaxMode == "EXEMPT")
-                    sumNet += Total;
-                else
-                    sumNet += rate > 0 ? Round2(Total / (1 + rate)) : Total;
+                var gross = row.Quantity * row.UnitPrice;
+
+                // percent -> amount
+                var discVal = Round2(gross * (row.DiscountPct / 100m));
+
+                var afterDisc = gross - discVal;
+                if (afterDisc < 0) afterDisc = 0;
+
+                decimal lineTax;
+                switch (row.TaxMode)
+                {
+                    case "EXCLUSIVE":
+                        lineTax = Round2(afterDisc * rate);
+                        break;
+
+                    case "INCLUSIVE":
+                        if (rate > 0)
+                        {
+                            var net = Round2(afterDisc / (1 + rate));
+                            lineTax = afterDisc - net;
+                        }
+                        else lineTax = 0;
+                        break;
+
+                    default:
+                        lineTax = 0;
+                        break;
+                }
+
+                sumGross += gross;
+                sumDiscVal += discVal;
+                sumTax += lineTax;
             }
 
-            var grand = Round2(sumTotal + shipping - headerDiscount);
-            sumNet = Round2(sumNet);
+            var extraHeaderDisc = headerExtraDiscount < 0 ? 0 : headerExtraDiscount;
+            var totalDiscountVal = Round2(sumDiscVal + extraHeaderDisc);
+
+            var subtotal = Round2(sumGross);
+            var grand = Round2(subtotal - totalDiscountVal + sumTax + shipping);
 
             const string upd = @"
 UPDATE dbo.SalesOrder
-SET Subtotal=@Subtotal, GrandTotal=@GrandTotal, Status=1, UpdatedDate=SYSUTCDATETIME()
+SET Subtotal   = @Subtotal,
+    GrandTotal = @GrandTotal,
+    Discount   = @Discount,
+    Status     = 1,
+    UpdatedDate = SYSUTCDATETIME()
 WHERE Id=@Id;";
 
-            await conn.ExecuteAsync(upd, new { Id = salesOrderId, Subtotal = sumNet, GrandTotal = grand }, tx);
+            await conn.ExecuteAsync(upd, new
+            {
+                Id = salesOrderId,
+                Subtotal = subtotal,
+                GrandTotal = grand,
+                Discount = totalDiscountVal   // header Discount = DISCOUNT AMOUNT (e.g. 400)
+            }, tx);
         }
 
         // ===== Insert rows with allocation and shortage row =====
@@ -290,11 +345,11 @@ WHERE Id=@Id;";
         {
             const string insLine = @"
 INSERT INTO dbo.SalesOrderLines
-(SalesOrderId, ItemId, ItemName, Uom, Quantity, UnitPrice, Discount, Tax, Total,
+(SalesOrderId, ItemId, ItemName, Uom, Quantity, UnitPrice, Discount, Tax, TaxCodeId, Total,
  WarehouseId, BinId, Available, SupplierId, LockedQty,
  CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
 VALUES
-(@SalesOrderId, @ItemId, @ItemName, @Uom, @Quantity, @UnitPrice, @Discount, @Tax, @Total,
+(@SalesOrderId, @ItemId, @ItemName, @Uom, @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @Total,
  @WarehouseId, @BinId, @Available, @SupplierId, @LockedQty,
  @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);";
 
@@ -308,8 +363,12 @@ VALUES
                 var sliceQty = Math.Min(a.Qty, totalQty - allocated);
                 if (sliceQty <= 0) break;
 
-                var (_, _, sliceTotal) = ComputeAmounts(sliceQty,
-                    requestLine.UnitPrice, requestLine.Discount, requestLine.Tax, so.GstPct);
+                var (_, _, sliceTotal, _) = ComputeAmounts(
+                    sliceQty,
+                    requestLine.UnitPrice,
+                    requestLine.Discount,   // percent
+                    requestLine.Tax ?? "EXEMPT",
+                    so.GstPct);
 
                 await conn.ExecuteAsync(insLine, new
                 {
@@ -320,8 +379,12 @@ VALUES
 
                     Quantity = sliceQty,
                     UnitPrice = requestLine.UnitPrice,
+
+                    // store PERCENT on each row
                     Discount = requestLine.Discount,
+
                     Tax = requestLine.Tax,
+                    TaxCodeId = requestLine.TaxCodeId,
                     Total = sliceTotal,
 
                     WarehouseId = a.WarehouseId,
@@ -352,8 +415,9 @@ VALUES
 
                     Quantity = 0m,
                     UnitPrice = requestLine.UnitPrice,
-                    Discount = requestLine.Discount,
+                    Discount = 0m,
                     Tax = requestLine.Tax,
+                    TaxCodeId = requestLine.TaxCodeId,
                     Total = 0m,
 
                     WarehouseId = (int?)null,
@@ -372,7 +436,7 @@ VALUES
             return shortage < 0 ? 0 : shortage;
         }
 
-        // Insert a single row when effective availability == 0 — NULL W/B/S
+        // Insert a single row when effective availability == 0
         private async Task InsertNoStockLineAsync(
             IDbConnection conn, IDbTransaction tx,
             int salesOrderId, SalesOrderLines requestLine,
@@ -381,11 +445,11 @@ VALUES
         {
             const string insLine = @"
 INSERT INTO dbo.SalesOrderLines
-(SalesOrderId, ItemId, ItemName, Uom, Quantity, UnitPrice, Discount, Tax, Total,
+(SalesOrderId, ItemId, ItemName, Uom, Quantity, UnitPrice, Discount, Tax, TaxCodeId, Total,
  WarehouseId, BinId, Available, SupplierId, LockedQty,
  CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
 VALUES
-(@SalesOrderId, @ItemId, @ItemName, @Uom, @Quantity, @UnitPrice, @Discount, @Tax, @Total,
+(@SalesOrderId, @ItemId, @ItemName, @Uom, @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @Total,
  @WarehouseId, @BinId, @Available, @SupplierId, @LockedQty,
  @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);";
 
@@ -398,8 +462,9 @@ VALUES
 
                 Quantity = 0m,
                 UnitPrice = requestLine.UnitPrice,
-                Discount = requestLine.Discount,
+                Discount = 0m,
                 Tax = requestLine.Tax,
+                TaxCodeId = requestLine.TaxCodeId,
                 Total = 0m,
 
                 WarehouseId = (int?)null,
@@ -434,15 +499,14 @@ SELECT @n;";
             if (so.CreatedDate == default) so.CreatedDate = now;
             if (so.UpdatedDate == null) so.UpdatedDate = now;
 
-            // NOTE: include ApprovedBy (may be NULL on creation)
             const string insertHeader = @"
 INSERT INTO dbo.SalesOrder
 (QuotationNo, CustomerId, RequestedDate, DeliveryDate, Status, Shipping, Discount, GstPct,
- SalesOrderNo, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive, ApprovedBy)  -- NEW
+ SalesOrderNo, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive, ApprovedBy)
 OUTPUT INSERTED.Id
 VALUES
 (@QuotationNo, @CustomerId, @RequestedDate, @DeliveryDate, @Status, @Shipping, @Discount, @GstPct,
- @SalesOrderNo, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1, @ApprovedBy);";   // NEW
+ @SalesOrderNo, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1, @ApprovedBy);";
 
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
@@ -461,14 +525,14 @@ VALUES
                     so.DeliveryDate,
                     so.Status,
                     so.Shipping,
-                    so.Discount,
+                    so.Discount, // initial value, will be overwritten by recompute
                     so.GstPct,
                     SalesOrderNo = soNo,
                     so.CreatedBy,
                     so.CreatedDate,
                     so.UpdatedBy,
                     UpdatedDate = so.UpdatedDate ?? now,
-                    ApprovedBy = (object?)so.ApprovedBy ?? DBNull.Value   // NEW: pass through or NULL
+                    ApprovedBy = (object?)so.ApprovedBy ?? DBNull.Value
                 }, tx);
 
                 foreach (var l in so.LineItems)
@@ -500,8 +564,8 @@ VALUES
                     }
                 }
 
-                // Recompute header Subtotal/GrandTotal and set Status=1
-                await RecomputeAndSetHeaderTotalsAsync(conn, tx, salesOrderId, so.GstPct, so.Shipping, so.Discount);
+                // headerExtraDiscount = 0 => only line discounts used
+                await RecomputeAndSetHeaderTotalsAsync(conn, tx, salesOrderId, so.GstPct, so.Shipping, 0m);
 
                 tx.Commit();
                 return salesOrderId;
@@ -518,7 +582,6 @@ VALUES
         {
             var now = DateTime.UtcNow;
 
-            // NOTE: Do NOT touch ApprovedBy here (only ApproveAsync sets it)
             const string updHead = @"
 UPDATE dbo.SalesOrder SET
     RequestedDate = ISNULL(RequestedDate, @RequestedDate),
@@ -592,7 +655,7 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
                     }
                 }
 
-                await RecomputeAndSetHeaderTotalsAsync(conn, tx, so.Id, so.GstPct, so.Shipping, so.Discount);
+                await RecomputeAndSetHeaderTotalsAsync(conn, tx, so.Id, so.GstPct, so.Shipping, 0m);
 
                 tx.Commit();
             }
@@ -608,7 +671,6 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
         {
             var now = DateTime.UtcNow;
 
-            // NOTE: Do NOT set ApprovedBy here; only ApproveAsync will.
             const string updHead = @"
 UPDATE dbo.SalesOrder SET
     QuotationNo=@QuotationNo, CustomerId=@CustomerId, RequestedDate=@RequestedDate, DeliveryDate=@DeliveryDate,
@@ -629,18 +691,18 @@ ORDER BY Id;";
             const string updLine = @"
 UPDATE dbo.SalesOrderLines SET
     ItemId=@ItemId, ItemName=@ItemName, Uom=@Uom, Quantity=@Quantity,
-    UnitPrice=@UnitPrice, Discount=@Discount, Tax=@Tax, Total=@Total,
+    UnitPrice=@UnitPrice, Discount=@Discount, Tax=@Tax, TaxCodeId=@TaxCodeId, Total=@Total,
     WarehouseId=@WarehouseId, BinId=@BinId, Available=@Available, SupplierId=@SupplierId,
     UpdatedBy=@UpdatedBy, UpdatedDate=@UpdatedDate, IsActive=1
 WHERE Id=@Id AND SalesOrderId=@SalesOrderId;";
 
             const string insLine = @"
 INSERT INTO dbo.SalesOrderLines
-(SalesOrderId, ItemId, ItemName, Uom, Quantity, UnitPrice, Discount, Tax, Total,
+(SalesOrderId, ItemId, ItemName, Uom, Quantity, UnitPrice, Discount, Tax, TaxCodeId, Total,
  WarehouseId, BinId, Available, SupplierId, LockedQty,
  CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
 VALUES
-(@SalesOrderId, @ItemId, @ItemName, @Uom, @Quantity, @UnitPrice, @Discount, @Tax, @Total,
+(@SalesOrderId, @ItemId, @ItemName, @Uom, @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @Total,
  @WarehouseId, @BinId, @Available, @SupplierId, @LockedQty,
  @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -697,7 +759,8 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
 
                 foreach (var l in so.LineItems ?? Enumerable.Empty<SalesOrderLines>())
                 {
-                    var (_, _, computedTotal) = ComputeAmounts(l.Quantity, l.UnitPrice, l.Discount, l.Tax, so.GstPct);
+                    var (_, _, computedTotal, _) =
+                        ComputeAmounts(l.Quantity, l.UnitPrice, l.Discount, l.Tax ?? "EXEMPT", so.GstPct);
 
                     int? whId = l.WarehouseId;
                     var itemMasterId = await conn.ExecuteScalarAsync<int?>(getItemMasterId, new { l.ItemId }, tx) ?? 0;
@@ -743,8 +806,12 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
                             Uom = l.Uom,
                             Quantity = l.Quantity,
                             UnitPrice = l.UnitPrice,
+
+                            // store percent
                             Discount = l.Discount,
+
                             Tax = l.Tax,
+                            TaxCodeId = l.TaxCodeId,
                             Total = computedTotal,
                             WarehouseId = whId,
                             BinId = binId,
@@ -765,8 +832,12 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
                             Uom = l.Uom,
                             Quantity = l.Quantity,
                             UnitPrice = l.UnitPrice,
+
+                            // percent
                             Discount = l.Discount,
+
                             Tax = l.Tax,
+                            TaxCodeId = l.TaxCodeId,
                             Total = computedTotal,
                             WarehouseId = whId,
                             BinId = binId,
@@ -791,7 +862,7 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
                     UpdatedDate = now
                 }, tx);
 
-                await RecomputeAndSetHeaderTotalsAsync(conn, tx, so.Id, so.GstPct, so.Shipping, so.Discount);
+                await RecomputeAndSetHeaderTotalsAsync(conn, tx, so.Id, so.GstPct, so.Shipping, 0m);
 
                 tx.Commit();
             }
@@ -826,7 +897,7 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
             }
         }
 
-        // ===================== QUOTATION → DETAILS (effective available) =====================
+        // ===================== QUOTATION → DETAILS =====================
         public async Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id)
         {
             const string sql = @"
@@ -928,7 +999,7 @@ ORDER BY l.Id;";
             return head;
         }
 
-        // ===================== PREVIEW (READ-ONLY) =====================
+        // ===================== PREVIEW (READ ONLY) =====================
         public async Task<AllocationPreviewResponse> PreviewAllocationAsync(AllocationPreviewRequest req)
         {
             var result = new AllocationPreviewResponse();
@@ -1060,7 +1131,7 @@ ORDER BY
             return result;
         }
 
-        // ===== Idempotent alert =====
+        // ===== Alert upsert (unchanged) =====
         private async Task UpsertPurchaseAlertAsync(
             IDbConnection conn, IDbTransaction tx,
             int salesOrderId, string soNo,
@@ -1127,12 +1198,12 @@ VALUES
             }
         }
 
-        // ===================== APPROVE / REJECT (NEW) =====================
+        // ===================== APPROVE / REJECT =====================
         public async Task<int> ApproveAsync(int id, int approvedBy)
         {
             const string sql = @"
 UPDATE dbo.SalesOrder
-SET Status = 2,                -- Approved
+SET Status = 2,
     ApprovedBy = @ApprovedBy,
     UpdatedBy = @ApprovedBy,
     UpdatedDate = SYSUTCDATETIME()
@@ -1188,7 +1259,7 @@ WHERE SalesOrderId = @Id AND IsActive = 1;";
             }
         }
 
-
+        // Draft lines
         public async Task<IEnumerable<DraftLineDTO>> GetDraftLinesAsync()
         {
             const string sql = @"
@@ -1214,9 +1285,10 @@ WHERE sol.IsActive = 1
 ORDER BY so.Id DESC, sol.Id DESC;";
 
             var rows = await Connection.QueryAsync<DraftLineDTO>(sql);
-            // Reason is constant; if needed, you can set here too (already defaulted in DTO).
             return rows;
         }
+
+        // Get all by status
         public async Task<IEnumerable<SalesOrderDTO>> GetAllByStatusAsync(byte status)
         {
             const string headersSql = @"
@@ -1246,7 +1318,7 @@ ORDER BY so.Id;";
             const string linesSql = @"
 SELECT
     Id, SalesOrderId, ItemId, ItemName, Uom,
-    Quantity, UnitPrice, Discount, Tax, Total,
+    Quantity, UnitPrice, Discount, Tax, TaxCodeId, Total,
     WarehouseId, BinId, Available, SupplierId,
     LockedQty,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive

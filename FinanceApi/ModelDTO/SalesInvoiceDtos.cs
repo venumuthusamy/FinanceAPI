@@ -59,6 +59,7 @@ namespace FinanceApi.ModelDTO
             public decimal GstPct { get; set; }
             public string? Tax { get; set; }
             public int? TaxCodeId { get; set; }
+            
             public decimal LineAmount { get; set; }            
             public string? Description { get; set; }   // <— NEW
             public SiCreateLine() { }
@@ -71,7 +72,11 @@ namespace FinanceApi.ModelDTO
             public int? DoId { get; set; }
             public DateTime InvoiceDate { get; set; }
             public decimal? Total { get; set; }
+            public decimal Subtotal { get; set; }
+            public decimal ShippingCost { get; set; }
+            public string Remarks { get; set; }
             public List<SiCreateLine> Lines { get; set; } = new();
+
         }
 
         public class SiSourceLineDto
