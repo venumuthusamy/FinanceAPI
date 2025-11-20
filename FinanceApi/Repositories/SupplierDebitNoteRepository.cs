@@ -18,6 +18,7 @@ namespace FinanceApi.Repositories
             const string sql = @"
 SELECT
     dn.Id,
+    dn.DebitNoteNo,       -- NEW
     dn.ReferenceNo,
     dn.SupplierId,
     s.Name,
@@ -41,6 +42,7 @@ ORDER BY dn.Id DESC;";
             const string sql = @"
 SELECT
     dn.Id,
+    dn.DebitNoteNo,       -- NEW
     dn.ReferenceNo,
     dn.SupplierId,
     s.Name,
@@ -58,20 +60,44 @@ WHERE dn.Id = @Id;";
             return await Connection.QueryFirstOrDefaultAsync<SupplierDebitNoteDTO>(sql, new { Id = id });
         }
 
+
         public async Task<int> CreateAsync(SupplierDebitNote model)
         {
+            // 1) Generate the next auto number
+            model.DebitNoteNo = await GetNextDebitNoteNoAsync();
+
             const string sql = @"
 INSERT INTO dbo.SupplierDebitNote
 (
-    SupplierId, PinId, GrnId, ReferenceNo, Reason,
-    NoteDate, Amount, LinesJson, Status,
-    IsActive, CreatedBy, CreatedDate
+    DebitNoteNo,              -- 👈 NEW COLUMN
+    SupplierId,
+    PinId,
+    GrnId,
+    ReferenceNo,
+    Reason,
+    NoteDate,
+    Amount,
+    LinesJson,
+    Status,
+    IsActive,
+    CreatedBy,
+    CreatedDate
 )
 VALUES
 (
-    @SupplierId, @PinId, @GrnId, @ReferenceNo, @Reason,
-    @NoteDate, @Amount, @LinesJson, @Status,
-    1, @CreatedBy, SYSDATETIME()
+    @DebitNoteNo,             -- 👈 USE GENERATED VALUE
+    @SupplierId,
+    @PinId,
+    @GrnId,
+    @ReferenceNo,
+    @Reason,
+    @NoteDate,
+    @Amount,
+    @LinesJson,
+    @Status,
+    1,
+    @CreatedBy,
+    SYSDATETIME()
 );
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -140,6 +166,23 @@ SET Status     = 2,           -- 2 = Debit Note Created
 WHERE Id = @PinId;";
 
             await Connection.ExecuteAsync(sql, new { PinId = pinId, UserName = userName });
+        }
+
+
+        private async Task<string> GetNextDebitNoteNoAsync()
+        {
+            const string sql = @"
+DECLARE @NextNo INT;
+
+SELECT @NextNo =
+    ISNULL(MAX(CAST(SUBSTRING(DebitNoteNo, 3, 20) AS INT)), 0) + 1
+FROM dbo.SupplierDebitNote
+WHERE DebitNoteNo LIKE 'DN%';
+
+SELECT 'DN' + RIGHT('00000' + CAST(@NextNo AS VARCHAR(10)), 5);";
+
+            var nextNo = await Connection.ExecuteScalarAsync<string>(sql);
+            return nextNo ?? "DN00001";
         }
 
     }

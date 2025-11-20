@@ -3,6 +3,7 @@
     public class SupplierDebitNote
     {
         public int Id { get; set; }
+        public string DebitNoteNo { get; set; }
         public int SupplierId { get; set; }
         public int? PinId { get; set; }
         public int? GrnId { get; set; }
