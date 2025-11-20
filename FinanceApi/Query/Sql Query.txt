@@ -846,40 +846,59 @@ CREATE TABLE dbo.ArReceiptAllocation
     UpdatedBy      INT           NULL,
     UpdatedDate    DATETIME2     NULL
 );
-CREATE OR ALTER VIEW dbo.vwSalesInvoiceOpenForReceipt
+
+CREATE   VIEW [dbo].[vwSalesInvoiceOpenForReceipt]
 AS
+WITH Pay AS (
+    SELECT
+        ra.InvoiceId,
+        SUM(ra.AllocatedAmount) AS PaidAmount
+    FROM dbo.ArReceiptAllocation ra
+    INNER JOIN dbo.ArReceipt r
+        ON r.Id = ra.ReceiptId
+       AND r.IsActive = 1
+    WHERE ra.IsActive = 1
+    GROUP BY ra.InvoiceId
+),
+Cn AS (
+    SELECT
+        cn.SiId AS InvoiceId,
+        SUM(ISNULL(cn.Subtotal,0)) AS CreditAmount
+    FROM dbo.CreditNote cn
+    WHERE cn.IsActive = 1
+      AND cn.Status > 1      -- only Approved / Posted CN
+      AND cn.SiId IS NOT NULL
+    GROUP BY cn.SiId
+),
+Cust AS (
+    SELECT
+        si.Id AS InvoiceId,
+        COALESCE(so1.CustomerId, so2.CustomerId) AS CustomerId
+    FROM dbo.SalesInvoice si
+    LEFT JOIN dbo.SalesOrder so1
+        ON so1.Id = si.SoId
+    LEFT JOIN dbo.DeliveryOrder d
+        ON d.Id = si.DoId
+    LEFT JOIN dbo.SalesOrder so2
+        ON so2.Id = d.SoId
+)
 SELECT
-    si.Id                          AS Id,
-    si.InvoiceNo                   AS InvoiceNo,
-    si.InvoiceDate                 AS InvoiceDate,
-    inv.Amount                     AS Amount,
-    ISNULL(pay.PaidAmount, 0)      AS PaidAmount,
-    inv.Amount - ISNULL(pay.PaidAmount, 0) AS Balance,
-    so.CustomerId
-FROM dbo.salesinvoice si
-    INNER JOIN dbo.salesorder so
-        ON so.Id = si.SoId
-
-    INNER JOIN (
-        SELECT
-            sil.SiId            AS SalesInvoiceId,
-            SUM(sil.LineAmount) AS Amount
-        FROM dbo.salesinvoiceline sil
-        GROUP BY sil.SiId
-    ) inv ON inv.SalesInvoiceId = si.Id
-
-    LEFT JOIN (
-        SELECT
-            ra.InvoiceId,
-            SUM(ra.AllocatedAmount) AS PaidAmount
-        FROM dbo.ArReceiptAllocation ra
-        INNER JOIN dbo.ArReceipt r
-            ON r.Id = ra.ReceiptId
-           AND r.IsActive = 1           -- header has IsActive (recommended)
-        GROUP BY ra.InvoiceId
-    ) pay ON pay.InvoiceId = si.Id
-WHERE si.IsActive = 1;                   -- salesinvoice has IsActive
+    si.Id          AS Id,
+    si.InvoiceNo   AS InvoiceNo,
+    si.InvoiceDate AS InvoiceDate,
+    si.Total       AS Amount,
+    ISNULL(p.PaidAmount, 0) AS PaidAmount,
+    si.Total
+      - ISNULL(p.PaidAmount, 0)
+      - ISNULL(c.CreditAmount, 0) AS Balance,
+    cu.CustomerId  AS CustomerId
+FROM dbo.SalesInvoice si
+LEFT JOIN Pay  p  ON p.InvoiceId = si.Id
+LEFT JOIN Cn   c  ON c.InvoiceId = si.Id
+LEFT JOIN Cust cu ON cu.InvoiceId = si.Id
+WHERE si.IsActive = 1;
 GO
+
 
 
 
