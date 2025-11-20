@@ -12,7 +12,6 @@ namespace FinanceApi.Repositories
             : base(connectionFactory)
         {
         }
-
         public async Task<IEnumerable<ArInvoiceListDto>> GetAllAsync()
         {
             const string sql = @"
@@ -29,7 +28,8 @@ namespace FinanceApi.Repositories
     FROM dbo.vwSalesInvoiceOpenForReceipt v
     LEFT JOIN dbo.Customer c ON c.Id = v.CustomerId
 ),
--- credit per invoice
+
+-- Credit per invoice (for that invoice's Outstanding)
 CnInvoiceAgg AS (
     SELECT
         cn.SiId AS InvoiceId,
@@ -39,42 +39,111 @@ CnInvoiceAgg AS (
       AND cn.SiId IS NOT NULL
     GROUP BY cn.SiId
 ),
--- credit per customer (for the summary row)
-CnCustomerAgg AS (
-    SELECT
-        cn.CustomerId,
-        CustomerCreditAmount = SUM(ISNULL(cn.Subtotal,0)),
-        CustomerCreditNo     = MIN(cn.CreditNoteNo),
-        CustomerCreditDate   = MIN(cn.CreditNoteDate),
-        CustomerCreditStatus = MAX(cn.Status) 
-    FROM dbo.CreditNote cn
-    WHERE cn.IsActive = 1
-      AND cn.CustomerId IS NOT NULL
-    GROUP BY cn.CustomerId
-)
-SELECT
-    i.InvoiceId,
-    i.InvoiceNo,
-    i.InvoiceDate,
-    DueDate = i.InvoiceDate,
-    i.CustomerId,
-    i.CustomerName,
-    Amount     = i.Amount,
-    Paid       = i.PaidAmount,
-    CreditNote = ISNULL(ci.InvoiceCreditAmount,0),
-    Outstanding = i.Amount - i.PaidAmount - ISNULL(ci.InvoiceCreditAmount,0),
 
-    CustomerCreditNoteAmount = ISNULL(cc.CustomerCreditAmount,0),
-    CustomerCreditNoteNo     = cc.CustomerCreditNo,
-    CustomerCreditNoteDate   = cc.CustomerCreditDate,
-    CustomerCreditStatus     = ISNULL(cc.CustomerCreditStatus,0)
-FROM InvBase i
-LEFT JOIN CnInvoiceAgg  ci ON ci.InvoiceId   = i.InvoiceId
-LEFT JOIN CnCustomerAgg cc ON cc.CustomerId  = i.CustomerId
-ORDER BY i.CustomerName, i.InvoiceDate, i.InvoiceNo;";
+-- Normal invoice rows
+InvRows AS (
+    SELECT
+        RowType   = 'INV',
+        i.InvoiceId,
+        i.InvoiceNo,
+        i.InvoiceDate,
+        DueDate   = i.InvoiceDate,
+        i.CustomerId,
+        i.CustomerName,
+        Amount     = i.Amount,
+        Paid       = i.PaidAmount,
+        CreditNote = ISNULL(ci.InvoiceCreditAmount,0),
+        Outstanding = i.Amount - i.PaidAmount - ISNULL(ci.InvoiceCreditAmount,0),
+
+        CustomerCreditNoteAmount = CAST(0 AS decimal(18,2)),
+        CustomerCreditNoteNo     = NULL,
+        CustomerCreditNoteDate   = NULL,
+        CustomerCreditStatus     = 0,
+
+        ReferenceNo = NULL          -- 🔹 no reference for normal invoice row
+    FROM InvBase i
+    LEFT JOIN CnInvoiceAgg  ci ON ci.InvoiceId = i.InvoiceId
+),
+
+-- ONE ROW PER CREDIT NOTE
+CnRows AS (
+    SELECT
+        RowType   = 'CN',
+        InvoiceId = ISNULL(cn.SiId, 0),        -- link CN to its Sales Invoice
+        InvoiceNo = cn.CreditNoteNo,           -- CN number
+        InvoiceDate = cn.CreditNoteDate,
+        DueDate   = NULL,
+        cn.CustomerId,
+        ISNULL(c.CustomerName,'') AS CustomerName,
+
+        Amount     = -cn.Subtotal,                               -- negative
+        Paid       = CASE WHEN cn.Status > 1 THEN cn.Subtotal
+                          ELSE 0 END,
+        CreditNote = CAST(0 AS decimal(18,2)),
+        Outstanding = CASE WHEN cn.Status > 1 THEN 0
+                           ELSE -cn.Subtotal END,
+
+        CustomerCreditNoteAmount = cn.Subtotal,
+        CustomerCreditNoteNo     = cn.CreditNoteNo,
+        CustomerCreditNoteDate   = cn.CreditNoteDate,
+        CustomerCreditStatus     = cn.Status,
+
+        ReferenceNo = si.InvoiceNo   -- 🔹 Sales Invoice No this CN is applied to
+    FROM dbo.CreditNote cn
+    LEFT JOIN dbo.Customer    c  ON c.Id  = cn.CustomerId
+    LEFT JOIN dbo.SalesInvoice si ON si.Id = cn.SiId
+    WHERE cn.IsActive = 1
+)
+
+SELECT
+    RowType,
+    InvoiceId,
+    InvoiceNo,
+    InvoiceDate,
+    DueDate,
+    CustomerId,
+    CustomerName,
+    Amount,
+    Paid,
+    CreditNote,
+    Outstanding,
+    CustomerCreditNoteAmount,
+    CustomerCreditNoteNo,
+    CustomerCreditNoteDate,
+    CustomerCreditStatus,
+    ReferenceNo
+FROM InvRows
+
+UNION ALL
+
+SELECT
+    RowType,
+    InvoiceId,
+    InvoiceNo,
+    InvoiceDate,
+    DueDate,
+    CustomerId,
+    CustomerName,
+    Amount,
+    Paid,
+    CreditNote,
+    Outstanding,
+    CustomerCreditNoteAmount,
+    CustomerCreditNoteNo,
+    CustomerCreditNoteDate,
+    CustomerCreditStatus,
+    ReferenceNo
+FROM CnRows
+
+ORDER BY CustomerName, InvoiceDate, InvoiceNo;
+";
 
             return await Connection.QueryAsync<ArInvoiceListDto>(sql);
         }
+
+
+
+
 
 
 

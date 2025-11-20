@@ -5,6 +5,7 @@ namespace UnityWorksERP.Finance.AR
 {
     public class ArInvoiceListDto
     {
+        public string RowType { get; set; }
         public int InvoiceId { get; set; }
         public string InvoiceNo { get; set; } = string.Empty;
         public DateTime InvoiceDate { get; set; }
@@ -22,5 +23,6 @@ namespace UnityWorksERP.Finance.AR
         public string? CustomerCreditNoteNo { get; set; }
         public DateTime? CustomerCreditNoteDate { get; set; }
         public byte CustomerCreditStatus { get; set; }
+        public string? ReferenceNo { get; set; }
     }
 }

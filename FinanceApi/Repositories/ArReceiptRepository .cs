@@ -32,19 +32,34 @@ SELECT
     r.ReceiptDate,
     r.PaymentMode,
     r.BankId,
-    --ISNULL(b.BankName, '') AS BankName,
     r.AmountReceived,
     r.TotalAllocated,
     r.Unallocated,
-    r.Status
+    r.Status,
+
+    -- NEW: comma-separated list of invoice numbers for this receipt
+    InvoiceNos =
+    STUFF(
+        (
+            SELECT DISTINCT
+                   ', ' + ISNULL(si.InvoiceNo,'')
+            FROM dbo.ArReceiptAllocation ra
+            INNER JOIN dbo.SalesInvoice si
+                ON si.Id = ra.InvoiceId
+            WHERE ra.ReceiptId = r.Id
+              AND ra.IsActive = 1
+        FOR XML PATH(''), TYPE
+        ).value('.','nvarchar(max)')
+        ,1,2,''
+    )
 FROM dbo.ArReceipt r
-LEFT JOIN dbo.Customer    c ON c.Id = r.CustomerId
---LEFT JOIN dbo.BankAccount b ON b.Id = r.BankId
+LEFT JOIN dbo.Customer c ON c.Id = r.CustomerId
 WHERE r.IsActive = 1
 ORDER BY r.ReceiptDate DESC, r.Id DESC;";
 
             return await Connection.QueryAsync<ArReceiptListDto>(sql);
         }
+
 
         public async Task<ArReceiptDetailDto?> GetByIdAsync(int id)
         {
@@ -71,26 +86,15 @@ WHERE r.Id = @Id AND r.IsActive = 1;";
 SELECT
     ra.Id,
     ra.InvoiceId,
-    ISNULL(si.InvoiceNo, '')  AS InvoiceNo,
-    si.InvoiceDate            AS InvoiceDate,
-    ISNULL(si.Total, 0)       AS Amount,       -- or si.GrandTotal if that’s your field
-
-    ISNULL(pay.PaidAmount,0)  AS PaidAmount,   -- total paid for this invoice
-    ISNULL(si.Total,0) - ISNULL(pay.PaidAmount,0) AS Balance,
-
-    ra.AllocatedAmount        AS AllocatedAmount
+    ISNULL(v.InvoiceNo, '')      AS InvoiceNo,
+    v.InvoiceDate                AS InvoiceDate,
+    ISNULL(v.Amount,0)           AS Amount,      -- SI total
+    ISNULL(v.PaidAmount,0)       AS PaidAmount,  -- all receipts + CN
+    ISNULL(v.Balance,0)          AS Balance,     -- open AFTER this receipt
+    ra.AllocatedAmount           AS AllocatedAmount
 FROM dbo.ArReceiptAllocation ra
-INNER JOIN dbo.salesinvoice si
-        ON si.Id = ra.InvoiceId
-OUTER APPLY
-(
-    SELECT SUM(ra2.AllocatedAmount) AS PaidAmount
-    FROM dbo.ArReceiptAllocation ra2
-    INNER JOIN dbo.ArReceipt r2
-        ON r2.Id = ra2.ReceiptId AND r2.IsActive = 1
-    WHERE ra2.InvoiceId = ra.InvoiceId
-      AND ra2.IsActive = 1
-) pay
+INNER JOIN dbo.vwSalesInvoiceOpenForReceipt v
+        ON v.Id = ra.InvoiceId
 WHERE ra.ReceiptId = @Id
   AND ra.IsActive = 1
 ORDER BY ra.Id;";
@@ -118,12 +122,16 @@ SELECT
     Balance
 FROM dbo.vwSalesInvoiceOpenForReceipt
 WHERE CustomerId = @CustomerId
-  AND Balance > 0
+  AND Balance > 0          -- only invoices with something still due
 ORDER BY InvoiceDate;";
 
             return await Connection.QueryAsync<SalesInvoiceOpenDto>(
-                sql, new { CustomerId = customerId });
+                sql,
+                new { CustomerId = customerId });
         }
+
+
+
 
         #endregion
 

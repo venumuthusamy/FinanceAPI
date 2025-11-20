@@ -25,6 +25,7 @@
         public decimal TotalAllocated { get; set; }
         public decimal Unallocated { get; set; }
         public string Status { get; set; } = "Posted";
+        public string InvoiceNos { get; set; } = "";
     }
 
     // Line DTO for detail
