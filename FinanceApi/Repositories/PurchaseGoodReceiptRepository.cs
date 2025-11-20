@@ -22,7 +22,12 @@ namespace FinanceApi.Repositories
         {
             const string query = @"
 SELECT
-    pg.*,
+    pg.Id,
+    pg.POID,
+    pg.ReceptionDate,
+    pg.OverReceiptTolerance,
+    pg.GRNJson,
+    pg.GrnNo,
     po.PoLines,
     po.CurrencyId,
     po.Tax,
@@ -30,13 +35,18 @@ SELECT
     s.Name AS SupplierName
 FROM PurchaseGoodReceipt AS pg
 JOIN PurchaseOrder AS po ON po.Id = pg.POID
-LEFT JOIN Suppliers AS s   ON s.Id = po.SupplierId
-WHERE pg.Id NOT IN (
-    SELECT GrnId
-    FROM SupplierInvoicePin
-    WHERE IsActive = 0
-      AND GrnId IS NOT NULL
-);
+LEFT JOIN Suppliers   AS s  ON s.Id = po.SupplierId
+WHERE pg.IsActive = 1
+  -- (optional) filter by supplier if needed
+  -- AND po.SupplierId = @SupplierId
+  AND NOT EXISTS (
+        SELECT 1
+        FROM SupplierInvoicePin AS pin
+        WHERE pin.GrnId   = pg.Id
+          AND pin.IsActive = 1   -- assuming 1 = active
+          AND pin.GrnId IS NOT NULL
+  );
+
 ";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
