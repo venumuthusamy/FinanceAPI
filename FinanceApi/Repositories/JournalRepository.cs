@@ -1,80 +1,56 @@
 ﻿using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
-using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using System.Data;
 
 namespace FinanceApi.Repositories
 {
     public class JournalRepository : DynamicRepository, IJournalRepository
     {
         public JournalRepository(IDbConnectionFactory connectionFactory)
-        : base(connectionFactory)
+            : base(connectionFactory)
         {
-
         }
 
+        #region LIST / DETAILS
 
         public async Task<IEnumerable<JournalsDTO>> GetAllAsync()
         {
-            var sql = @"
+            const string sql = @"
 SELECT 
-    'SI' AS RowType,                  -- SalesInvoice row
-    si.Id           AS SalesInvoiceId,
-    si.InvoiceNo,
-    si.InvoiceDate,
-    NULL            AS JournalId,
-    NULL            AS JournalNo,
-    NULL            AS JournalDate,
-    coa.HeadName,
-    coa.HeadCode,
-    -- Amount for Sales Invoice
-    SUM((sil.Qty * sil.UnitPrice) * (1 - (sil.DiscountPct / 100.0))) AS Amount,
-    -- No debit for SI row
-    NULL AS DebitAmount
-FROM dbo.SalesInvoice si
-LEFT JOIN dbo.SalesInvoiceLine sil ON sil.SiId = si.Id
-INNER JOIN dbo.Item item ON item.Id = sil.ItemId
-INNER JOIN dbo.ChartOfAccount AS coa ON coa.Id = item.BudgetLineId 
-WHERE si.IsActive = 1
-GROUP BY 
-    si.Id, si.InvoiceNo, si.InvoiceDate,
-    coa.HeadName, coa.HeadCode
-
-UNION ALL
-
-SELECT
-    'MJ'           AS RowType,
-    NULL           AS SalesInvoiceId,
-    NULL           AS InvoiceNo,
-    NULL           AS InvoiceDate,
-    mj.Id          AS JournalId,
-    mj.JournalNo,
+    mj.Id,
+    mj.JournalNo, 
     mj.JournalDate,
+    mj.Credit AS Amount,
+    mj.Debit  AS DebitAmount, 
+    mj.IsRecurring,
+    mj.RecurringFrequency,
+    mj.isPosted,
     coa.HeadName,
-    coa.HeadCode,
-    -- Amount column – here we use Credit
-    mj.Credit      AS Amount,
-    -- Extra column for debit
-    mj.Debit       AS DebitAmount
-FROM dbo.ManualJournal mj
-INNER JOIN dbo.ChartOfAccount coa
-    ON CAST(mj.AccountId AS VARCHAR(50)) = coa.HeadCode
-WHERE mj.IsActive = 1
+    coa.HeadCode 
+FROM ManualJournal AS mj
+INNER JOIN ChartOfAccount AS coa ON coa.Id = mj.AccountId
+WHERE mj.IsActive = 1;";
 
-ORDER BY 
-    HeadCode, 
-    RowType,
-    InvoiceDate,
-    JournalDate;
-
-
-";
             return await Connection.QueryAsync<JournalsDTO>(sql);
         }
 
 
+        public async Task<int> MarkAsPostedAsync(IEnumerable<int> ids)
+        {
+            const string sql = @"
+UPDATE dbo.ManualJournal
+SET 
+    isPosted   = 1,
+    UpdatedDate = SYSUTCDATETIME()
+WHERE Id IN @Ids
+  AND IsActive = 1
+  AND isPosted = 0;";
+
+            return await Connection.ExecuteAsync(sql, new { Ids = ids });
+        }
 
         public async Task<int> CreateAsync(ManualJournalCreateDto dto)
         {
@@ -100,12 +76,13 @@ INSERT INTO dbo.ManualJournal
     NextRunDate,
     CreatedBy,
     CreatedDate,
-    IsActive
+    IsActive,
+isPosted
 )
 VALUES
 (
     @AccountId,
-    @JournalDate,
+    @JournalDateUtc,         -- UTC
     @Type,
     @CustomerId,
     @SupplierId,
@@ -115,19 +92,20 @@ VALUES
     @IsRecurring,
     @RecurringFrequency,
     @RecurringInterval,
-    @RecurringStartDate,
+    @RecurringStartDateUtc, 
     @RecurringEndType,
-    @RecurringEndDate,
+    @RecurringEndDateUtc,    
     @RecurringCount,
-    0,   -- ProcessedCount
+    0,                     
     CASE 
-        WHEN @IsRecurring = 1 
-             THEN ISNULL(@RecurringStartDate, @JournalDate)
+        WHEN @IsRecurring = 1 THEN
+            COALESCE(@RecurringStartDateUtc, @JournalDateUtc)
         ELSE NULL
     END,
     @CreatedBy,
     SYSUTCDATETIME(),
-    1
+    1,
+0
 );
 
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -173,7 +151,6 @@ ORDER BY mj.JournalDate DESC, mj.Id DESC;";
             return rows;
         }
 
-
         public async Task<ManualJournalDto?> GetByIdAsync(int id)
         {
             const string sql = @"
@@ -209,10 +186,12 @@ WHERE mj.Id = @Id AND mj.IsActive = 1;";
             return await Connection.QueryFirstOrDefaultAsync<ManualJournalDto>(sql, new { Id = id });
         }
 
+        #endregion
 
-        public async Task<int> ProcessRecurringAsync(DateTime processDate)
+        #region PROCESS RECURRING
+
+        public async Task<int> ProcessRecurringAsync(DateTime processUtc)
         {
-            // 1) Get all recurring templates that should run today
             const string selectSql = @"
 SELECT
     mj.Id,
@@ -239,23 +218,14 @@ FROM dbo.ManualJournal mj
 WHERE mj.IsActive = 1
   AND mj.IsRecurring = 1
   AND mj.NextRunDate IS NOT NULL
-  AND mj.NextRunDate <= @Today
-  AND (
-        mj.RecurringEndType = 'NoEnd'
-        OR (mj.RecurringEndType = 'EndByDate' 
-            AND mj.RecurringEndDate IS NOT NULL 
-            AND mj.NextRunDate <= mj.RecurringEndDate)
-        OR (mj.RecurringEndType = 'EndByCount'
-            AND mj.RecurringCount IS NOT NULL
-            AND mj.ProcessedCount < mj.RecurringCount)
-      );";
+  AND mj.NextRunDate <= @NowUtc;";
 
-            var templates = (await Connection.QueryAsync<TemplateRow>(selectSql, new { Today = processDate.Date })).ToList();
+            var templates = (await Connection.QueryAsync<TemplateRow>(selectSql, new { NowUtc = processUtc }))
+                           .ToList();
 
             if (templates.Count == 0)
                 return 0;
 
-            // 2) For each template, insert a new journal entry + update template
             const string insertSql = @"
 INSERT INTO dbo.ManualJournal
 (
@@ -296,7 +266,7 @@ VALUES
     NULL,
     NULL,
     NULL,
-    NULL,
+    0,
     0,
     NULL,
     @CreatedBy,
@@ -318,31 +288,66 @@ WHERE Id = @Id;";
 
                 foreach (var t in templates)
                 {
-                    // 2.1 Insert new journal for this run date
+                    // 1. amount split for EndByCount
+                    decimal debitToPost = t.Debit;
+                    decimal creditToPost = t.Credit;
+
+                    if (t.RecurringEndType == "EndByCount"
+                        && t.RecurringCount.HasValue
+                        && t.RecurringCount.Value > 0)
+                    {
+                        int totalInstallments = t.RecurringCount.Value;
+                        int currentInstallment = t.ProcessedCount + 1;
+
+                        var baseDebit = Math.Round(t.Debit / totalInstallments, 2, MidpointRounding.AwayFromZero);
+                        var baseCredit = Math.Round(t.Credit / totalInstallments, 2, MidpointRounding.AwayFromZero);
+
+                        if (currentInstallment < totalInstallments)
+                        {
+                            debitToPost = baseDebit;
+                            creditToPost = baseCredit;
+                        }
+                        else
+                        {
+                            debitToPost = t.Debit - baseDebit * (totalInstallments - 1);
+                            creditToPost = t.Credit - baseCredit * (totalInstallments - 1);
+                        }
+                    }
+
+                    // 2. Insert generated row (JournalDate = NextRunDate)
                     var newEntryParams = new
                     {
                         AccountId = t.AccountId,
-                        JournalDate = t.NextRunDate,       // the scheduled date
+                        JournalDate = t.NextRunDate!.Value, // UTC
                         Type = t.Type,
                         CustomerId = t.CustomerId,
                         SupplierId = t.SupplierId,
                         Description = t.Description,
-                        Debit = t.Debit,
-                        Credit = t.Credit,
+                        Debit = debitToPost,
+                        Credit = creditToPost,
                         CreatedBy = t.CreatedBy
                     };
 
                     await Connection.ExecuteAsync(insertSql, newEntryParams, tran);
                     generatedCount++;
 
-                    // 2.2 Compute next run date
+                    // 3. compute next run
                     var nextDate = GetNextRunDate(t.NextRunDate!.Value, t.RecurringFrequency, t.RecurringInterval);
                     var newProcessedCount = t.ProcessedCount + 1;
 
-                    // If end type is by count and we reached the limit, you can set NextRunDate = NULL
+                    // EndByCount stop
                     if (t.RecurringEndType == "EndByCount"
                         && t.RecurringCount.HasValue
                         && newProcessedCount >= t.RecurringCount.Value)
+                    {
+                        nextDate = null;
+                    }
+
+                    // EndByDate stop
+                    if (t.RecurringEndType == "EndByDate"
+                        && t.RecurringEndDate.HasValue
+                        && nextDate.HasValue
+                        && nextDate.Value.Date > t.RecurringEndDate.Value.Date)
                     {
                         nextDate = null;
                     }
@@ -367,7 +372,10 @@ WHERE Id = @Id;";
             }
         }
 
-        // Helper class just for this method
+        #endregion
+
+        #region Helper
+
         private class TemplateRow
         {
             public int Id { get; set; }
@@ -390,7 +398,7 @@ WHERE Id = @Id;";
             public int? CreatedBy { get; set; }
         }
 
-        private DateTime? GetNextRunDate(DateTime current, string? freq, int? interval)
+        private DateTime? GetNextRunDate(DateTime currentUtc, string? freq, int? interval)
         {
             if (string.IsNullOrEmpty(freq))
                 return null;
@@ -399,12 +407,16 @@ WHERE Id = @Id;";
 
             return freq switch
             {
-                "Daily" => current.AddDays(step),
-                "Weekly" => current.AddDays(7 * step),
-                "Monthly" => current.AddMonths(step),
-                "Yearly" => current.AddYears(step),
+                "Daily" => currentUtc.AddDays(step),
+                "Weekly" => currentUtc.AddDays(7 * step),
+                "Monthly" => currentUtc.AddMonths(step),
+                "Quarterly" => currentUtc.AddMonths(3 * step),
+                "Yearly" => currentUtc.AddYears(step),
+                "EveryMinute" => currentUtc.AddMinutes(step),
                 _ => (DateTime?)null
             };
         }
+
+        #endregion
     }
 }

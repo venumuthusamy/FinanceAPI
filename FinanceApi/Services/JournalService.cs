@@ -1,43 +1,49 @@
-﻿using FinanceApi.Interfaces;
+﻿// Services/JournalService.cs
+using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Services
 {
-    public class JournalService :IJournalService
+    public class JournalService : IJournalService
     {
         private readonly IJournalRepository _journalRepository;
+
         public JournalService(IJournalRepository journalRepository)
         {
             _journalRepository = journalRepository;
         }
 
-        public async Task<IEnumerable<JournalsDTO>> GetAllAsync()
+        public Task<IEnumerable<JournalsDTO>> GetAllAsync()
         {
-            return await _journalRepository.GetAllAsync();
-        }
-        public async Task<IEnumerable<ManualJournalDto>> GetAllRecurringDetails()
-        {
-            return await _journalRepository.GetAllRecurringDetails();
+            return _journalRepository.GetAllAsync();
         }
 
-
-
-        public async Task<int> CreateAsync(ManualJournalCreateDto dto)
+        public Task<IEnumerable<ManualJournalDto>> GetAllRecurringDetails()
         {
-            return await _journalRepository.CreateAsync(dto);
-
+            return _journalRepository.GetAllRecurringDetails();
         }
 
-
-        public async Task<ManualJournalDto> GetById(int id)
+        public Task<ManualJournalDto?> GetById(int id)
         {
-            return await _journalRepository.GetByIdAsync(id);
+            return _journalRepository.GetByIdAsync(id);
         }
 
+        public Task<int> CreateAsync(ManualJournalCreateDto dto)
+        {
+            return _journalRepository.CreateAsync(dto);
+        }
 
-        public Task<int> ProcessRecurringAsync(DateTime processDate)
-            => _journalRepository.ProcessRecurringAsync(processDate);
+        public async Task<int> ProcessRecurringAsync(DateTime nowLocal, string timezone)
+        {
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+            var nowUtc = TimeZoneInfo.ConvertTimeToUtc(nowLocal, tz);
+
+            return await _journalRepository.ProcessRecurringAsync(nowUtc);
+        }
+
+        public Task<int> MarkAsPostedAsync(IEnumerable<int> ids)
+        => _journalRepository.MarkAsPostedAsync(ids);
     }
 }
