@@ -1,5 +1,7 @@
 ﻿// Controllers/AccountsPayableController.cs
-using FinanceApi.Interfaces;
+using System;
+using System.Threading.Tasks;
+using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using Microsoft.AspNetCore.Mvc;
 
@@ -9,29 +11,25 @@ namespace FinanceApi.Controllers
     [Route("api/finance/ap")]
     public class AccountsPayableController : ControllerBase
     {
-        private readonly IAccountsPayableRepository _apRepo;
-        private readonly ISupplierPaymentRepository _paymentRepo;
+        private readonly IAccountsPayableService _service;
 
-        public AccountsPayableController(
-            IAccountsPayableRepository apRepo,
-            ISupplierPaymentRepository paymentRepo)
+        public AccountsPayableController(IAccountsPayableService service)
         {
-            _apRepo = apRepo;
-            _paymentRepo = paymentRepo;
+            _service = service;
         }
 
         // ---------- INVOICES ----------
         [HttpGet("invoices")]
         public async Task<IActionResult> GetApInvoices()
         {
-            var rows = await _apRepo.GetApInvoicesAsync();
+            var rows = await _service.GetApInvoicesAsync();
             return Ok(new { isSuccess = true, data = rows });
         }
 
         [HttpGet("invoices/supplier/{supplierId:int}")]
         public async Task<IActionResult> GetApInvoicesBySupplier(int supplierId)
         {
-            var rows = await _apRepo.GetApInvoicesBySupplierAsync(supplierId);
+            var rows = await _service.GetApInvoicesBySupplierAsync(supplierId);
             return Ok(new { isSuccess = true, data = rows });
         }
 
@@ -39,24 +37,32 @@ namespace FinanceApi.Controllers
         [HttpGet("payments")]
         public async Task<IActionResult> GetPayments()
         {
-            var rows = await _paymentRepo.GetAllAsync();
+            var rows = await _service.GetPaymentsAsync();
             return Ok(new { isSuccess = true, data = rows });
         }
 
-        [HttpPost("payments")]
-        public async Task<IActionResult> CreatePayment([FromBody] SupplierPaymentCreateDTO dto)
+        [HttpPost("payments/create")]
+        public async Task<IActionResult> CreatePayment([FromBody] ApPaymentCreateDto dto)
         {
             if (dto == null)
                 return BadRequest(new { isSuccess = false, message = "Payload missing" });
 
             try
             {
-                var ok = await _paymentRepo.CreateAsync(dto);
+                var userId = 1; // TODO: from JWT
+                var id = await _service.CreatePaymentAsync(dto, userId);
+
                 return Ok(new
                 {
-                    isSuccess = ok,
-                    message = ok ? "Payment posted" : "Failed to post payment"
+                    isSuccess = true,
+                    message = "Payment posted",
+                    data = new { id }
                 });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Period locked / no period
+                return BadRequest(new { isSuccess = false, message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -68,7 +74,7 @@ namespace FinanceApi.Controllers
         [HttpGet("match")]
         public async Task<IActionResult> GetMatchList()
         {
-            var rows = await _apRepo.GetMatchListAsync();
+            var rows = await _service.GetMatchListAsync();
             return Ok(new { isSuccess = true, data = rows });
         }
     }

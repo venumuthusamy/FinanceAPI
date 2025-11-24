@@ -1,4 +1,7 @@
-﻿using System.Data;
+﻿// Data/AccountsPayableRepository.cs
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
 using Dapper;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
@@ -16,6 +19,8 @@ namespace FinanceApi.Data
         {
             _config = config;
         }
+
+        // ===================== AP INVOICES – ALL =====================
         public async Task<IEnumerable<ApInvoiceDTO>> GetApInvoicesAsync()
         {
             const string sql = @"
@@ -104,26 +109,23 @@ OUTER APPLY
 (
     SELECT
         SUM(ABS(dn.Amount))      AS DebitNoteAmount,
-        MAX(dn.DebitNoteNo)      AS DebitNoteNo,    -- if multiple DNs, last one; change to STRING_AGG if needed
-        MAX(dn.CreatedDate)      AS DebitNoteDate   -- or dn.NoteDate
+        MAX(dn.DebitNoteNo)      AS DebitNoteNo,    
+        MAX(dn.CreatedDate)      AS DebitNoteDate   
     FROM dbo.SupplierDebitNote dn
     WHERE dn.PinId    = si.Id
       AND dn.IsActive = 1
-      AND dn.Status   = 2       -- 2 = Posted DN (adjust if your status is different)
+      AND dn.Status   = 2       
 ) dn
 
 WHERE si.IsActive = 1
-  AND si.Status   = 3           -- 3 = Posted to AP (PIN status)
+  AND si.Status   = 3           
 ORDER BY si.InvoiceDate DESC, si.Id DESC;";
 
             using var conn = Connection;
             return await conn.QueryAsync<ApInvoiceDTO>(sql);
         }
 
-
-        // =========================================================
-        //  AP INVOICE LIST  (single supplier)
-        // =========================================================
+        // ===================== AP INVOICES – BY SUPPLIER =====================
         public async Task<IEnumerable<ApInvoiceDTO>> GetApInvoicesBySupplierAsync(int supplierId)
         {
             const string sql = @"
@@ -215,14 +217,8 @@ ORDER BY si.InvoiceDate DESC, si.Id DESC;";
             return await conn.QueryAsync<ApInvoiceDTO>(sql, new { SupplierId = supplierId });
         }
 
-        // GetMatchListAsync you already have – keep as-is
-    
-
-/// <summary>
-/// 3-way match: PO vs GRN vs PIN.
-/// (unchanged – still compare PO NetTotal vs PIN Amount/Tax)
-/// </summary>
-public async Task<IEnumerable<ApMatchDTO>> GetMatchListAsync()
+        // ===================== 3-WAY MATCH =====================
+        public async Task<IEnumerable<ApMatchDTO>> GetMatchListAsync()
         {
             const string sql = @"
 SELECT TOP (200)
@@ -266,6 +262,119 @@ ORDER BY si.InvoiceDate DESC, si.Id DESC;
 
             using var conn = Connection;
             return await conn.QueryAsync<ApMatchDTO>(sql);
+        }
+
+        // ===================== CREATE PAYMENT =====================
+        public async Task<int> CreatePaymentAsync(ApPaymentCreateDto dto, int userId)
+        {
+            const string lastNoSql = @"
+SELECT TOP 1 PaymentNo
+FROM dbo.SupplierPayment
+WHERE PaymentNo IS NOT NULL
+ORDER BY Id DESC;";
+
+            const string insertSql = @"
+INSERT INTO dbo.SupplierPayment
+(
+    PaymentNo,
+    SupplierInvoiceId,
+    SupplierId,
+    PaymentDate,
+    PaymentMethodId,
+    ReferenceNo,
+    Amount,
+    Notes,
+    Status,
+    IsActive,
+    CreatedBy,
+    CreatedDate
+)
+VALUES
+(
+    @PaymentNo,
+    @SupplierInvoiceId,
+    @SupplierId,
+    @PaymentDate,
+    @PaymentMethodId,
+    @ReferenceNo,
+    @Amount,
+    @Notes,
+    1,              -- Posted
+    1,
+    @UserId,
+    SYSDATETIME()
+);
+
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            using var conn = Connection;
+
+            // ----- Get last payment no -----
+            var lastNo = await conn.QueryFirstOrDefaultAsync<string>(lastNoSql);
+
+            int nextSeq = 1;
+
+            if (!string.IsNullOrWhiteSpace(lastNo))
+            {
+                // take only digits from the string (e.g. PY-000123 -> 000123)
+                var digits = new string(lastNo.Where(char.IsDigit).ToArray());
+
+                if (int.TryParse(digits, out var n))
+                {
+                    nextSeq = n + 1;
+                }
+            }
+
+            // Format as PY-000001, PY-000002, ...
+            var paymentNo = $"PY-{nextSeq:000000}";
+
+            // ----- Insert new row -----
+            var id = await conn.ExecuteScalarAsync<int>(insertSql, new
+            {
+                PaymentNo = paymentNo,
+                dto.SupplierInvoiceId,
+                dto.SupplierId,
+                dto.PaymentDate,
+                dto.PaymentMethodId,
+                dto.ReferenceNo,
+                dto.Amount,
+                dto.Notes,
+                UserId = userId
+            });
+
+            return id;
+        }
+
+
+
+        // ===================== PAYMENTS LIST =====================
+        public async Task<IEnumerable<ApPaymentListDto>> GetPaymentsAsync()
+        {
+            const string sql = @"
+SELECT
+    sp.Id,
+    sp.PaymentNo,
+    s.Name        AS SupplierName,
+    si.InvoiceNo  AS InvoiceNo,
+    sp.PaymentDate,
+    sp.PaymentMethodId,
+    CASE sp.PaymentMethodId
+        WHEN 1 THEN 'Cash'
+        WHEN 2 THEN 'Bank Transfer'
+        WHEN 3 THEN 'Cheque'
+        ELSE 'Other'
+    END AS PaymentMethodName,
+    sp.Amount,
+    sp.ReferenceNo,
+    sp.Notes
+FROM dbo.SupplierPayment sp
+LEFT JOIN dbo.Suppliers        s  ON s.Id  = sp.SupplierId
+LEFT JOIN dbo.SupplierInvoicePin si ON si.Id = sp.SupplierInvoiceId
+WHERE sp.IsActive = 1
+ORDER BY sp.PaymentDate DESC, sp.Id DESC;";
+
+            using var conn = Connection;
+            return await conn.QueryAsync<ApPaymentListDto>(sql);
         }
     }
 }
