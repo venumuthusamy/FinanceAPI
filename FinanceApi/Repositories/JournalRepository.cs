@@ -32,7 +32,7 @@ SELECT
     coa.HeadCode 
 FROM ManualJournal AS mj
 INNER JOIN ChartOfAccount AS coa ON coa.Id = mj.AccountId
-WHERE mj.IsActive = 1;";
+WHERE mj.IsActive = 1 and mj.isPosted =0;";
 
             return await Connection.QueryAsync<JournalsDTO>(sql);
         }
