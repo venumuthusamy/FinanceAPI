@@ -1,54 +1,50 @@
-// Program.cs
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.Models;
 using FinanceApi.Repositories;
 using FinanceApi.Services;
-// NEW: FluentScheduler
 using FluentScheduler;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
-using System;
 using System.Data;
-using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;          // <-- added
-using Microsoft.Extensions.Logging;   // <-- added
 using UnityWorksERP.Finance.AR;
 
-// -------- Pick the correct web root (Angular UI location) --------
 var vuexyPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "dist", "vuexy");
 var plainWwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
 var resolvedWebRoot = Directory.Exists(vuexyPath) ? vuexyPath : plainWwwroot;
 
 var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 {
-    WebRootPath = resolvedWebRoot, // if vuexy exists, use it; else fallback to wwwroot
-    // ContentRootPath = AppContext.BaseDirectory // (default is fine)
+    WebRootPath = resolvedWebRoot
 });
 
 // ===================== Services =====================
 
-// --- Database (SQL Server via EF Core) ---
+// EF Core
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// --- If you use Dapper via a connection factory (keep if your code expects it) ---
+// Dapper connection factory
 builder.Services.AddScoped<IDbConnectionFactory, SqlDbConnectionFactory>();
 
-// --- Repositories / Services (convention scan) ---
+// Convention scan
 builder.Services.Scan(scan => scan
     .FromAssemblyOf<ICustomerService>()
-        .AddClasses(c => c.Where(t => t.Name.EndsWith("Repository"))).AsImplementedInterfaces().WithScopedLifetime()
-        .AddClasses(c => c.Where(t => t.Name.EndsWith("Service"))).AsImplementedInterfaces().WithScopedLifetime()
+        .AddClasses(c => c.Where(t => t.Name.EndsWith("Repository")))
+            .AsImplementedInterfaces()
+            .WithScopedLifetime()
+        .AddClasses(c => c.Where(t => t.Name.EndsWith("Service")))
+            .AsImplementedInterfaces()
+            .WithScopedLifetime()
 );
 
-// Explicit registrations (keep the ones you actually use)
+// Explicit registrations (your existing)
 builder.Services.AddScoped<IPurchaseGoodReceiptRepository, PurchaseGoodReceiptRepository>();
 builder.Services.AddScoped<ICatagoryRepository, CatagoryRepository>();
 builder.Services.AddScoped<IcostingMethodRepository, CostingMethodRepository>();
@@ -60,12 +56,9 @@ builder.Services.AddScoped<IStockIssuesRepository, StockIssuesRepository>();
 builder.Services.AddScoped<IBinRepository, BinRepository>();
 builder.Services.AddScoped<IQuotationRepository, QuotationRepository>();
 builder.Services.AddScoped<IStockAdjustmentRepository, StockAdjustmentRepository>();
-//builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
 builder.Services.AddScoped<IDeliveryOrderRepository, DeliveryOrderRepository>();
 builder.Services.AddScoped<ISalesInvoiceRepository, SalesInvoiceRepository>();
 builder.Services.AddScoped<IPurchaseAlertRepository, PurchaseAlertRepository>();
-builder.Services.AddScoped<IAccountsPayableRepository, AccountsPayableRepository>();
-
 builder.Services.AddScoped<IPurchaseGoodReceiptService, PurchaseGoodReceiptService>();
 builder.Services.AddScoped<IIncotermsService, IncotermsService>();
 builder.Services.AddScoped<IflagIssuesServices, FlagIssuesServices>();
@@ -76,7 +69,6 @@ builder.Services.AddScoped<IStockIssueServices, StockIssuesServices>();
 builder.Services.AddScoped<IBinServices, BinServices>();
 builder.Services.AddScoped<IStockAdjustmentServices, StockAdjustmentServices>();
 builder.Services.AddScoped<IQuotationService, QuotationService>();
-//builder.Services.AddScoped<IVehicleService, VehicleService>();
 builder.Services.AddScoped<IDeliveryOrderService, DeliveryOrderService>();
 builder.Services.AddScoped<IRunningNumberRepository, RunningNumberRepository>();
 builder.Services.AddScoped<IPickingRepository, PickingRepository>();
@@ -86,13 +78,17 @@ builder.Services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
 builder.Services.AddScoped<IPurchaseAlertService, PurchaseAlertService>();
 builder.Services.AddScoped<IArReceiptRepository, ArReceiptRepository>();
 builder.Services.AddScoped<IArReceiptService, ArReceiptService>();
-builder.Services.AddHttpContextAccessor();
 
+// (Optional) Explicit Journal DI – scan already covers it, but safe to add:
+builder.Services.AddScoped<IJournalRepository, JournalRepository>();
+builder.Services.AddScoped<IJournalService, JournalService>();
+
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// --- CORS ---
+// CORS
 const string CorsPolicy = "Frontend";
 builder.Services.AddCors(options =>
 {
@@ -105,7 +101,7 @@ builder.Services.AddCors(options =>
     });
 });
 
-// --- JWT (optional; only if you set Jwt:Secret in appsettings) ---
+// JWT (your existing config)
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))
 {
@@ -117,7 +113,7 @@ if (!string.IsNullOrWhiteSpace(jwtSecret))
     })
     .AddJwtBearer(options =>
     {
-        options.RequireHttpsMetadata = false; // set true behind HTTPS in prod
+        options.RequireHttpsMetadata = false;
         options.SaveToken = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -131,37 +127,29 @@ if (!string.IsNullOrWhiteSpace(jwtSecret))
     builder.Services.AddAuthorization();
 }
 
-// --- Cloud dyno port binding (Heroku/Render/Azure AppService etc.) ---
+// PORT binding
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(port))
 {
     builder.WebHost.UseUrls($"http://*:{port}");
 }
 
-// Local Kestrel listen
+// Local listen
 builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(7182));
 
 var app = builder.Build();
 
 // ===================== Middleware =====================
 
-// Swagger – enable in Dev; optionally enable in Prod too
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-// else
-// {
-//     app.UseSwagger();
-//     app.UseSwaggerUI();
-// }
 
-// Serve static files for the Angular app
 app.UseStaticFiles();
 
-// If you also want to expose the plain wwwroot when vuexy is used:
 if (resolvedWebRoot == vuexyPath && Directory.Exists(plainWwwroot))
 {
     app.UseStaticFiles(new StaticFileOptions
@@ -172,30 +160,22 @@ if (resolvedWebRoot == vuexyPath && Directory.Exists(plainWwwroot))
 }
 
 app.UseRouting();
-
 app.UseCors(CorsPolicy);
-
 app.UseAuthentication();
-// app.UseAuthorization(); // uncomment if you use [Authorize] anywhere
+// app.UseAuthorization(); // enable if using [Authorize]
 
-// Map API FIRST (so /api/* doesn't get swallowed by SPA fallback)
 app.MapControllers();
-
-// Then SPA fallback (serves index.html)
 app.MapFallbackToFile("index.html");
 
 // ===================== FluentScheduler – Recurring Journal Job =====================
 
-// Initialize scheduler once
 JobManager.Initialize();
 
-// Take scope factory from DI
 var scopeFactory = app.Services.GetRequiredService<IServiceScopeFactory>();
 
 JobManager.AddJob(
     () =>
     {
-        // Run async work inside Task.Run so scheduler stays sync
         Task.Run(async () =>
         {
             using var scope = scopeFactory.CreateScope();
@@ -204,27 +184,21 @@ JobManager.AddJob(
 
             try
             {
-                // India time (IST)
-                var indiaTz = TimeZoneInfo.FindSystemTimeZoneById("India Standard Time");
-                var nowIndia = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, indiaTz);
-                var today = nowIndia.Date;
+                // Default ERP timezone (can change later)
+                var defaultTimezone = "Asia/Kolkata";
+                var tz = TimeZoneInfo.FindSystemTimeZoneById(defaultTimezone);
+                var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
 
-                await journalService.ProcessRecurringAsync(today);
+                await journalService.ProcessRecurringAsync(nowLocal, defaultTimezone);
             }
             catch (Exception ex)
             {
-                // IMPORTANT: log, don't crash the process
                 logger.LogError(ex, "Error in recurring Journal job");
             }
         });
     },
-    // Prod: run once per day at 23:00 IST
-    s => s.ToRunEvery(1).Days().At(23, 0)
-
-    // If you want to test every minute, temporarily use:
-    // s => s.ToRunEvery(1).Minutes()
+    s => s.ToRunEvery(1).Minutes()   // TEST: every 1 minute
+    // PROD: s => s.ToRunEvery(1).Days().At(23, 0)
 );
-
-// ================================================================================
 
 app.Run();
