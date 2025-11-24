@@ -8,7 +8,7 @@
             int? DriverId, int? VehicleId,
             string? RouteName, DateTime? DeliveryDate,
             string? PodFileUrl, bool IsPosted,
-            string SalesOrderNo,int? CustomerId
+            string SalesOrderNo,int? CustomerId, string? CustomerName
         );
 
         public record DoLineDto(
