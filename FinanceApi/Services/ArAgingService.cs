@@ -7,9 +7,9 @@
         _repo = repo;
     }
 
-    public Task<IEnumerable<ArAgingSummaryDto>> GetSummaryAsync(DateTime asOfDate)
-        => _repo.GetSummaryAsync(asOfDate);
+    public Task<IEnumerable<ArAgingSummaryDto>> GetSummaryAsync(DateTime fromDate, DateTime toDate)
+        => _repo.GetSummaryAsync(fromDate, toDate);
 
-    public Task<IEnumerable<ArAgingInvoiceDto>> GetCustomerInvoicesAsync(int customerId, DateTime asOfDate)
-        => _repo.GetCustomerInvoicesAsync(customerId, asOfDate);
+    public Task<IEnumerable<ArAgingInvoiceDto>> GetCustomerInvoicesAsync(int customerId, DateTime fromDate, DateTime toDate)
+        => _repo.GetCustomerInvoicesAsync(customerId, fromDate, toDate);
 }
