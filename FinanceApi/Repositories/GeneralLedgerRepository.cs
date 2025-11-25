@@ -24,7 +24,7 @@ namespace FinanceApi.Repositories
 ArInv AS (
     SELECT SUM(ISNULL(si.Subtotal, 0)) AS InvTotal
     FROM dbo.SalesInvoice si
-    WHERE si.IsActive = 1               -- no status filter, else 0
+    WHERE si.IsActive = 1
 ),
 ArRec AS (
     SELECT SUM(ISNULL(r.AmountReceived, 0)) AS RecTotal
@@ -44,7 +44,7 @@ ApInv AS (
     SELECT SUM(ISNULL(si.Amount, 0) + ISNULL(si.Tax, 0)) AS InvTotal
     FROM dbo.SupplierInvoicePin si
     WHERE si.IsActive = 1
-      AND si.Status   = 3      -- Posted to AP
+      AND si.Status   = 3
 ),
 ApPay AS (
     SELECT SUM(ISNULL(sp.Amount, 0)) AS PayTotal
@@ -55,7 +55,7 @@ ApDn AS (
     SELECT SUM(ISNULL(dn.Amount, 0)) AS DnTotal
     FROM dbo.SupplierDebitNote dn
     WHERE dn.IsActive = 1
-      AND dn.Status   = 2      -- Posted DN
+      AND dn.Status   = 2
 ),
 
 ------------------------------------------------------------
@@ -63,7 +63,7 @@ ApDn AS (
 ------------------------------------------------------------
 GlLines AS (
     --------------------------------------------------------
-    -- A) Manual Journal
+    -- A) Manual Journal (ONLY non-recurring, posted rows)
     --------------------------------------------------------
     SELECT
         mj.JournalDate                                    AS TransDate,
@@ -79,13 +79,14 @@ GlLines AS (
     FROM dbo.ManualJournal mj
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = mj.AccountId
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
+    WHERE mj.IsActive   = 1
+      AND mj.isPosted   = 1
+      AND mj.IsRecurring = 0        -- ⭐ DO NOT take the template rows
 
     UNION ALL
 
     --------------------------------------------------------
-    -- B) Sales Invoice lines -> Item.BudgetLineId -> COA
+    -- B) Sales Invoice lines
     --------------------------------------------------------
     SELECT
         si.InvoiceDate                                    AS TransDate,
@@ -113,7 +114,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- C) Credit Note lines -> Item.BudgetLineId -> COA
+    -- C) Credit Note lines
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate                                 AS TransDate,
@@ -147,12 +148,8 @@ Base AS (
         coa.Id        AS HeadId,
         coa.HeadCode,
         coa.HeadName,
-        ISNULL(coa.ParentHead, 0) AS ParentHead,     -- ⭐ ADDED for hierarchy
+        ISNULL(coa.ParentHead, 0) AS ParentHead,
 
-        -- Opening balance:
-        --   AR  (101) = Invoice - CreditNote
-        --   AP  (201) = PIN    - DebitNote
-        --   Others    = CoA.OpeningBalance
         OpeningBalance =
             CASE 
                 WHEN coa.HeadCode = 101 THEN
@@ -163,10 +160,6 @@ Base AS (
                     ISNULL(TRY_CONVERT(decimal(18,2), coa.OpeningBalance), 0)
             END,
 
-        -- Movement (for Received column):
-        --   AR  (101) = Receipts + net journal (Debit - Credit)
-        --   AP  (201) = Payments + net journal
-        --   Others    = net journal / SI / CN (Debit - Credit)
         Movement =
             CASE 
                 WHEN coa.HeadCode = 101 THEN
@@ -195,7 +188,7 @@ Base AS (
         coa.HeadCode,
         coa.HeadName,
         coa.OpeningBalance,
-        coa.ParentHead,          -- ⭐ include in GROUP BY
+        coa.ParentHead,
         arI.InvTotal,
         arR.RecTotal,
         arC.CnTotal,
@@ -204,20 +197,17 @@ Base AS (
         apD.DnTotal
 )
 
-------------------------------------------------------------
--- 5) FINAL OUTPUT (OpeningBalance, Received, Balance)
-------------------------------------------------------------
 SELECT
     HeadId,
     HeadCode,
     HeadName,
-    ParentHead,                 -- ⭐ return to client
+    ParentHead,
     OpeningBalance,
     Movement AS Received,
     CASE 
         WHEN HeadCode IN (101,201)
-            THEN OpeningBalance - Movement   -- AR / AP
-        ELSE OpeningBalance + Movement       -- normal GL
+            THEN OpeningBalance - Movement
+        ELSE OpeningBalance + Movement
     END AS Balance
 FROM Base
 ORDER BY HeadCode;
@@ -225,6 +215,7 @@ ORDER BY HeadCode;
 
             return await Connection.QueryAsync<GeneralLedgerDTO>(query);
         }
+
 
     }
 }

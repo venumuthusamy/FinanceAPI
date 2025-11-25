@@ -43,40 +43,36 @@ namespace FinanceApi.Controllers
             if (dto.Debit <= 0 && dto.Credit <= 0)
                 return BadRequest(new { success = false, message = "Enter either debit or credit amount." });
 
-            // Timezone from client, default if missing
             if (string.IsNullOrWhiteSpace(dto.Timezone))
-                dto.Timezone = "Asia/Kolkata";    // or "UTC"
+                dto.Timezone = "Asia/Kolkata";
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById(dto.Timezone);
 
-            // JournalDate (local→UTC)
             var localJournalDate = DateTime.SpecifyKind(
                 DateTime.Parse(dto.JournalDate, CultureInfo.InvariantCulture),
                 DateTimeKind.Unspecified);
 
             dto.JournalDateUtc = TimeZoneInfo.ConvertTimeToUtc(localJournalDate, tz);
 
-            // RecurringStartDate
             if (!string.IsNullOrEmpty(dto.RecurringStartDate))
             {
                 var localStart = DateTime.SpecifyKind(
                     DateTime.Parse(dto.RecurringStartDate, CultureInfo.InvariantCulture),
                     DateTimeKind.Unspecified);
 
-                dto.RecurringStartDateUtc =
-                    TimeZoneInfo.ConvertTimeToUtc(localStart, tz);
+                dto.RecurringStartDateUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, tz);
             }
 
-            // RecurringEndDate
             if (!string.IsNullOrEmpty(dto.RecurringEndDate))
             {
                 var localEnd = DateTime.SpecifyKind(
                     DateTime.Parse(dto.RecurringEndDate, CultureInfo.InvariantCulture),
                     DateTimeKind.Unspecified);
 
-                dto.RecurringEndDateUtc =
-                    TimeZoneInfo.ConvertTimeToUtc(localEnd, tz);
+                dto.RecurringEndDateUtc = TimeZoneInfo.ConvertTimeToUtc(localEnd, tz);
             }
+
+            dto.CreatedBy = 1; // TODO: from auth
 
             var id = await _journalService.CreateAsync(dto);
             var data = await _journalService.GetById(id);
@@ -97,14 +93,11 @@ namespace FinanceApi.Controllers
             return Ok(new { success = true, processed, runAt = nowLocal, timezone });
         }
 
-
         [HttpPost("post-batch")]
         public async Task<IActionResult> PostBatch([FromBody] JournalPostRequest request)
         {
             if (request == null || request.Ids == null || request.Ids.Count == 0)
-            {
                 return BadRequest("No journal ids provided.");
-            }
 
             var updated = await _journalService.MarkAsPostedAsync(request.Ids);
 

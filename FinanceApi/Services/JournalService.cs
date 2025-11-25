@@ -1,5 +1,4 @@
-﻿// Services/JournalService.cs
-using FinanceApi.Interfaces;
+﻿using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
@@ -16,34 +15,25 @@ namespace FinanceApi.Services
         }
 
         public Task<IEnumerable<JournalsDTO>> GetAllAsync()
-        {
-            return _journalRepository.GetAllAsync();
-        }
+            => _journalRepository.GetAllAsync();
 
         public Task<IEnumerable<ManualJournalDto>> GetAllRecurringDetails()
-        {
-            return _journalRepository.GetAllRecurringDetails();
-        }
+            => _journalRepository.GetAllRecurringDetails();
 
         public Task<ManualJournalDto?> GetById(int id)
-        {
-            return _journalRepository.GetByIdAsync(id);
-        }
+            => _journalRepository.GetByIdAsync(id);
 
         public Task<int> CreateAsync(ManualJournalCreateDto dto)
-        {
-            return _journalRepository.CreateAsync(dto);
-        }
+            => _journalRepository.CreateAsync(dto);
 
         public async Task<int> ProcessRecurringAsync(DateTime nowLocal, string timezone)
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById(timezone);
             var nowUtc = TimeZoneInfo.ConvertTimeToUtc(nowLocal, tz);
-
             return await _journalRepository.ProcessRecurringAsync(nowUtc);
         }
 
         public Task<int> MarkAsPostedAsync(IEnumerable<int> ids)
-        => _journalRepository.MarkAsPostedAsync(ids);
+            => _journalRepository.MarkAsPostedAsync(ids);
     }
 }

@@ -32,22 +32,24 @@ SELECT
     coa.HeadCode 
 FROM ManualJournal AS mj
 INNER JOIN ChartOfAccount AS coa ON coa.Id = mj.AccountId
-WHERE mj.IsActive = 1 and mj.isPosted =0;";
+WHERE mj.IsActive    = 1 
+  AND mj.isPosted    = 0
+  AND mj.IsRecurring = 0;";
 
             return await Connection.QueryAsync<JournalsDTO>(sql);
         }
-
 
         public async Task<int> MarkAsPostedAsync(IEnumerable<int> ids)
         {
             const string sql = @"
 UPDATE dbo.ManualJournal
 SET 
-    isPosted   = 1,
+    isPosted    = 1,
     UpdatedDate = SYSUTCDATETIME()
 WHERE Id IN @Ids
-  AND IsActive = 1
-  AND isPosted = 0;";
+  AND IsActive    = 1
+  AND isPosted    = 0
+  AND IsRecurring = 0;";
 
             return await Connection.ExecuteAsync(sql, new { Ids = ids });
         }
@@ -77,7 +79,7 @@ INSERT INTO dbo.ManualJournal
     CreatedBy,
     CreatedDate,
     IsActive,
-isPosted
+    isPosted
 )
 VALUES
 (
@@ -96,7 +98,7 @@ VALUES
     @RecurringEndType,
     @RecurringEndDateUtc,    
     @RecurringCount,
-    0,                     
+    0,
     CASE 
         WHEN @IsRecurring = 1 THEN
             COALESCE(@RecurringStartDateUtc, @JournalDateUtc)
@@ -105,7 +107,7 @@ VALUES
     @CreatedBy,
     SYSUTCDATETIME(),
     1,
-0
+    0
 );
 
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
@@ -220,12 +222,6 @@ WHERE mj.IsActive = 1
   AND mj.NextRunDate IS NOT NULL
   AND mj.NextRunDate <= @NowUtc;";
 
-            var templates = (await Connection.QueryAsync<TemplateRow>(selectSql, new { NowUtc = processUtc }))
-                           .ToList();
-
-            if (templates.Count == 0)
-                return 0;
-
             const string insertSql = @"
 INSERT INTO dbo.ManualJournal
 (
@@ -248,7 +244,8 @@ INSERT INTO dbo.ManualJournal
     NextRunDate,
     CreatedBy,
     CreatedDate,
-    IsActive
+    IsActive,
+    isPosted
 )
 VALUES
 (
@@ -260,7 +257,7 @@ VALUES
     @Description,
     @Debit,
     @Credit,
-    0,              -- generated entry is NOT recurring
+    0,
     NULL,
     NULL,
     NULL,
@@ -271,6 +268,7 @@ VALUES
     NULL,
     @CreatedBy,
     SYSUTCDATETIME(),
+    1,
     1
 );";
 
@@ -281,14 +279,31 @@ SET ProcessedCount = @ProcessedCount,
     UpdatedDate    = SYSUTCDATETIME()
 WHERE Id = @Id;";
 
-            using var tran = Connection.BeginTransaction();
+            // ✅ use ONE connection and open it manually (sync Open, not OpenAsync)
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                conn.Open();
+
+            using var tran = conn.BeginTransaction();
+
             try
             {
+                // read templates inside the same connection/transaction
+                var templates = (await conn.QueryAsync<TemplateRow>(
+                    selectSql,
+                    new { NowUtc = processUtc },
+                    tran)).ToList();
+
+                if (templates.Count == 0)
+                {
+                    tran.Commit();
+                    return 0;
+                }
+
                 int generatedCount = 0;
 
                 foreach (var t in templates)
                 {
-                    // 1. amount split for EndByCount
                     decimal debitToPost = t.Debit;
                     decimal creditToPost = t.Credit;
 
@@ -314,7 +329,6 @@ WHERE Id = @Id;";
                         }
                     }
 
-                    // 2. Insert generated row (JournalDate = NextRunDate)
                     var newEntryParams = new
                     {
                         AccountId = t.AccountId,
@@ -328,14 +342,12 @@ WHERE Id = @Id;";
                         CreatedBy = t.CreatedBy
                     };
 
-                    await Connection.ExecuteAsync(insertSql, newEntryParams, tran);
+                    await conn.ExecuteAsync(insertSql, newEntryParams, tran);
                     generatedCount++;
 
-                    // 3. compute next run
                     var nextDate = GetNextRunDate(t.NextRunDate!.Value, t.RecurringFrequency, t.RecurringInterval);
                     var newProcessedCount = t.ProcessedCount + 1;
 
-                    // EndByCount stop
                     if (t.RecurringEndType == "EndByCount"
                         && t.RecurringCount.HasValue
                         && newProcessedCount >= t.RecurringCount.Value)
@@ -343,7 +355,6 @@ WHERE Id = @Id;";
                         nextDate = null;
                     }
 
-                    // EndByDate stop
                     if (t.RecurringEndType == "EndByDate"
                         && t.RecurringEndDate.HasValue
                         && nextDate.HasValue
@@ -359,7 +370,7 @@ WHERE Id = @Id;";
                         NextRunDate = (object?)nextDate
                     };
 
-                    await Connection.ExecuteAsync(updateSql, updateParams, tran);
+                    await conn.ExecuteAsync(updateSql, updateParams, tran);
                 }
 
                 tran.Commit();
@@ -371,6 +382,8 @@ WHERE Id = @Id;";
                 throw;
             }
         }
+
+
 
         #endregion
 
@@ -412,7 +425,6 @@ WHERE Id = @Id;";
                 "Monthly" => currentUtc.AddMonths(step),
                 "Quarterly" => currentUtc.AddMonths(3 * step),
                 "Yearly" => currentUtc.AddYears(step),
-                "EveryMinute" => currentUtc.AddMinutes(step),
                 _ => (DateTime?)null
             };
         }
