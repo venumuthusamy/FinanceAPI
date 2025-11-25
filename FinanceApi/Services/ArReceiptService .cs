@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using FinanceApi.InterfaceService;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace UnityWorksERP.Finance.AR
@@ -6,10 +7,14 @@ namespace UnityWorksERP.Finance.AR
     public class ArReceiptService : IArReceiptService
     {
         private readonly IArReceiptRepository _repo;
+        private readonly IPeriodCloseService _periodClose;   // 🔸 NEW
 
-        public ArReceiptService(IArReceiptRepository repo)
+        public ArReceiptService(
+            IArReceiptRepository repo,
+            IPeriodCloseService periodClose)                 // 🔸 NEW
         {
             _repo = repo;
+            _periodClose = periodClose;
         }
 
         public Task<IEnumerable<ArReceiptListDto>> GetListAsync()
@@ -24,6 +29,10 @@ namespace UnityWorksERP.Finance.AR
         public async Task<int> CreateAsync(ArReceiptCreateUpdateDto dto, int userId)
         {
             Validate(dto);
+
+            // 🔒 Period lock check (based on receipt date)
+            await _periodClose.EnsureOpenAsync(dto.ReceiptDate);
+
             return await _repo.CreateAsync(dto, userId);
         }
 
@@ -33,6 +42,10 @@ namespace UnityWorksERP.Finance.AR
                 throw new InvalidOperationException("Id is required for update.");
 
             Validate(dto);
+
+            // 🔒 Period lock check (based on receipt date)
+            await _periodClose.EnsureOpenAsync(dto.ReceiptDate);
+
             await _repo.UpdateAsync(dto, userId);
         }
 
@@ -60,4 +73,3 @@ namespace UnityWorksERP.Finance.AR
         }
     }
 }
-

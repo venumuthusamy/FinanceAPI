@@ -43,31 +43,45 @@ namespace UnityWorksERP.Finance.AR
         [HttpPost("insert")]
         public async Task<IActionResult> Create([FromBody] ArReceiptCreateUpdateDto dto)
         {
-            // TODO: replace with your real user id from claims
-            var userId = 1;
-            var id = await _service.CreateAsync(dto, userId);
-            return Ok(new { id });
+            var userId = 1; // TODO: from claims
+
+            try
+            {
+                var id = await _service.CreateAsync(dto, userId);
+                return Ok(new { isSuccess = true, id });
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Period locked / validation issues
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
         }
 
         // PUT api/ArReceipt/5
         [HttpPut("update/{id:int}")]
         public async Task<IActionResult> Update(int id, [FromBody] ArReceiptCreateUpdateDto dto)
         {
-            // ensure path id & body id are consistent
             dto.Id = id;
+            var userId = 1;
 
-            var userId = 1; // TODO: real user id
-            await _service.UpdateAsync(dto, userId);
-            return Ok();
+            try
+            {
+                await _service.UpdateAsync(dto, userId);
+                return Ok(new { isSuccess = true });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
         }
 
         // DELETE api/ArReceipt/5
         [HttpDelete("delete/{id:int}")]
         public async Task<IActionResult> Delete(int id)
         {
-            var userId = 1; // TODO: real user id
+            var userId = 1;
             await _service.DeleteAsync(id, userId);
-            return Ok();
+            return Ok(new { isSuccess = true });
         }
     }
 }

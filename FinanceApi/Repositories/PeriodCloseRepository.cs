@@ -13,6 +13,8 @@ namespace FinanceApi.Repositories
         {
         }
 
+        // ---------- PERIOD LIST / STATUS / LOCK / FX ----------
+
         public async Task<IEnumerable<PeriodOptionDto>> GetPeriodsAsync()
         {
             return await Connection.QueryAsync<PeriodOptionDto>(
@@ -48,43 +50,10 @@ namespace FinanceApi.Repositories
                 },
                 commandType: CommandType.StoredProcedure);
         }
-        public async Task EnsureOpenAsync(DateTime transDate)
-        {
-            const string sql = @"
-SELECT TOP (1)
-    Id,
-    -- if PeriodName is null, fallback to 'MMM yyyy'
-    ISNULL(PeriodName, FORMAT(StartDate, 'MMM yyyy')) AS PeriodName,
-    IsLocked
-FROM dbo.AccountingPeriod
-WHERE
-    IsActive = 1
-    AND @TransDate >= StartDate
-    AND @TransDate <= EndDate
-ORDER BY StartDate DESC;";
 
-            using var conn = Connection;
 
-            var period = await conn.QueryFirstOrDefaultAsync<AccountingPeriodRow>(
-                sql,
-                new { TransDate = transDate.Date });
+        // ---------- PERIOD BY DATE (helper) ----------
 
-            if (period == null)
-            {
-                throw new InvalidOperationException(
-                    $"No accounting period defined for date {transDate:dd-MMM-yyyy}. " +
-                    "Please create/open the period first.");
-            }
-
-            if (period.IsLocked)
-            {
-                throw new InvalidOperationException(
-                    $"Accounting period '{period.PeriodName}' is locked. " +
-                    "You cannot post this transaction to that period.");
-            }
-
-            // If reached here → OK to post
-        }
         public async Task<AccountingPeriod?> GetByDateAsync(DateTime date)
         {
             const string sql = @"
@@ -107,12 +76,39 @@ WHERE @Date BETWEEN StartDate AND EndDate
   AND IsActive = 1
 ORDER BY StartDate;";
 
-            using var conn = Connection;
-            return await conn.QueryFirstOrDefaultAsync<AccountingPeriod>(
+            // Connection property already gives you an openable connection,
+            // no need for 'using var conn = Connection;'
+            return await Connection.QueryFirstOrDefaultAsync<AccountingPeriod>(
                 sql,
                 new { Date = date.Date });
         }
+
+        // ---------- VALIDATION: ensure transaction date is in an open period ----------
+
+        public async Task EnsureOpenAsync(DateTime transDate)
+        {
+            var period = await GetByDateAsync(transDate);
+
+            if (period == null)
+            {
+                throw new InvalidOperationException(
+                    $"No accounting period defined for date {transDate:dd-MMM-yyyy}. " +
+                    "Please create/open the period first.");
+            }
+
+            if (period.IsLocked)
+            {
+                // fallback: if PeriodName null, build from StartDate
+                var name = string.IsNullOrWhiteSpace(period.PeriodName)
+                    ? period.StartDate.ToString("MMM yyyy")
+                    : period.PeriodName;
+
+                throw new InvalidOperationException(
+                    $"Accounting period '{name}' is locked. " +
+                    "You cannot post this transaction to that period.");
+            }
+
+            // reached here => OK to post
+        }
     }
 }
-
-
