@@ -1,4 +1,4 @@
-using FinanceApi.Data;
+﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.Models;
@@ -7,13 +7,12 @@ using FinanceApi.Services;
 using FluentScheduler;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
-using System.Data;
 using System.Text;
 using UnityWorksERP.Finance.AR;
+using System.Data;
 
 var vuexyPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "dist", "vuexy");
 var plainWwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
@@ -26,14 +25,11 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 // ===================== Services =====================
 
-// EF Core
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// Dapper connection factory
 builder.Services.AddScoped<IDbConnectionFactory, SqlDbConnectionFactory>();
 
-// Convention scan
 builder.Services.Scan(scan => scan
     .FromAssemblyOf<ICustomerService>()
         .AddClasses(c => c.Where(t => t.Name.EndsWith("Repository")))
@@ -44,7 +40,6 @@ builder.Services.Scan(scan => scan
             .WithScopedLifetime()
 );
 
-// Explicit registrations (your existing)
 builder.Services.AddScoped<IPurchaseGoodReceiptRepository, PurchaseGoodReceiptRepository>();
 builder.Services.AddScoped<ICatagoryRepository, CatagoryRepository>();
 builder.Services.AddScoped<IcostingMethodRepository, CostingMethodRepository>();
@@ -79,7 +74,6 @@ builder.Services.AddScoped<IPurchaseAlertService, PurchaseAlertService>();
 builder.Services.AddScoped<IArReceiptRepository, ArReceiptRepository>();
 builder.Services.AddScoped<IArReceiptService, ArReceiptService>();
 
-// (Optional) Explicit Journal DI � scan already covers it, but safe to add:
 builder.Services.AddScoped<IJournalRepository, JournalRepository>();
 builder.Services.AddScoped<IJournalService, JournalService>();
 
@@ -94,14 +88,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(name: CorsPolicy, policy =>
     {
-        policy
-            .AllowAnyOrigin()
-            .AllowAnyHeader()
-            .AllowAnyMethod();
+        policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
     });
 });
 
-// JWT (your existing config)
+// JWT
 var jwtSecret = builder.Configuration["Jwt:Secret"];
 if (!string.IsNullOrWhiteSpace(jwtSecret))
 {
@@ -134,7 +125,6 @@ if (!string.IsNullOrEmpty(port))
     builder.WebHost.UseUrls($"http://*:{port}");
 }
 
-// Local listen
 builder.WebHost.ConfigureKestrel(o => o.ListenAnyIP(7182));
 
 var app = builder.Build();
@@ -162,21 +152,28 @@ if (resolvedWebRoot == vuexyPath && Directory.Exists(plainWwwroot))
 app.UseRouting();
 app.UseCors(CorsPolicy);
 app.UseAuthentication();
-// app.UseAuthorization(); // enable if using [Authorize]
+// app.UseAuthorization();
 
 app.MapControllers();
 app.MapFallbackToFile("index.html");
 
-// ===================== FluentScheduler � Recurring Journal Job =====================
-
-JobManager.Initialize();
+// ===================== FluentScheduler – Recurring Journal Job =====================
 
 var scopeFactory = app.Services.GetRequiredService<IServiceScopeFactory>();
 
-JobManager.AddJob(
-    () =>
+// Registry-based configuration – this is what was missing before
+JobManager.Initialize(new RecurringJournalRegistry(scopeFactory));
+
+app.Run();
+
+
+// ===================== Registry class =====================
+
+public class RecurringJournalRegistry : Registry
+{
+    public RecurringJournalRegistry(IServiceScopeFactory scopeFactory)
     {
-        Task.Run(async () =>
+        Schedule(() =>
         {
             using var scope = scopeFactory.CreateScope();
             var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
@@ -184,21 +181,25 @@ JobManager.AddJob(
 
             try
             {
-                // Default ERP timezone (can change later)
                 var defaultTimezone = "Asia/Kolkata";
                 var tz = TimeZoneInfo.FindSystemTimeZoneById(defaultTimezone);
                 var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, tz);
 
-                await journalService.ProcessRecurringAsync(nowLocal, defaultTimezone);
+                logger.LogInformation("⏱ Recurring journal job fired at {time} ({tz})", nowLocal, defaultTimezone);
+
+                // block the async call so scheduler waits for it
+                var processed = journalService
+                    .ProcessRecurringAsync(nowLocal, defaultTimezone)
+                    .GetAwaiter()
+                    .GetResult();
+
+                logger.LogInformation("✅ Recurring journal job processed {count} template(s)", processed);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error in recurring Journal job");
             }
-        });
-    },
-    s => s.ToRunEvery(1).Minutes()   // TEST: every 1 minute
-    // PROD: s => s.ToRunEvery(1).Days().At(23, 0)
-);
 
-app.Run();
+        }).ToRunEvery(1).Days();  // run every 1 minute
+    }
+}

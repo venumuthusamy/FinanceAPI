@@ -1,5 +1,4 @@
-﻿// InterfaceService/IJournalService.cs
-using FinanceApi.ModelDTO;
+﻿using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.InterfaceService
@@ -11,9 +10,7 @@ namespace FinanceApi.InterfaceService
         Task<int> CreateAsync(ManualJournalCreateDto dto);
         Task<ManualJournalDto?> GetById(int id);
 
-        // now takes local "now" and timezone
         Task<int> ProcessRecurringAsync(DateTime nowLocal, string timezone);
-
 
         Task<int> MarkAsPostedAsync(IEnumerable<int> ids);
     }

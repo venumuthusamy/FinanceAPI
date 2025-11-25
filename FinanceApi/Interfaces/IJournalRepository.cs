@@ -11,8 +11,8 @@ namespace FinanceApi.Interfaces
 
         Task<ManualJournalDto?> GetByIdAsync(int id);
 
-        Task<int> ProcessRecurringAsync(DateTime processDate);
-
+        // expects UTC time
+        Task<int> ProcessRecurringAsync(DateTime processUtc);
 
         Task<int> MarkAsPostedAsync(IEnumerable<int> ids);
     }
