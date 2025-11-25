@@ -1,17 +1,21 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
-using System.ComponentModel;
 
 namespace FinanceApi.Services
 {
     public class PurchaseGoodReceiptService : IPurchaseGoodReceiptService
     {
         private readonly IPurchaseGoodReceiptRepository _repository;
+        private readonly IPeriodCloseService _periodClose;   // 🔸 NEW
 
-        public PurchaseGoodReceiptService(IPurchaseGoodReceiptRepository repository)
+        public PurchaseGoodReceiptService(
+            IPurchaseGoodReceiptRepository repository,
+            IPeriodCloseService periodClose)                 // 🔸 NEW
         {
             _repository = repository;
+            _periodClose = periodClose;
         }
 
         public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllAsync()
@@ -21,8 +25,10 @@ namespace FinanceApi.Services
 
         public async Task<int> CreateAsync(PurchaseGoodReceiptItems goodReceiptItemsDTO)
         {
-            return await _repository.CreateAsync(goodReceiptItemsDTO);
+            // 🔒 period lock check based on GRN ReceptionDate
+            await _periodClose.EnsureOpenAsync(goodReceiptItemsDTO.ReceptionDate);
 
+            return await _repository.CreateAsync(goodReceiptItemsDTO);
         }
 
         public async Task<PurchaseGoodReceiptItemsDTO> GetById(long id)
@@ -30,22 +36,24 @@ namespace FinanceApi.Services
             return await _repository.GetByIdAsync(id);
         }
 
-
         public async Task<IEnumerable<PurchaseGoodReceiptItemsViewInfo>> GetAllGRNDetailsAsync()
         {
             return await _repository.GetAllDetailsAsync();
         }
 
-        public Task UpdateAsync(PurchaseGoodReceiptItems purchaseGoodReceipt)
+        public async Task UpdateAsync(PurchaseGoodReceiptItems purchaseGoodReceipt)
         {
-            return _repository.UpdateAsync(purchaseGoodReceipt);
-        }
+            // 🔒 also protect update (if date changes or backdated changes not allowed)
+            await _periodClose.EnsureOpenAsync(purchaseGoodReceipt.ReceptionDate);
 
+            await _repository.UpdateAsync(purchaseGoodReceipt);
+        }
 
         public async Task DeleteAsync(int id)
         {
             await _repository.DeactivateAsync(id);
         }
+
         public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllGRNByPoId()
         {
             return await _repository.GetAllGRNByPoId();
@@ -58,6 +66,10 @@ namespace FinanceApi.Services
 
             if (string.IsNullOrWhiteSpace(request.ItemCode))
                 throw new ArgumentException("ItemCode cannot be empty.");
+
+            // GRN already posted, so இங்க period check வேண்டாம்னு நினைச்சா comment பண்ணலாம்.
+            // Example: use a GRN date field inside request if you want:
+            // await _periodClose.EnsureOpenAsync(request.GrnDate);
 
             await _repository.ApplyGrnAndUpdateSalesOrderAsync(
                 request.ItemCode,

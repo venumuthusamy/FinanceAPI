@@ -34,7 +34,7 @@ namespace FinanceApi.Controllers
         [HttpPost("lock")]
         public async Task<IActionResult> SetLock([FromBody] SetLockRequest req)
         {
-            // TODO: userId பயனர் tokenலிருந்து எடுத்துக்கொள்ளலாம்
+            
             int userId = 1;
             var status = await _service.SetLockAsync(req.PeriodId, req.Lock, userId);
             return Ok(status);

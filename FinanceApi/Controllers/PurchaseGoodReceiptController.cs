@@ -42,13 +42,39 @@ namespace FinanceApi.Controllers
         }
 
         [HttpPost("insertGRN")]
-        public async Task<ActionResult> insertGRN(PurchaseGoodReceiptItems purchaseGoodReceiptItems)
+        public async Task<ActionResult> insertGRN(
+     [FromBody] PurchaseGoodReceiptItems purchaseGoodReceiptItems)
         {
-            var id = await _service.CreateAsync(purchaseGoodReceiptItems);
-            ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt created successfully", id);
-            return Ok(data);
-
+            try
+            {
+                var id = await _service.CreateAsync(purchaseGoodReceiptItems);
+                ResponseResult data = new ResponseResult(true, "PurchaseGoodReceipt created successfully", id);
+                return Ok(data);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Period locked / validation problems
+                ResponseResult data = new ResponseResult(false, ex.Message, null);
+                return Ok(data);
+            }
         }
+
+        [HttpPut("update")]
+        public async Task<IActionResult> Update([FromBody] PurchaseGoodReceiptItems purchaseGoodReceipt)
+        {
+            try
+            {
+                await _service.UpdateAsync(purchaseGoodReceipt);
+                ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
+                return Ok(data);
+            }
+            catch (InvalidOperationException ex)
+            {
+                ResponseResult data = new ResponseResult(false, ex.Message, null);
+                return Ok(data);
+            }
+        }
+
 
 
 
@@ -62,13 +88,13 @@ namespace FinanceApi.Controllers
 
 
 
-        [HttpPut("update")]
-        public async Task<IActionResult> Update(PurchaseGoodReceiptItems purchaseGoodReceipt)
-        {
-            await _service.UpdateAsync(purchaseGoodReceipt);
-            ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
-            return Ok(data);
-        }
+        //[HttpPut("update")]
+        //public async Task<IActionResult> Update(PurchaseGoodReceiptItems purchaseGoodReceipt)
+        //{
+        //    await _service.UpdateAsync(purchaseGoodReceipt);
+        //    ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
+        //    return Ok(data);
+        //}
 
 
         [HttpDelete("delete/{id}")]
