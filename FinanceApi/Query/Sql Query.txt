@@ -899,7 +899,7 @@ LEFT JOIN Cust cu ON cu.InvoiceId = si.Id
 WHERE si.IsActive = 1;
 GO
 
-CREATE OR ALTER VIEW dbo.vwArAgingBase
+CREATE   VIEW [dbo].[vwArAgingBase]
 AS
 WITH Inv AS (
     SELECT
@@ -984,23 +984,29 @@ WHERE si.IsActive = 1
        - ISNULL(cn.CreditAmount,0)) > 0;
 GO
 
-
-CREATE OR ALTER PROCEDURE dbo.sp_ArAgingSummary
+CREATE   PROCEDURE [dbo].[sp_ArAgingSummary]
 (
-    @AsOfDate DATE = NULL
+    @FromDate DATE = NULL,
+    @ToDate   DATE = NULL
 )
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    IF @AsOfDate IS NULL
-        SET @AsOfDate = CAST(GETDATE() AS DATE);
+    IF @ToDate IS NULL
+        SET @ToDate = CAST(GETDATE() AS DATE);
+
+    -- if FromDate not given, show from the beginning
+    IF @FromDate IS NULL
+        SET @FromDate = '1900-01-01';
 
     ;WITH Base AS (
         SELECT
             b.*,
-            AgeRaw = DATEDIFF(DAY, b.DueDate, @AsOfDate)
+            AgeRaw = DATEDIFF(DAY, b.InvoiceDate, @ToDate)   -- 🔹 based on INVOICE DATE
         FROM dbo.vwArAgingBase b
+        WHERE b.InvoiceDate >= @FromDate
+          AND b.InvoiceDate <= @ToDate
     ),
     Norm AS (
         SELECT
@@ -1009,8 +1015,8 @@ BEGIN
                 CASE WHEN AgeRaw < 0 THEN 0 ELSE AgeRaw END,
             BucketName =
                 CASE 
-                    WHEN AgeRaw < 0              THEN '0-30'  -- not due yet
-                    WHEN AgeRaw BETWEEN 0 AND 30 THEN '0-30'
+                    WHEN AgeRaw < 0               THEN '0-30'   -- future invoice (rare)
+                    WHEN AgeRaw BETWEEN 0  AND 30 THEN '0-30'
                     WHEN AgeRaw BETWEEN 31 AND 60 THEN '31-60'
                     WHEN AgeRaw BETWEEN 61 AND 90 THEN '61-90'
                     ELSE '90+'
@@ -1020,8 +1026,12 @@ BEGIN
     SELECT
         CustomerId,
         CustomerName,
-        InvoiceCount      = COUNT(*),
-        TotalOutstanding  = SUM(Balance),
+        InvoiceCount          = COUNT(*),
+
+        TotalOriginalAmount   = SUM(OriginalAmount),
+        TotalPaidAmount       = SUM(PaidAmount),
+        TotalCreditAmount     = SUM(CreditAmount),
+        TotalOutstanding      = SUM(Balance),
 
         Bucket0_30  = SUM(CASE WHEN BucketName = '0-30' THEN Balance ELSE 0 END),
         Bucket31_60 = SUM(CASE WHEN BucketName = '31-60' THEN Balance ELSE 0 END),
@@ -1032,6 +1042,7 @@ BEGIN
     ORDER BY CustomerName;
 END
 GO
+
 
 
 
