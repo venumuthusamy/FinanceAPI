@@ -1,8 +1,9 @@
 ﻿using FinanceApi.Data;
+using FinanceApi.ModelDTO;
+using Dapper;
+using System.Data;
 using FinanceApi.Repositories;
 using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
-using System.Data;
-using Dapper;
 
 public class ArAgingRepository : DynamicRepository, IArAgingRepository
 {
@@ -11,23 +12,28 @@ public class ArAgingRepository : DynamicRepository, IArAgingRepository
     {
     }
 
-    public async Task<IEnumerable<ArAgingSummaryDto>> GetSummaryAsync(DateTime asOfDate)
+    public async Task<IEnumerable<ArAgingSummaryDto>> GetSummaryAsync(DateTime fromDate, DateTime toDate)
     {
-        var param = new { AsOfDate = asOfDate };
+        var param = new { FromDate = fromDate, ToDate = toDate };
         return await Connection.QueryAsync<ArAgingSummaryDto>(
             "sp_ArAgingSummary",
             param,
             commandType: CommandType.StoredProcedure);
     }
 
-    public async Task<IEnumerable<ArAgingInvoiceDto>> GetCustomerInvoicesAsync(int customerId, DateTime asOfDate)
+    public async Task<IEnumerable<ArAgingInvoiceDto>> GetCustomerInvoicesAsync(
+        int customerId,
+        DateTime fromDate,
+        DateTime toDate)
     {
         const string sql = @"
 WITH Base AS (
     SELECT
         b.*,
-        AgeRaw = DATEDIFF(DAY, b.DueDate, @AsOfDate)
+        AgeRaw = DATEDIFF(DAY, b.InvoiceDate, @ToDate)
     FROM dbo.vwArAgingBase b
+    WHERE b.InvoiceDate >= @FromDate
+      AND b.InvoiceDate <= @ToDate
 ),
 Norm AS (
     SELECT
@@ -36,8 +42,8 @@ Norm AS (
             CASE WHEN AgeRaw < 0 THEN 0 ELSE AgeRaw END,
         BucketName =
             CASE 
-                WHEN AgeRaw < 0              THEN '0-30'
-                WHEN AgeRaw BETWEEN 0 AND 30 THEN '0-30'
+                WHEN AgeRaw < 0               THEN '0-30'
+                WHEN AgeRaw BETWEEN 0  AND 30 THEN '0-30'
                 WHEN AgeRaw BETWEEN 31 AND 60 THEN '31-60'
                 WHEN AgeRaw BETWEEN 61 AND 90 THEN '61-90'
                 ELSE '90+'
@@ -59,11 +65,11 @@ SELECT
     Balance
 FROM Norm
 WHERE CustomerId = @CustomerId
-ORDER BY DueDate;
+ORDER BY InvoiceDate;
 ";
 
         return await Connection.QueryAsync<ArAgingInvoiceDto>(
             sql,
-            new { CustomerId = customerId, AsOfDate = asOfDate });
+            new { CustomerId = customerId, FromDate = fromDate, ToDate = toDate });
     }
 }
