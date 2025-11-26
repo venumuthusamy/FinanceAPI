@@ -60,6 +60,7 @@ WHERE Id IN @Ids
 INSERT INTO dbo.ManualJournal
 (
     AccountId,
+    ItemId,              -- 👈 NEW
     JournalDate,
     Type,
     CustomerId,
@@ -84,7 +85,8 @@ INSERT INTO dbo.ManualJournal
 VALUES
 (
     @AccountId,
-    @JournalDateUtc,         -- UTC
+    @ItemId,             -- 👈 NEW
+    @JournalDateUtc,     -- UTC
     @Type,
     @CustomerId,
     @SupplierId,
@@ -123,6 +125,7 @@ SELECT
     mj.Id,
     mj.JournalNo,
     mj.AccountId,
+    mj.ItemId,                    -- 👈 NEW
     coa.HeadName AS AccountName,
     mj.JournalDate,
     mj.Type,
@@ -160,6 +163,7 @@ SELECT
     mj.Id,
     mj.JournalNo,
     mj.AccountId,
+    mj.ItemId,                    -- 👈 NEW
     coa.HeadName AS AccountName,
     mj.JournalDate,
     mj.Type,
@@ -199,6 +203,7 @@ SELECT
     mj.Id,
     mj.JournalNo,
     mj.AccountId,
+    mj.ItemId,                 -- 👈 NEW
     mj.JournalDate,
     mj.Type,
     mj.CustomerId,
@@ -226,6 +231,7 @@ WHERE mj.IsActive = 1
 INSERT INTO dbo.ManualJournal
 (
     AccountId,
+    ItemId,                    -- 👈 NEW
     JournalDate,
     Type,
     CustomerId,
@@ -250,6 +256,7 @@ INSERT INTO dbo.ManualJournal
 VALUES
 (
     @AccountId,
+    @ItemId,                   -- 👈 NEW
     @JournalDate,
     @Type,
     @CustomerId,
@@ -279,7 +286,6 @@ SET ProcessedCount = @ProcessedCount,
     UpdatedDate    = SYSUTCDATETIME()
 WHERE Id = @Id;";
 
-            // ✅ use ONE connection and open it manually (sync Open, not OpenAsync)
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
                 conn.Open();
@@ -288,7 +294,6 @@ WHERE Id = @Id;";
 
             try
             {
-                // read templates inside the same connection/transaction
                 var templates = (await conn.QueryAsync<TemplateRow>(
                     selectSql,
                     new { NowUtc = processUtc },
@@ -332,6 +337,7 @@ WHERE Id = @Id;";
                     var newEntryParams = new
                     {
                         AccountId = t.AccountId,
+                        ItemId = t.ItemId,        // 👈 NEW
                         JournalDate = t.NextRunDate!.Value, // UTC
                         Type = t.Type,
                         CustomerId = t.CustomerId,
@@ -383,8 +389,6 @@ WHERE Id = @Id;";
             }
         }
 
-
-
         #endregion
 
         #region Helper
@@ -393,6 +397,7 @@ WHERE Id = @Id;";
         {
             public int Id { get; set; }
             public int AccountId { get; set; }
+            public int? ItemId { get; set; }      // 👈 NEW
             public string? Type { get; set; }
             public int? CustomerId { get; set; }
             public int? SupplierId { get; set; }

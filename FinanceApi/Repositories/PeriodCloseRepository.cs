@@ -87,6 +87,12 @@ ORDER BY StartDate;";
 
         public async Task EnsureOpenAsync(DateTime transDate)
         {
+            // Automatically adjust date if it's before SQL Server datetime min
+            if (transDate < (DateTime)System.Data.SqlTypes.SqlDateTime.MinValue)
+            {
+                transDate = System.Data.SqlTypes.SqlDateTime.MinValue.Value;
+            }
+
             var period = await GetByDateAsync(transDate);
 
             if (period == null)
@@ -98,7 +104,6 @@ ORDER BY StartDate;";
 
             if (period.IsLocked)
             {
-                // fallback: if PeriodName null, build from StartDate
                 var name = string.IsNullOrWhiteSpace(period.PeriodName)
                     ? period.StartDate.ToString("MMM yyyy")
                     : period.PeriodName;
@@ -107,8 +112,9 @@ ORDER BY StartDate;";
                     $"Accounting period '{name}' is locked. " +
                     "You cannot post this transaction to that period.");
             }
-
-            // reached here => OK to post
         }
+
+
+
     }
 }

@@ -15,6 +15,7 @@
         public string? CustomerName { get; set; }
         public int? SupplierId { get; set; }
         public string? SupplierName { get; set; }
+        public int? ItemId { get; set; }
 
         public string? Description { get; set; }
         public decimal Debit { get; set; }
