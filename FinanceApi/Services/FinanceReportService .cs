@@ -18,5 +18,11 @@ namespace FinanceApi.Services
         {
             return _repo.GetTrialBalanceAsync(dto);
         }
+
+        public Task<IEnumerable<TrialBalanceDetailDTO>> GetTrialBalanceDetailAsync(
+          TrialBalanceDetailRequestDTO dto)
+        {
+            return _repo.GetTrialBalanceDetailAsync(dto);
+        }
     }
 }

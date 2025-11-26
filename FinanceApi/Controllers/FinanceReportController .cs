@@ -1,6 +1,7 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
+using FinanceApi.ModelDTO.TB;
 using Microsoft.AspNetCore.Mvc;
 
 namespace FinanceApi.Controllers
@@ -22,6 +23,15 @@ namespace FinanceApi.Controllers
             var data = await _service.GetTrialBalanceAsync(dto);
             var result = new ResponseResult(true, "Success", data);
             return Ok(result);
+        }
+
+        // 🔹 new: TB account detail
+        [HttpPost("trial-balance-detail")]
+        public async Task<IActionResult> TrialBalanceDetail(
+            [FromBody] TrialBalanceDetailRequestDTO dto)
+        {
+            var data = await _service.GetTrialBalanceDetailAsync(dto);
+            return Ok(new { data });
         }
     }
 }
