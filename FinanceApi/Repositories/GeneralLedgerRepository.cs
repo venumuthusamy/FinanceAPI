@@ -20,7 +20,6 @@ namespace FinanceApi.Repositories
 -- A) BUILD COA TREE TO GET ROOT HEAD TYPE
 ------------------------------------------------------------
 CoaRoot AS (
-    -- Anchor: top-level heads
     SELECT
         c.Id,
         c.HeadCode,
@@ -35,7 +34,6 @@ CoaRoot AS (
 
     UNION ALL
 
-    -- Recursive: children inherit root type from parent
     SELECT
         c.Id,
         c.HeadCode,
@@ -69,24 +67,33 @@ ApHead AS (
 ------------------------------------------------------------
 -- 1) AR CONTROL (Invoices - Receipts - Credit Notes)
 ------------------------------------------------------------
+-- Open invoices (same as AR screen)
 ArInv AS (
-    -- AR INVOICES TOTAL = same as AR screen (from view)
     SELECT
         InvTotal = ISNULL(SUM(TRY_CONVERT(decimal(18,2), v.Amount)), 0)
     FROM dbo.vwSalesInvoiceOpenForReceipt v
 ),
+
+-- Receipts: allocated amount
 ArRec AS (
-    -- AR RECEIPTS TOTAL
     SELECT
-        RecTotal = ISNULL(SUM(ISNULL(r.AmountReceived, 0)), 0)
-    FROM dbo.ArReceipt r
+        RecTotal = ISNULL(SUM(ISNULL(ra.AllocatedAmount, 0)), 0)
+    FROM dbo.ArReceiptAllocation ra
+    WHERE ra.IsActive = 1
 ),
+
+-- Credit notes: customer AR side (LineNet + Tax)
 ArCn AS (
-    -- AR CREDIT NOTES TOTAL (header)
     SELECT
-        CnTotal = ISNULL(SUM(TRY_CONVERT(decimal(18,2), cn.Subtotal)), 0)
-    FROM dbo.CreditNote cn
-    WHERE cn.IsActive = 1
+        CnTotal = ISNULL(SUM(
+                     ISNULL(TRY_CONVERT(decimal(18,2), cnl.LineNet),0) +
+                     ISNULL(TRY_CONVERT(decimal(18,2), cnl.Tax    ),0)
+                 ),0)
+    FROM dbo.CreditNoteLine cnl
+    INNER JOIN dbo.CreditNote cn
+        ON cn.Id = cnl.CreditNoteId
+    WHERE cn.IsActive  = 1
+      AND cnl.IsActive = 1
 ),
 
 ------------------------------------------------------------
@@ -97,7 +104,7 @@ ApInv AS (
         InvTotal = ISNULL(SUM(ISNULL(si.Amount, 0) + ISNULL(si.Tax, 0)), 0)
     FROM dbo.SupplierInvoicePin si
     WHERE si.IsActive = 1
-      AND si.Status   = 3          -- posted PIN
+      AND si.Status   = 3
 ),
 ApPay AS (
     SELECT
@@ -116,15 +123,16 @@ ApDn AS (
         ),0)
     FROM dbo.SupplierDebitNote dn
     WHERE dn.IsActive = 1
-      AND dn.Status   = 2          -- posted DN
+      AND dn.Status   = 2
 ),
 
 ------------------------------------------------------------
--- 3) NORMAL GL LINES (MJ + SI + CN + PIN-from-JSON)
+-- 3) GL LINES
 ------------------------------------------------------------
 GlLines AS (
+
     --------------------------------------------------------
-    -- A) Manual Journal (ONLY non-recurring, posted rows)
+    -- A) Manual Journal
     --------------------------------------------------------
     SELECT
         mj.JournalDate                                    AS TransDate,
@@ -147,7 +155,103 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- B) Sales Invoice lines  (item’s COA – asset gets credit)
+    -- B) Sales Invoice – CUSTOMER AR SIDE (Dr Customer)
+    --------------------------------------------------------
+    SELECT
+        si.InvoiceDate                                    AS TransDate,
+        'SI-AR'                                           AS SourceType,
+        si.Id                                             AS SourceId,
+        si.InvoiceNo                                      AS SourceNo,
+        'Invoice to ' + ISNULL(c.CustomerName,'')         AS Description,
+        c.BudgetLineId                                    AS HeadId,  -- CUSTOMER COA (e.g. Gowtham)
+        coa.HeadCode,
+        coa.HeadName,
+        ISNULL(TRY_CONVERT(decimal(18,2), si.Total), 0)   AS Debit,
+        0                                                 AS Credit
+    FROM dbo.SalesInvoice si
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = si.SoId
+    INNER JOIN dbo.Customer c
+        ON c.Id = so.CustomerId
+       AND c.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = c.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE si.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- C) AR Receipt Allocation – CUSTOMER AR SIDE (Cr Customer)
+    --    Customer from ArReceipt.CustomerId
+    --------------------------------------------------------
+    SELECT
+        r.ReceiptDate                                     AS TransDate,
+        'AR-REC'                                          AS SourceType,
+        r.Id                                              AS SourceId,
+        r.ReceiptNo                                       AS SourceNo,
+        'Receipt from ' + ISNULL(c.CustomerName,'')       AS Description,
+        c.BudgetLineId                                    AS HeadId,  -- CUSTOMER COA
+        coa.HeadCode,
+        coa.HeadName,
+        0                                                 AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), ra.AllocatedAmount),0) AS Credit
+    FROM dbo.ArReceiptAllocation ra
+    INNER JOIN dbo.ArReceipt r
+        ON r.Id = ra.ReceiptId
+       AND r.IsActive = 1
+    INNER JOIN dbo.Customer c
+        ON c.Id = r.CustomerId
+       AND c.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = c.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE ra.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- D) Credit Note – CUSTOMER AR SIDE (Cr Customer)
+    --    Same data as ArCn (LineNet + Tax)
+    --------------------------------------------------------
+    SELECT
+        cn.CreditNoteDate                                 AS TransDate,
+        'CN-AR'                                           AS SourceType,
+        cn.Id                                             AS SourceId,
+        cn.CreditNoteNo                                   AS SourceNo,
+        'Credit Note to ' + ISNULL(
+            COALESCE(c1.CustomerName, c2.CustomerName),''
+        )                                                 AS Description,
+        COALESCE(c1.BudgetLineId, c2.BudgetLineId)        AS HeadId,  -- CUSTOMER COA
+        coa.HeadCode,
+        coa.HeadName,
+        0                                                 AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), cnl.LineNet),0) +
+        ISNULL(TRY_CONVERT(decimal(18,2), cnl.Tax    ),0) AS Credit
+    FROM dbo.CreditNoteLine cnl
+    INNER JOIN dbo.CreditNote cn
+        ON cn.Id = cnl.CreditNoteId
+       AND cn.IsActive  = 1
+       AND cnl.IsActive = 1
+    LEFT JOIN dbo.Customer c1              -- direct customer on CN
+        ON c1.Id = cn.CustomerId
+       AND c1.IsActive = 1
+    LEFT JOIN dbo.SalesInvoice si_cn       -- fallback via SI -> SO -> Customer
+        ON si_cn.Id = cn.SiId
+       AND si_cn.IsActive = 1
+    LEFT JOIN dbo.SalesOrder so_cn
+        ON so_cn.Id = si_cn.SoId
+    LEFT JOIN dbo.Customer c2
+        ON c2.Id = so_cn.CustomerId
+       AND c2.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = COALESCE(c1.BudgetLineId, c2.BudgetLineId)
+       AND coa.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- E) Sales Invoice lines  (item P&L side)
     --------------------------------------------------------
     SELECT
         si.InvoiceDate                                    AS TransDate,
@@ -155,7 +259,7 @@ GlLines AS (
         sil.Id                                            AS SourceId,
         si.InvoiceNo                                      AS SourceNo,
         ISNULL(sil.Description, '')                       AS Description,
-        coa.Id                                            AS HeadId,
+        i.BudgetLineId                                    AS HeadId,  -- item income/COGS
         coa.HeadCode,
         coa.HeadName,
         0                                                 AS Debit,
@@ -169,13 +273,13 @@ GlLines AS (
         ON i.Id = sil.ItemId
        AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = i.BudgetLineId   -- same COA as purchase (asset head)
+        ON coa.Id = i.BudgetLineId
        AND coa.IsActive = 1
 
     UNION ALL
 
     --------------------------------------------------------
-    -- C) Credit Note lines  (P&L side)
+    -- F) Credit Note lines  (item P&L side)
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate                                 AS TransDate,
@@ -183,7 +287,7 @@ GlLines AS (
         cnl.Id                                            AS SourceId,
         cn.CreditNoteNo                                   AS SourceNo,
         'Credit Note for ' + ISNULL(cn.SiNumber,'')       AS Description,
-        coa.Id                                            AS HeadId,
+        i.BudgetLineId                                    AS HeadId,
         coa.HeadCode,
         coa.HeadName,
         ISNULL(TRY_CONVERT(decimal(18,2), cnl.LineNet ),0) +
@@ -192,8 +296,8 @@ GlLines AS (
     FROM dbo.CreditNoteLine cnl
     INNER JOIN dbo.CreditNote cn
         ON cn.Id = cnl.CreditNoteId
-       AND cn.IsActive = 1
-       AND cn.Status   = 3
+       AND cn.IsActive  = 1
+       AND cnl.IsActive = 1
     INNER JOIN dbo.Item i
         ON i.Id = cnl.ItemId
        AND i.IsActive = 1
@@ -204,7 +308,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- D) Supplier Invoice PIN lines from JSON (Asset/Expense)
+    -- G) Supplier Invoice PIN lines (asset/expense side)
     --------------------------------------------------------
     SELECT
         pin.InvoiceDate                                   AS TransDate,
@@ -212,7 +316,7 @@ GlLines AS (
         pin.Id                                            AS SourceId,
         pin.InvoiceNo                                     AS SourceNo,
         'PIN line for item ' + j.item                     AS Description,
-        coa.Id                                            AS HeadId,
+        i.BudgetLineId                                    AS HeadId,
         coa.HeadCode,
         coa.HeadName,
         ISNULL(TRY_CONVERT(decimal(18,2), j.lineTotal),0) AS Debit,
@@ -235,6 +339,90 @@ GlLines AS (
        AND coa.IsActive = 1
     WHERE pin.IsActive = 1
       AND pin.Status   = 3
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- H) Supplier Invoice PIN – AP side (Supplier head)
+    --------------------------------------------------------
+    SELECT
+        pin.InvoiceDate                                   AS TransDate,
+        'PIN-AP'                                          AS SourceType,
+        pin.Id                                            AS SourceId,
+        pin.InvoiceNo                                     AS SourceNo,
+        'AP for supplier ' + ISNULL(s.Name,'')            AS Description,
+        s.BudgetLineId                                    AS HeadId,
+        coa.HeadCode,
+        coa.HeadName,
+        0                                                 AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), pin.Amount),0) +
+        ISNULL(TRY_CONVERT(decimal(18,2), pin.Tax   ),0)  AS Credit
+    FROM dbo.SupplierInvoicePin pin
+    INNER JOIN dbo.Suppliers s
+        ON s.Id = pin.SupplierId
+       AND s.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = s.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE pin.IsActive = 1
+      AND pin.Status   = 3
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- I) Supplier Debit Note – AP side (Supplier head)
+    --------------------------------------------------------
+    SELECT
+        dn.NoteDate                                       AS TransDate,
+        'DN-AP'                                           AS SourceType,
+        dn.Id                                             AS SourceId,
+        dn.DebitNoteNo                                    AS SourceNo,
+        'Supplier DN ' + ISNULL(s.Name,'')                AS Description,
+        s.BudgetLineId                                    AS HeadId,
+        coa.HeadCode,
+        coa.HeadName,
+        ISNULL(
+            TRY_CONVERT(decimal(18,2),
+                CASE 
+                    WHEN dn.Amount < 0 THEN -dn.Amount
+                    ELSE dn.Amount
+                END
+            ),0)                                          AS Debit,
+        0                                                 AS Credit
+    FROM dbo.SupplierDebitNote dn
+    INNER JOIN dbo.Suppliers s
+        ON s.Id = dn.SupplierId
+       AND s.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = s.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE dn.IsActive = 1
+      AND dn.Status   = 2
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- J) Supplier Payment – AP side (Supplier head)
+    --------------------------------------------------------
+    SELECT
+        sp.PaymentDate                                    AS TransDate,
+        'SP-AP'                                           AS SourceType,
+        sp.Id                                             AS SourceId,
+        sp.PaymentNo                                      AS SourceNo,
+        'Payment to supplier ' + ISNULL(s.Name,'')        AS Description,
+        s.BudgetLineId                                    AS HeadId,
+        coa.HeadCode,
+        coa.HeadName,
+        ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0)   AS Debit,
+        0                                                 AS Credit
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Suppliers s
+        ON s.Id = sp.SupplierId
+       AND s.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = s.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE sp.IsActive = 1
 ),
 
 ------------------------------------------------------------
@@ -246,7 +434,7 @@ Base AS (
         coa.HeadCode,
         coa.HeadName,
         coa.HeadType,
-        cr.RootHeadType,                 -- root type (A / L / I / E / etc.)
+        cr.RootHeadType,
         ISNULL(coa.ParentHead, 0) AS ParentHead,
         arH.ArHeadId,
         apH.ApHeadId,
@@ -319,36 +507,38 @@ SELECT
     HeadCode,
     HeadName,
     HeadType,
-    RootHeadType,      -- for debugging / UI filter
+    RootHeadType,
     ParentHead,
-    OpeningBalance,
+
+    -- OpeningBalance only for AR / AP control
+    CASE 
+        WHEN HeadId = ArHeadId OR HeadId = ApHeadId
+            THEN OpeningBalance
+        ELSE NULL
+    END AS OpeningBalance,
+
     DebitTotal  AS Debit,
     CreditTotal AS Credit,
+
     CASE 
         WHEN HeadId = ArHeadId THEN
-            -- AR: Invoices - (Receipts + Credit Notes)
-            OpeningBalance - CreditTotal
-
+            OpeningBalance - CreditTotal          -- AR = Inv - (Rec + CN)
         WHEN HeadId = ApHeadId THEN
-            -- AP: Invoices - (Payments + Debit Notes)
-            OpeningBalance - DebitTotal
-
+            OpeningBalance - DebitTotal           -- AP
         WHEN RootHeadType = 'A' THEN
-            -- ALL ASSET CHILDREN (Current Asset, Fixed Asset,
-            -- Computer & IT Equipment, Accessories & Peripherals, etc.)
-            -- show only Debit / Credit – NO balance.
-            NULL           -- change to 0 if you prefer 0
-
+            NULL                                  -- child assets – hide balance
         ELSE
             OpeningBalance + DebitTotal - CreditTotal
     END AS Balance
 FROM Base
 ORDER BY HeadCode
 OPTION (MAXRECURSION 100);
-
 ";
 
             return await Connection.QueryAsync<GeneralLedgerDTO>(query);
         }
+
+
+
     }
 }
