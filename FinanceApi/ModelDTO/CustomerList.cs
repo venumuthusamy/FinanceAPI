@@ -13,6 +13,8 @@
         public int CountryId { get; set; }
         public int LocationId { get; set; }
         public int CustomerGroupId { get; set; }
+        public int? BudgetLineId { get; set; }
+        
         public int PaymentTermId { get; set; }
 
         public string PaymentTermsName { get; set; }

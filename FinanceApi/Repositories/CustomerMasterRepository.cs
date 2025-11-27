@@ -42,6 +42,7 @@ namespace FinanceApi.Repositories
             PointOfContactPerson,
             Email,
             CustomerGroupId,
+            BudgetLineId,
             PaymentTermId,
             CreditAmount,
             KycId,
@@ -60,6 +61,7 @@ namespace FinanceApi.Repositories
             @PointOfContactPerson,
             @Email,
             @CustomerGroupId,
+            @BudgetLineId,
             @PaymentTermId,
             @CreditAmount,
             @KycId,
@@ -91,6 +93,7 @@ kyc.isApproved,kyc.Id as KycId
 from Customer as c
 inner join Kyc on kyc.Id = c.KycId
 inner join CustomerGroups as cg on cg.Id = c.CustomerGroupId
+inner join ChartOfAccount as ca on ca.Id = c.BudgetLineId
 inner join PaymentTerms as pt on pt.Id = c.PaymentTermId
 inner join Location as l on l.Id = c.LocationId
 inner join Country as cn on cn.Id = c.CountryId
@@ -107,7 +110,7 @@ where c.IsActive = 1 and kyc.isActive =1";
             const string query = @"
               select 
 c.Id as CustomerId,c.CustomerName,c.ContactNumber,c.PointOfContactPerson,c.Email,c.CreditAmount,c.ContactNumber,
-c.CountryId,c.LocationId,c.CustomerGroupId,c.PaymentTermId,
+c.CountryId,c.LocationId,c.CustomerGroupId,c.BudgetLineId,c.PaymentTermId,
 pt.PaymentTermsName,
 cg.Name as CustomerGroupName,
 cn.CountryName,
@@ -116,6 +119,7 @@ kyc.isApproved,kyc.ApprovedBy,kyc.DLImage,kyc.BSImage,kyc.UtilityBillImage,kyc.A
 from Customer as c
 inner join Kyc on kyc.Id = c.KycId
 inner join CustomerGroups as cg on cg.Id = c.CustomerGroupId
+inner join ChartOfAccount  as ca on ca.Id = c.BudgetLineId
 inner join PaymentTerms as pt on pt.Id = c.PaymentTermId
 inner join Location as l on l.Id = c.LocationId
 inner join Country as cn on cn.Id = c.CountryId
@@ -138,6 +142,7 @@ UPDATE Customer SET
     PointOfContactPerson = @PointOfContactPerson,
     Email = @Email,
     CustomerGroupId = @CustomerGroupId,
+    BudgetLineId = @BudgetLineId,
     PaymentTermId = @PaymentTermId,
     CreditAmount = @CreditAmount
 WHERE Id = @CustomerId;";

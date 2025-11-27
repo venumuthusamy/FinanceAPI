@@ -134,6 +134,7 @@ namespace FinanceApi.Controllers
                     PointOfContactPerson = req.PointOfContactPerson,
                     Email = req.Email,
                     CustomerGroupId = req.CustomerGroupId,
+                    BudgetLineId = req.BudgetLineId,
                     PaymentTermId = req.PaymentTermId,
                     CreditAmount = req.CreditAmount,
                     KycId = kycId, // 👈 here we pass the returned KYC Id
