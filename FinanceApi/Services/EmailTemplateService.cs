@@ -1,104 +1,87 @@
-﻿using Azure.Identity;
+﻿using System.Net;
+using System.Net.Mail;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.SendMail;
 
 namespace FinanceApi.Services
 {
     public class EmailTemplateService : IEmailService
     {
-        private readonly GraphServiceClient _graph;
-        private readonly string _senderUserIdOrEmail;
+        private readonly SmtpEmailSettings _settings;
 
-        public EmailTemplateService(IConfiguration config)
+        public EmailTemplateService(Microsoft.Extensions.Options.IOptions<SmtpEmailSettings> options)
         {
-            var tenantId = config["AzureAd:TenantId"];
-            var clientId = config["AzureAd:ClientId"];
-            var clientSecret = config["AzureAd:ClientSecret"];
-            _senderUserIdOrEmail = config["AzureAd:Sender"];   // e.g. accounts@fbh.com.sg
-
-            // v5 style: TokenCredential + scopes
-            var scopes = new[] { "https://graph.microsoft.com/.default" };
-
-            var options = new TokenCredentialOptions
-            {
-                AuthorityHost = AzureAuthorityHosts.AzurePublicCloud
-            };
-
-            var credential = new ClientSecretCredential(
-                tenantId,
-                clientId,
-                clientSecret,
-                options);
-
-            _graph = new GraphServiceClient(credential, scopes);
+            _settings = options.Value;
         }
 
-        public async Task<bool> SendInvoiceEmailAsync(EmailRequestDto dto, byte[] pdfBytes)
+        public async Task<EmailResultDto> SendInvoiceEmailAsync(EmailRequestDto dto, byte[]? pdfBytes)
         {
-            var message = new Message
+            try
             {
-                Subject = dto.Subject,
-                Body = new ItemBody
+                if (string.IsNullOrWhiteSpace(dto.ToEmail))
+                    return new EmailResultDto { Success = false, Message = "ToEmail is required" };
+
+                string fromEmail =
+                    !string.IsNullOrWhiteSpace(dto.FromEmail)
+                        ? dto.FromEmail
+                        : (!string.IsNullOrWhiteSpace(_settings.From)
+                            ? _settings.From
+                            : _settings.SmtpUser);
+
+                using var message = new MailMessage();
+                message.From = new MailAddress(fromEmail, dto.FromName ?? string.Empty);
+                message.To.Add(new MailAddress(dto.ToEmail, dto.ToName ?? string.Empty));
+
+                message.Subject = string.IsNullOrWhiteSpace(dto.Subject)
+                    ? "Invoice"
+                    : dto.Subject;
+
+                message.Body = string.IsNullOrWhiteSpace(dto.BodyHtml)
+                    ? "<p>Please find attached invoice.</p>"
+                    : dto.BodyHtml;
+
+                message.IsBodyHtml = true;
+
+                // ✅ PDF attachment
+                if (pdfBytes != null && pdfBytes.Length > 0)
                 {
-                    ContentType = BodyType.Text,
-                    Content = dto.Body
-                },
-                ToRecipients = new List<Recipient>
-                {
-                    new Recipient
-                    {
-                        EmailAddress = new EmailAddress
-                        {
-                            Address = dto.ToEmail
-                        }
-                    }
+                    string fileName = string.IsNullOrWhiteSpace(dto.FileName)
+                        ? "Invoice.pdf"
+                        : dto.FileName;
+
+                    var stream = new MemoryStream(pdfBytes);
+                    stream.Position = 0; // just to be safe
+
+                    var attachment = new Attachment(stream, fileName, "application/pdf");
+                    message.Attachments.Add(attachment);
                 }
-            };
 
-            if (!string.IsNullOrWhiteSpace(dto.CcEmail))
-            {
-                message.CcRecipients = new List<Recipient>
+                int port = 587;
+                int.TryParse(_settings.SmtpPort, out port);
+
+                using var client = new SmtpClient(_settings.SmtpHost, port)
                 {
-                    new Recipient
-                    {
-                        EmailAddress = new EmailAddress
-                        {
-                            Address = dto.CcEmail!
-                        }
-                    }
+                    EnableSsl = true,
+                    Credentials = new NetworkCredential(_settings.SmtpUser, _settings.SmtpPass)
+                };
+
+                await client.SendMailAsync(message);
+
+                return new EmailResultDto
+                {
+                    Success = true,
+                    Message = "Email sent successfully"
                 };
             }
-
-            // Attach PDF (v5 style: just List<Attachment>)
-            if (pdfBytes != null && pdfBytes.Length > 0)
+            catch (Exception ex)
             {
-                message.Attachments = new List<Attachment>
+                return new EmailResultDto
                 {
-                    new FileAttachment
-                    {
-                        Name = $"{dto.InvoiceNo}.pdf",
-                        ContentType = "application/pdf",
-                        ContentBytes = pdfBytes
-                    }
+                    Success = false,
+                    Message = ex.Message
                 };
             }
-
-            // v5 style sendMail body
-            var requestBody = new SendMailPostRequestBody
-            {
-                Message = message,
-                SaveToSentItems = true
-            };
-
-            // v5 style send call
-            await _graph.Users[_senderUserIdOrEmail]
-                        .SendMail
-                        .PostAsync(requestBody);
-
-            return true;
         }
+
     }
 }
