@@ -62,7 +62,7 @@ INSERT INTO Suppliers (
     TaxReg, IncotermsId, Contact, Email, Phone, Address,
     BankName, BankAcc, BankSwift, BankBranch,
     CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive,
-    ItemID, ComplianceDocuments
+    ItemID, ComplianceDocuments,BudgetLineId
 )
 OUTPUT INSERTED.Id
 VALUES (
@@ -70,7 +70,7 @@ VALUES (
     @TaxReg, @IncotermsId, @Contact, @Email, @Phone, @Address,
     @BankName, @BankAcc, @BankSwift, @BankBranch,
     @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive,
-    @ItemID, @ComplianceDocuments
+    @ItemID, @ComplianceDocuments,@BudgetLineId
 );";
 
             // Step 6: Execute insert and return new ID
@@ -105,7 +105,8 @@ VALUES (
         UpdatedBy = @UpdatedBy,
         UpdatedDate = @UpdatedDate,
         ItemID = @ItemID,
-        ComplianceDocuments = @ComplianceDocuments
+        ComplianceDocuments = @ComplianceDocuments,
+BudgetLineId = @BudgetLineId
     WHERE Id = @Id;
     ";
 

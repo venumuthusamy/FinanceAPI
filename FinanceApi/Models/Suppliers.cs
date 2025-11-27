@@ -53,6 +53,8 @@ namespace FinanceApi.Models
 
         public string ItemID { get; set; }
 
+        public int BudgetLineId {  get; set; }
+
         public string ComplianceDocuments { get; set; }
 
     }
