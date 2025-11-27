@@ -4,6 +4,6 @@ namespace FinanceApi.InterfaceService
 {
     public interface IEmailService
     {
-        Task<bool> SendInvoiceEmailAsync(EmailRequestDto dto, byte[] pdfBytes);
+        Task<EmailResultDto> SendInvoiceEmailAsync(EmailRequestDto dto, byte[]? pdfBytes);
     }
 }

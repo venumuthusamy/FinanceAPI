@@ -1,6 +1,7 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Repositories;
 using FinanceApi.Services;
@@ -10,9 +11,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using System.Data;
 using System.Text;
 using UnityWorksERP.Finance.AR;
-using System.Data;
 
 var vuexyPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "dist", "vuexy");
 var plainWwwroot = Path.Combine(AppContext.BaseDirectory, "wwwroot");
@@ -29,7 +30,8 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IDbConnectionFactory, SqlDbConnectionFactory>();
-
+builder.Services.Configure<SmtpEmailSettings>(
+    builder.Configuration.GetSection("EmailSettings"));
 builder.Services.Scan(scan => scan
     .FromAssemblyOf<ICustomerService>()
         .AddClasses(c => c.Where(t => t.Name.EndsWith("Repository")))
@@ -91,6 +93,10 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod();
     });
 });
+builder.Configuration
+       .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+       .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+       .AddEnvironmentVariables();
 
 // JWT
 var jwtSecret = builder.Configuration["Jwt:Secret"];

@@ -60,7 +60,8 @@ namespace FinanceApi.Services
             {
                 UserId = user.Id,
                 Username = user.Username,
-                Token = token
+                Token = token,
+                Email = user.Email,
             };
         }
 
