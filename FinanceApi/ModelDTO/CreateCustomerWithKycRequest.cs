@@ -9,6 +9,8 @@
         public string? PointOfContactPerson { get; set; }
         public string? Email { get; set; }
         public int? CustomerGroupId { get; set; }
+
+        public int? BudgetLineId { get; set; }
         public int? PaymentTermId { get; set; }
         public decimal? CreditAmount { get; set; }
         public int? CreatedBy { get; set; }

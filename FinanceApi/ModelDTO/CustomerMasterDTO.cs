@@ -17,6 +17,7 @@
         public string Email { get; set; }
 
         public int? CustomerGroupId { get; set; }
+        public int? BudgetLineId { get; set; }
 
         public int? PaymentTermId { get; set; }
 
