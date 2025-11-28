@@ -9,5 +9,7 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<TrialBalanceDetailDTO>> GetTrialBalanceDetailAsync(
             TrialBalanceDetailRequestDTO dto);
 
+        Task<IEnumerable<ProfitLossViewInfo>> GetProfitLossDetails();
+
     }
 }
