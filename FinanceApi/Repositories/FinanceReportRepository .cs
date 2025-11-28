@@ -1280,7 +1280,7 @@ OPTION (MAXRECURSION 100);
 
             return await Connection.QueryAsync<ProfitLossViewInfo>(sql);
         }
-    }
+    
        public async Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync()
         {
             const string sql = @"
