@@ -439,6 +439,10 @@ Base AS (
         arH.ArHeadId,
         apH.ApHeadId,
 
+        -- 🔹 OpeningBalance:
+        --    AR head  -> ArInv total
+        --    AP head  -> ApInv total
+        --    Others   -> 0 (since COA opening balance column removed)
         OpeningBalance =
             CASE 
                 WHEN coa.Id = arH.ArHeadId THEN
@@ -446,7 +450,7 @@ Base AS (
                 WHEN coa.Id = apH.ApHeadId THEN
                     ISNULL(apI.InvTotal, 0)
                 ELSE
-                    ISNULL(TRY_CONVERT(decimal(18,2), coa.OpeningBalance), 0)
+                    0
             END,
 
         DebitTotal =
@@ -487,7 +491,6 @@ Base AS (
         coa.HeadName,
         coa.HeadType,
         cr.RootHeadType,
-        coa.OpeningBalance,
         coa.ParentHead,
         arH.ArHeadId,
         apH.ApHeadId,
@@ -537,6 +540,7 @@ OPTION (MAXRECURSION 100);
 
             return await Connection.QueryAsync<GeneralLedgerDTO>(query);
         }
+
 
 
 

@@ -33,5 +33,14 @@ namespace FinanceApi.Controllers
             var data = await _service.GetTrialBalanceDetailAsync(dto);
             return Ok(new { data });
         }
+
+
+        [HttpGet("GetProfitLossDetails")]
+        public async Task<IActionResult> GetProfitLossDetails()
+        {
+            var list = await _service.GetProfitLossDetails();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
     }
 }

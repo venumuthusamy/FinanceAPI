@@ -24,5 +24,11 @@ namespace FinanceApi.Services
         {
             return _repo.GetTrialBalanceDetailAsync(dto);
         }
+
+        public Task<IEnumerable<ProfitLossViewInfo>> GetProfitLossDetails()
+        {
+            return _repo.GetProfitLossDetails();
+        }
+
     }
 }
