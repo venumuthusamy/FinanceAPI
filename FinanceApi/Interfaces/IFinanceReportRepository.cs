@@ -11,5 +11,7 @@ namespace FinanceApi.Interfaces
 
         Task<IEnumerable<ProfitLossViewInfo>> GetProfitLossDetails();
 
+        Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync();
+
     }
 }
