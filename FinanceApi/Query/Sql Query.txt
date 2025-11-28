@@ -1043,6 +1043,130 @@ BEGIN
 END
 GO
 
+CREATE OR ALTER PROCEDURE dbo.sp_ApAgingSummary
+(
+    @FromDate date,
+    @ToDate   date
+)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH Base AS (
+        SELECT
+            b.*,
+            AgeRaw = DATEDIFF(DAY, b.InvoiceDate, @ToDate)
+        FROM dbo.vwApAgingBase b
+        WHERE b.InvoiceDate >= @FromDate
+          AND b.InvoiceDate <= @ToDate
+    ),
+    Norm AS (
+        SELECT
+            SupplierId,
+            SupplierName,
+            Balance,
+            AgeRaw,
+            AgeDays =
+                CASE WHEN AgeRaw < 0 THEN 0 ELSE AgeRaw END,
+            Bucket =
+                CASE 
+                    WHEN AgeRaw < 0               THEN '0-30'
+                    WHEN AgeRaw BETWEEN 0  AND 30 THEN '0-30'
+                    WHEN AgeRaw BETWEEN 31 AND 60 THEN '31-60'
+                    WHEN AgeRaw BETWEEN 61 AND 90 THEN '61-90'
+                    ELSE '90+'
+                END
+        FROM Base
+    )
+    SELECT
+        SupplierId,
+        SupplierName,
+        InvoiceCount     = COUNT(1),
+        TotalOutstanding = SUM(Balance),
+        Bucket0_30       = SUM(CASE WHEN Bucket = '0-30' THEN Balance ELSE 0 END),
+        Bucket31_60      = SUM(CASE WHEN Bucket = '31-60' THEN Balance ELSE 0 END),
+        Bucket61_90      = SUM(CASE WHEN Bucket = '61-90' THEN Balance ELSE 0 END),
+        Bucket90Plus     = SUM(CASE WHEN Bucket = '90+'   THEN Balance ELSE 0 END)
+    FROM Norm
+    GROUP BY SupplierId, SupplierName
+    ORDER BY SupplierName;
+END;
+
+CREATE OR ALTER VIEW dbo.vwApAgingBase
+AS
+/*  Base: Supplier invoices (PIN)  */
+WITH PinBase AS
+(
+    SELECT
+        p.Id              AS InvoiceId,
+        p.InvoiceNo       AS InvoiceNo,
+        p.InvoiceDate     AS InvoiceDate,
+
+        -- ==== DUE DATE from Supplier -> PaymentTerms ====
+        -- Suppliers.TermsId -> PaymentTerms.Id
+        -- Extract leading number from PaymentTermsName (e.g. '30 days' -> 30)
+        DATEADD(
+            DAY,
+            ISNULL(
+                TRY_CONVERT(
+                    int,
+                    LEFT(pt.PaymentTermsName,
+                         CASE
+                             WHEN PATINDEX('%[^0-9]%', pt.PaymentTermsName + 'X') = 0
+                                 THEN LEN(pt.PaymentTermsName)
+                             ELSE PATINDEX('%[^0-9]%', pt.PaymentTermsName + 'X') - 1
+                         END
+                    )
+                ),
+                0
+            ),
+            p.InvoiceDate
+        ) AS DueDate,
+
+        p.SupplierId      AS SupplierId,
+        s.Name            AS SupplierName,
+
+        -- 🔸 Total amount (adjust if needed)
+        (p.Amount + p.Tax) AS OriginalAmount
+        -- if you want only Amount, use:  p.Amount AS OriginalAmount
+    FROM dbo.SupplierInvoicePin p
+    INNER JOIN dbo.Suppliers s
+        ON s.Id = p.SupplierId
+    LEFT JOIN dbo.PaymentTerms pt
+        ON pt.Id = s.TermsId
+       AND pt.IsActive = 1
+    WHERE p.IsActive = 1
+      -- AND p.Status = 3      -- (optional) only posted invoices
+),
+/*  Payments: SupplierPayment amounts per invoice  */
+Payments AS
+(
+    SELECT
+        sp.SupplierInvoiceId        AS InvoiceId,
+        SUM(sp.Amount)              AS PaidAmount
+    FROM dbo.SupplierPayment sp
+    WHERE sp.IsActive = 1
+      -- AND sp.Status = 3         -- (optional) only posted payments
+    GROUP BY sp.SupplierInvoiceId
+)
+SELECT
+    b.InvoiceId,
+    b.InvoiceNo,
+    b.InvoiceDate,
+    b.DueDate,
+    b.SupplierId,
+    b.SupplierName,
+    b.OriginalAmount,
+    ISNULL(p.PaidAmount, 0)   AS PaidAmount,
+    0                         AS CreditAmount,   -- (no debit note yet)
+    b.OriginalAmount - ISNULL(p.PaidAmount, 0) AS Balance
+FROM PinBase b
+LEFT JOIN Payments p
+    ON b.InvoiceId = p.InvoiceId
+WHERE b.OriginalAmount - ISNULL(p.PaidAmount, 0) <> 0;   -- only open invoices
+GO
+
+
 
 
 
