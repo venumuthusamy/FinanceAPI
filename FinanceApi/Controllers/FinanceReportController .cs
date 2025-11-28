@@ -42,5 +42,13 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Success", list);
             return Ok(data);
         }
+
+        [HttpGet("GetBalanceSheetDetails")]
+        public async Task<IActionResult> GetBalanceSheetDetails()
+        {
+            var list = await _service.GetBalanceSheetAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
     }
 }

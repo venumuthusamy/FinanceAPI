@@ -11,5 +11,7 @@ namespace FinanceApi.InterfaceService
            TrialBalanceDetailRequestDTO dto);
 
         Task<IEnumerable<ProfitLossViewInfo>> GetProfitLossDetails();
+
+        Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync();
     }
 }

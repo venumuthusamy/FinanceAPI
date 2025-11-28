@@ -30,5 +30,9 @@ namespace FinanceApi.Services
             return _repo.GetProfitLossDetails();
         }
 
+        public Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync()
+        {
+            return _repo.GetBalanceSheetAsync();
+        }
     }
 }
