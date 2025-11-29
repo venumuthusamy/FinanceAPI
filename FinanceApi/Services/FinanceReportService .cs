@@ -34,5 +34,10 @@ namespace FinanceApi.Services
         {
             return _repo.GetBalanceSheetAsync();
         }
+
+        public Task<IEnumerable<DaybookDTO>> GetDaybookAsync(ReportBaseDTO dto)
+        {
+            return _repo.GetDaybookAsync(dto);
+        }
     }
 }
