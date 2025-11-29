@@ -1167,6 +1167,154 @@ WHERE b.OriginalAmount - ISNULL(p.PaidAmount, 0) <> 0;   -- only open invoices
 GO
 
 
+USE ERP_Finance;
+GO
+
+USE ERP_Finance;
+GO
+
+ALTER PROCEDURE dbo.sp_ArCollectionsForecastSummary
+    @FromDate date = NULL,
+    @ToDate   date = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH Terms AS (
+        SELECT
+            si.Id AS InvoiceId,
+            COALESCE(so1.Id, so2.Id) AS SalesOrderId,
+            PaymentDays =
+                ISNULL(
+                    TRY_CONVERT(
+                        int,
+                        LEFT(
+                            pt.PaymentTermsName,
+                            NULLIF(CHARINDEX(' ', pt.PaymentTermsName + ' '), 0) - 1
+                        )
+                    ),
+                    0
+                )
+        FROM dbo.SalesInvoice si
+        LEFT JOIN dbo.SalesOrder  so1 ON so1.Id = si.SoId
+        LEFT JOIN dbo.DeliveryOrder d  ON d.Id  = si.DoId
+        LEFT JOIN dbo.SalesOrder  so2 ON so2.Id = d.SoId
+        LEFT JOIN dbo.Quotation   q   ON q.Id  = COALESCE(so1.QuotationNo, so2.QuotationNo)
+        LEFT JOIN dbo.PaymentTerms pt  ON pt.Id = q.PaymentTermsId
+    ),
+    Base AS (
+        SELECT
+            v.Id          AS InvoiceId,
+            v.InvoiceNo,
+            v.InvoiceDate,
+            v.Amount,
+            v.PaidAmount,
+            v.Balance,
+            v.CustomerId,
+            c.CustomerName,
+            DueDate = DATEADD(DAY, ISNULL(t.PaymentDays,0), v.InvoiceDate)
+        FROM dbo.vwSalesInvoiceOpenForReceipt v
+        LEFT JOIN dbo.Customer c ON c.Id = v.CustomerId
+        LEFT JOIN Terms t        ON t.InvoiceId = v.Id
+        WHERE v.Balance > 0
+          AND (@FromDate IS NULL OR DATEADD(DAY, ISNULL(t.PaymentDays,0), v.InvoiceDate) >= @FromDate)
+          AND (@ToDate   IS NULL OR DATEADD(DAY, ISNULL(t.PaymentDays,0), v.InvoiceDate) <= @ToDate)
+    ),
+    Norm AS (
+        SELECT
+            *,
+            AgeDays = DATEDIFF(DAY, GETDATE(), DueDate),
+            BucketName =
+                CASE
+                    WHEN DATEDIFF(DAY, GETDATE(), DueDate) BETWEEN 0  AND  7 THEN '0-7'
+                    WHEN DATEDIFF(DAY, GETDATE(), DueDate) BETWEEN 8  AND 14 THEN '8-14'
+                    WHEN DATEDIFF(DAY, GETDATE(), DueDate) BETWEEN 15 AND 30 THEN '15-30'
+                    ELSE '>30'
+                END
+        FROM Base
+    )
+    SELECT 
+        CustomerId,
+        CustomerName,
+        SUM(CASE WHEN BucketName = '0-7'   THEN Balance ELSE 0 END) AS Bucket0_7,
+        SUM(CASE WHEN BucketName = '8-14'  THEN Balance ELSE 0 END) AS Bucket8_14,
+        SUM(CASE WHEN BucketName = '15-30' THEN Balance ELSE 0 END) AS Bucket15_30,
+        SUM(CASE WHEN BucketName = '>30'   THEN Balance ELSE 0 END) AS Bucket30Plus,
+        SUM(Balance) AS TotalOutstanding
+    FROM Norm
+    GROUP BY CustomerId, CustomerName
+    ORDER BY CustomerName;
+END
+GO
+
+USE ERP_Finance;
+GO
+
+ALTER PROCEDURE dbo.sp_ArCollectionsForecastDetail
+    @CustomerId int,
+    @FromDate   date = NULL,
+    @ToDate     date = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH Terms AS (
+        SELECT
+            si.Id AS InvoiceId,
+            COALESCE(so1.Id, so2.Id) AS SalesOrderId,
+            PaymentDays =
+                ISNULL(
+                    TRY_CONVERT(
+                        int,
+                        LEFT(
+                            pt.PaymentTermsName,
+                            NULLIF(CHARINDEX(' ', pt.PaymentTermsName + ' '), 0) - 1
+                        )
+                    ),
+                    0
+                )
+        FROM dbo.SalesInvoice si
+        LEFT JOIN dbo.SalesOrder  so1 ON so1.Id = si.SoId
+        LEFT JOIN dbo.DeliveryOrder d  ON d.Id  = si.DoId
+        LEFT JOIN dbo.SalesOrder  so2 ON so2.Id = d.SoId
+        LEFT JOIN dbo.Quotation   q   ON q.Id  = COALESCE(so1.QuotationNo, so2.QuotationNo)
+        LEFT JOIN dbo.PaymentTerms pt  ON pt.Id = q.PaymentTermsId
+    ),
+    Base AS (
+        SELECT
+            v.Id          AS InvoiceId,
+            v.InvoiceNo,
+            v.InvoiceDate,
+            v.Balance,
+            v.CustomerId,
+            c.CustomerName,
+            DueDate = DATEADD(DAY, ISNULL(t.PaymentDays,0), v.InvoiceDate)
+        FROM dbo.vwSalesInvoiceOpenForReceipt v
+        LEFT JOIN dbo.Customer c ON c.Id = v.CustomerId
+        LEFT JOIN Terms t        ON t.InvoiceId = v.Id
+        WHERE v.Balance   > 0
+          AND v.CustomerId = @CustomerId
+          AND (@FromDate IS NULL OR DATEADD(DAY, ISNULL(t.PaymentDays,0), v.InvoiceDate) >= @FromDate)
+          AND (@ToDate   IS NULL OR DATEADD(DAY, ISNULL(t.PaymentDays,0), v.InvoiceDate) <= @ToDate)
+    )
+    SELECT
+        InvoiceId,
+        InvoiceNo,
+        InvoiceDate,
+        DueDate,
+        Balance,
+        BucketName =
+            CASE
+                WHEN DATEDIFF(DAY, GETDATE(), DueDate) BETWEEN 0  AND  7 THEN '0-7'
+                WHEN DATEDIFF(DAY, GETDATE(), DueDate) BETWEEN 8  AND 14 THEN '8-14'
+                WHEN DATEDIFF(DAY, GETDATE(), DueDate) BETWEEN 15 AND 30 THEN '15-30'
+                ELSE '>30'
+            END
+    FROM Base
+    ORDER BY InvoiceDate;
+END
+GO
+
 
 
 
