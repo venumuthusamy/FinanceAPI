@@ -28,18 +28,22 @@
 
     public class EmailRequestDto
     {
-        public string FromEmail { get; set; }   // 👈 logged-in user email
-        public string FromName { get; set; }   // optional
+        public string FromEmail { get; set; } = string.Empty;
+        public string FromName { get; set; } = string.Empty;
 
-        public string ToEmail { get; set; }   // 👈 recipient
-        public string ToName { get; set; }   // optional
+        public string ToEmail { get; set; } = string.Empty;
+        public string ToName { get; set; } = string.Empty;
 
-        public string Subject { get; set; }
-        public string BodyHtml { get; set; }
+        public string Subject { get; set; } = string.Empty;
+        public string BodyHtml { get; set; } = string.Empty;
 
-        // for attachment file name, e.g. "INV-0001.pdf"
-        public string FileName { get; set; }
+        // For attachment file name - e.g. "SI-100013.pdf"
+        public string FileName { get; set; } = string.Empty;
+
+        // 👇 NEW: actual invoice number / id used to generate the PDF
+        public string InvoiceNo { get; set; }
     }
+
 
     public class EmailResultDto
     {
@@ -53,5 +57,28 @@
         public string SmtpPort { get; set; } = "587";
         public string SmtpUser { get; set; } = string.Empty;
         public string SmtpPass { get; set; } = string.Empty;
+    }
+    public class InvoicePdfLineDto
+    {
+        public string ItemName { get; set; } = "";
+        public decimal Qty { get; set; }
+        public decimal UnitPrice { get; set; }
+        public decimal LineTotal { get; set; }
+    }
+
+    public class InvoicePdfDto
+    {
+        public int Id { get; set; }
+        public string InvoiceNo { get; set; } = "";
+        public DateTime InvoiceDate { get; set; }
+
+        public string CustomerName { get; set; } = "";
+        public string CustomerEmail { get; set; } = "";
+
+        public decimal SubTotal { get; set; }
+        public decimal TaxAmount { get; set; }
+        public decimal GrandTotal { get; set; }
+
+        public List<InvoicePdfLineDto> Lines { get; set; } = new();
     }
 }
