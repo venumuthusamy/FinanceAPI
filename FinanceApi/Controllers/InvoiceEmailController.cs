@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using System.Threading.Tasks;
+using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using Microsoft.AspNetCore.Mvc;
@@ -23,6 +24,9 @@ namespace FinanceApi.Controllers
             _emailRepo = emailRepo;
         }
 
+        // ============================
+        // 1) INVOICE DROPDOWN
+        // ============================
         // GET: api/invoiceemail/invoices?docType=SI
         [HttpGet("invoices")]
         public async Task<IActionResult> GetInvoices([FromQuery] string docType)
@@ -38,7 +42,81 @@ namespace FinanceApi.Controllers
             return Ok(list);
         }
 
-        // GET: api/invoiceemail/invoiceinfo/SI/123
+        // ============================
+        // 2) EMAIL TEMPLATE
+        // ============================
+        // GET: api/invoiceemail/template/1?docType=SI
+        [HttpGet("template/{id:int}")]
+        public async Task<IActionResult> GetTemplate(int id, [FromQuery] string? docType = null)
+        {
+            if (!string.IsNullOrWhiteSpace(docType))
+                docType = docType.ToUpperInvariant();
+
+            var tmpl = await _emailRepo.GetTemplateAsync(id, docType);
+            if (tmpl == null)
+                return NotFound();
+
+            return Ok(tmpl);
+        }
+
+        [HttpPost("sales/{invoiceId:int}")]
+        public async Task<ActionResult<EmailResultDto>> SendSalesInvoice(
+    int invoiceId,
+    [FromBody] EmailRequestDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new EmailResultDto
+                {
+                    Success = false,
+                    Message = "Invalid email request"
+                });
+
+            if (string.IsNullOrWhiteSpace(dto.ToEmail))
+                return BadRequest(new EmailResultDto
+                {
+                    Success = false,
+                    Message = "ToEmail is required."
+                });
+
+            // ✅ Use route id
+            var pdfBytes = await _pdfService.GenerateSalesInvoicePdfAsync(invoiceId);
+
+            var result = await _emailService.SendInvoiceEmailAsync(dto, pdfBytes);
+            if (!result.Success)
+                return StatusCode(500, result);
+
+            return Ok(result);
+        }
+
+        [HttpPost("pin/{invoiceId:int}")]
+        public async Task<ActionResult<EmailResultDto>> SendSupplierInvoice(
+            int invoiceId,
+            [FromBody] EmailRequestDto dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(new EmailResultDto
+                {
+                    Success = false,
+                    Message = "Invalid email request"
+                });
+
+            if (string.IsNullOrWhiteSpace(dto.ToEmail))
+                return BadRequest(new EmailResultDto
+                {
+                    Success = false,
+                    Message = "ToEmail is required."
+                });
+
+            // ✅ Use route id
+            var pdfBytes = await _pdfService.GenerateSupplierInvoicePdfAsync(invoiceId);
+
+            var result = await _emailService.SendInvoiceEmailAsync(dto, pdfBytes);
+            if (!result.Success)
+                return StatusCode(500, result);
+
+            return Ok(result);
+        }
+
         [HttpGet("invoiceinfo/{docType}/{invoiceId:int}")]
         public async Task<IActionResult> GetInvoiceInfo(string docType, int invoiceId)
         {
@@ -54,39 +132,6 @@ namespace FinanceApi.Controllers
                 return NotFound("Invoice not found.");
 
             return Ok(info);
-        }
-
-        // GET: api/invoiceemail/template/1?docType=SI
-        [HttpGet("template/{id:int}")]
-        public async Task<IActionResult> GetTemplate(int id, [FromQuery] string? docType = null)
-        {
-            if (!string.IsNullOrWhiteSpace(docType))
-                docType = docType.ToUpperInvariant();
-
-            var tmpl = await _emailRepo.GetTemplateAsync(id, docType);
-            if (tmpl == null) return NotFound();
-
-            return Ok(tmpl);
-        }
-        [HttpPost("send")]
-        public async Task<ActionResult<EmailResultDto>> Send([FromBody] EmailRequestDto dto)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(new EmailResultDto
-                {
-                    Success = false,
-                    Message = "Invalid email request"
-                });
-
-            // Example: fileName includes invoice number
-            var pdfBytes = await _pdfService.GenerateInvoicePdfAsync(dto.FileName);
-
-            var result = await _emailService.SendInvoiceEmailAsync(dto, pdfBytes);
-
-            if (!result.Success)
-                return StatusCode(500, result);
-
-            return Ok(result);
         }
     }
 }

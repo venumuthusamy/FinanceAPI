@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using FinanceApi.Interfaces;
+using FinanceApi.InterfaceService;
 using FinanceApi.Models;
 using Microsoft.IdentityModel.Tokens;
 
@@ -12,10 +13,10 @@ namespace FinanceApi.Services
     {
         private readonly IUserRepository _repository;
         private readonly IConfiguration _config;
-        private readonly IEmailService _emailService;
+        private readonly Interfaces.IEmailService _emailService;
 
 
-        public UserService(IUserRepository repository, IConfiguration config, IEmailService emailService)
+        public UserService(IUserRepository repository, IConfiguration config, Interfaces.IEmailService emailService)
         {
             _repository = repository;
             _config = config;
