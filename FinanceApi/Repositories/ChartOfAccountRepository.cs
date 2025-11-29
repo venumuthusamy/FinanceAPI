@@ -33,11 +33,11 @@ namespace FinanceApi.Repositories
             const string query = @"
 INSERT INTO ChartOfAccount
 (HeadCode, HeadLevel, HeadName, HeadType, HeadCodeName, IsGl, IsTransaction, ParentHead, PHeadName,
- Balance, OpeningBalance, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+  CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
 OUTPUT INSERTED.Id
 VALUES
 (@HeadCode, @HeadLevel, @HeadName, @HeadType, @HeadCodeName, @IsGl, @IsTransaction, @ParentHead, @PHeadName,
- @Balance, @OpeningBalance, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)";
+  @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive)";
             return await Connection.QueryFirstAsync<int>(query, coa);
         }
 
@@ -54,8 +54,6 @@ SET HeadCode = @HeadCode,
     IsTransaction = @IsTransaction,
     ParentHead = @ParentHead,
     PHeadName = @PHeadName,
-    Balance = @Balance,
-    OpeningBalance = @OpeningBalance,
     UpdatedBy = @UpdatedBy,
     UpdatedDate = @UpdatedDate
 WHERE Id = @Id";

@@ -52,7 +52,8 @@ where isActive = 1
             Email,
             ContactNo,
             Address,
-            IsActive
+            IsActive,
+            BudgetLineId
         )
         OUTPUT INSERTED.Id
         VALUES
@@ -70,7 +71,8 @@ where isActive = 1
             @Email,
             @ContactNo,
             @Address,
-            @IsActive
+            @IsActive,
+            @BudgetLineId
         )";
 
             return await Connection.QueryFirstAsync<int>(query, bankDto);
@@ -94,7 +96,8 @@ where isActive = 1
             PrimaryContact = @PrimaryContact,
             Email = @Email,
             ContactNo = @ContactNo,
-            Address = @Address
+            Address = @Address,
+            BudgetLineId = @BudgetLineId
         WHERE Id = @Id";
 
             await Connection.ExecuteAsync(query, bankDto);
