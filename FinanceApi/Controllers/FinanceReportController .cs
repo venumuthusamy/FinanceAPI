@@ -50,5 +50,14 @@ namespace FinanceApi.Controllers
             ResponseResult data = new ResponseResult(true, "Success", list);
             return Ok(data);
         }
+
+        [HttpPost("daybook")]
+        public async Task<IActionResult> GetDaybook([FromBody] ReportBaseDTO dto)
+        {
+            // dto.FromDate, dto.ToDate will come from frontend
+            var list = await _service.GetDaybookAsync(dto);
+            var result = new ResponseResult(true, "Success", list);
+            return Ok(result);
+        }
     }
 }

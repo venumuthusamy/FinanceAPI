@@ -1812,6 +1812,227 @@ OPTION (MAXRECURSION 100);
 
             return await Connection.QueryAsync<BalanceSheetViewInfo>(sql);
         }
+        public async Task<IEnumerable<DaybookDTO>> GetDaybookAsync(ReportBaseDTO dto)
+        {
+            const string sql = @"
+;WITH DaybookRaw AS
+(
+    ------------------------------------------------------------
+    -- 1) SALES INVOICE  (Customer AR Debit)
+    ------------------------------------------------------------
+    SELECT
+        si.InvoiceDate        AS TransDate,
+        si.InvoiceNo          AS VoucherNo,
+        'SI'                  AS VoucherType,
+        'Sales Invoice'       AS VoucherName,
+        COALESCE(coaSi.HeadName, 'No COA (Item)') AS AccountHeadName,
+        si.Remarks            AS Description,
+        CAST(ISNULL(si.Total, 0.00) AS DECIMAL(18,2)) AS Debit,
+        CAST(0.00 AS DECIMAL(18,2))                   AS Credit
+    FROM Finance.dbo.SalesInvoice si
+    OUTER APPLY
+    (
+        SELECT TOP (1) coa.HeadName
+        FROM Finance.dbo.SalesInvoiceLine sil
+        INNER JOIN dbo.Item itm
+            ON itm.Id = sil.ItemId
+        INNER JOIN Finance.dbo.ChartOfAccount coa
+            ON coa.Id = itm.BudgetLineId
+           AND coa.IsActive = 1
+        WHERE sil.SiId = si.Id
+        ORDER BY coa.HeadName
+    ) coaSi
+    WHERE si.IsActive = 1
+      AND si.InvoiceDate BETWEEN @FromDate AND @ToDate
+
+    UNION ALL
+
+    ------------------------------------------------------------
+    -- 1B) CREDIT NOTE (reverse of invoice)
+    ------------------------------------------------------------
+    SELECT
+        cn.CreditNoteDate     AS TransDate,
+        cn.CreditNoteNo       AS VoucherNo,
+        'CN'                  AS VoucherType,
+        'Credit Note'         AS VoucherName,
+        COALESCE(coaCn.HeadName, 'No COA (Item)') AS AccountHeadName,
+        CONCAT(
+            'Credit Note for ',
+            ISNULL(cn.CustomerName, ''),
+            CASE 
+                WHEN cn.SiNumber IS NOT NULL THEN ' (SI: ' + cn.SiNumber + ')' 
+                ELSE '' 
+            END
+        )                    AS Description,
+        CAST(0.00 AS DECIMAL(18,2))                    AS Debit,
+        CAST(ISNULL(cn.Subtotal, 0.00) AS DECIMAL(18,2)) AS Credit
+    FROM Finance.dbo.CreditNote cn
+    OUTER APPLY
+    (
+        SELECT TOP (1) coa.HeadName
+        FROM Finance.dbo.CreditNoteLine cnl
+        INNER JOIN dbo.Item itm
+            ON itm.Id = cnl.ItemId
+        INNER JOIN Finance.dbo.ChartOfAccount coa
+            ON coa.Id = itm.BudgetLineId
+           AND coa.IsActive = 1
+        WHERE cnl.CreditNoteId = cn.Id
+          AND cnl.IsActive = 1
+        ORDER BY coa.HeadName
+    ) coaCn
+    WHERE cn.IsActive = 1
+      AND cn.CreditNoteDate BETWEEN @FromDate AND @ToDate
+
+    UNION ALL
+
+    ------------------------------------------------------------
+    -- 2) AR RECEIPT (Customer Receipt – money coming in)
+    ------------------------------------------------------------
+    SELECT
+        r.ReceiptDate         AS TransDate,
+        r.ReceiptNo           AS VoucherNo,
+        'AR-RCPT'             AS VoucherType,
+        'Customer Receipt'    AS VoucherName,
+        coa.HeadName          AS AccountHeadName,
+        r.Remarks             AS Description,
+        CAST(0.00 AS DECIMAL(18,2))                        AS Debit,
+        CAST(ISNULL(r.AmountReceived, 0.00) AS DECIMAL(18,2)) AS Credit
+    FROM Finance.dbo.ArReceipt r
+    INNER JOIN Finance.dbo.Customer c
+        ON c.Id = r.CustomerId
+       AND c.IsActive = 1
+    INNER JOIN Finance.dbo.ChartOfAccount coa
+        ON coa.Id = c.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE r.IsActive = 1
+      AND r.ReceiptDate BETWEEN @FromDate AND @ToDate
+
+    UNION ALL
+
+    ------------------------------------------------------------
+    -- 3) SUPPLIER INVOICE PIN  (AP – money we owe)
+    ------------------------------------------------------------
+    SELECT
+        pin.InvoiceDate       AS TransDate,
+        pin.InvoiceNo         AS VoucherNo,
+        'PIN'                 AS VoucherType,
+        'Supplier Invoice'    AS VoucherName,
+        coa.HeadName          AS AccountHeadName,
+        NULL                  AS Description,
+        CAST(0.00 AS DECIMAL(18,2)) AS Debit,
+        CAST(ISNULL(pin.Amount, 0.00) + ISNULL(pin.Tax, 0.00) AS DECIMAL(18,2)) AS Credit
+    FROM Finance.dbo.SupplierInvoicePin pin
+    INNER JOIN Finance.dbo.Suppliers s
+        ON s.Id = pin.SupplierId
+       AND s.IsActive = 1
+    INNER JOIN Finance.dbo.ChartOfAccount coa
+        ON coa.Id = s.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE pin.IsActive = 1
+      AND pin.InvoiceDate BETWEEN @FromDate AND @ToDate
+
+    UNION ALL
+
+    ------------------------------------------------------------
+    -- 4) SUPPLIER PAYMENT (AP Payment – money going out)
+    ------------------------------------------------------------
+    SELECT
+        sp.PaymentDate        AS TransDate,
+        sp.PaymentNo          AS VoucherNo,
+        'SPAY'                AS VoucherType,
+        'Supplier Payment'    AS VoucherName,
+        coa.HeadName          AS AccountHeadName,
+        sp.Notes              AS Description,
+        CAST(ISNULL(sp.Amount, 0.00) AS DECIMAL(18,2)) AS Debit,
+        CAST(0.00 AS DECIMAL(18,2))                     AS Credit
+    FROM Finance.dbo.SupplierPayment sp
+    INNER JOIN Finance.dbo.Suppliers s
+        ON s.Id = sp.SupplierId
+       AND s.IsActive = 1
+    INNER JOIN Finance.dbo.ChartOfAccount coa
+        ON coa.Id = s.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE sp.IsActive = 1
+      AND sp.PaymentDate BETWEEN @FromDate AND @ToDate
+
+    UNION ALL
+
+    ------------------------------------------------------------
+    -- 5) SUPPLIER DEBIT NOTE  (usually reduces what we owe)
+    ------------------------------------------------------------
+    SELECT
+        dn.NoteDate           AS TransDate,
+        dn.DebitNoteNo        AS VoucherNo,
+        'SDN'                 AS VoucherType,
+        'Supplier Debit Note' AS VoucherName,
+        coa.HeadName          AS AccountHeadName,
+        dn.Reason             AS Description,
+        CAST(ISNULL(dn.Amount, 0.00) AS DECIMAL(18,2)) AS Debit,
+        CAST(0.00 AS DECIMAL(18,2))                    AS Credit
+    FROM Finance.dbo.SupplierDebitNote dn
+    INNER JOIN Finance.dbo.Suppliers s
+        ON s.Id = dn.SupplierId
+       AND s.IsActive = 1
+    INNER JOIN Finance.dbo.ChartOfAccount coa
+        ON coa.Id = s.BudgetLineId
+       AND coa.IsActive = 1
+    WHERE dn.IsActive = 1
+      AND dn.NoteDate BETWEEN @FromDate AND @ToDate
+
+    UNION ALL
+
+    ------------------------------------------------------------
+    -- 6) MANUAL JOURNAL  (group by JournalNo)
+    ------------------------------------------------------------
+    SELECT
+        mj.JournalDate        AS TransDate,
+        mj.JournalNo          AS VoucherNo,
+        'MJ'                  AS VoucherType,
+        'Manual Journal'      AS VoucherName,
+        coa.HeadName          AS AccountHeadName,
+        mj.Description        AS Description,
+        CAST(SUM(ISNULL(mj.Debit,  0.00)) AS DECIMAL(18,2)) AS Debit,
+        CAST(SUM(ISNULL(mj.Credit, 0.00)) AS DECIMAL(18,2)) AS Credit
+    FROM Finance.dbo.ManualJournal mj
+    INNER JOIN Finance.dbo.ChartOfAccount coa
+        ON coa.Id = mj.AccountId
+       AND coa.IsActive = 1
+    WHERE mj.IsActive = 1
+      AND mj.JournalDate BETWEEN @FromDate AND @ToDate
+    GROUP BY
+        mj.JournalDate,
+        mj.JournalNo,
+        mj.Description,
+        coa.HeadName
+)
+
+SELECT
+    TransDate,
+    VoucherNo,
+    VoucherType,
+    VoucherName,
+    AccountHeadName,
+    Description,
+    Debit,
+    Credit,
+    RunningBalance =
+        SUM(Debit - Credit) OVER (
+            ORDER BY TransDate, VoucherType, VoucherNo
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        )
+FROM DaybookRaw
+ORDER BY TransDate, VoucherType, VoucherNo;
+";
+
+            return await Connection.QueryAsync<DaybookDTO>(
+                sql,
+                new
+                {
+                    dto.FromDate,
+                    dto.ToDate,
+                });
+        }
+
 
     }
 

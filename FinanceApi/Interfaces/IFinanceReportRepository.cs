@@ -13,5 +13,7 @@ namespace FinanceApi.Interfaces
 
         Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync();
 
+        Task<IEnumerable<DaybookDTO>> GetDaybookAsync(ReportBaseDTO dto);
+
     }
 }
