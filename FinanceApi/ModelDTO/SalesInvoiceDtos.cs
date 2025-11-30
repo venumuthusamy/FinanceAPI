@@ -62,6 +62,7 @@ namespace FinanceApi.ModelDTO
             
             public decimal LineAmount { get; set; }            
             public string? Description { get; set; }   // <— NEW
+            public int? BudgetLineId { get; set; }
             public SiCreateLine() { }
         }
 

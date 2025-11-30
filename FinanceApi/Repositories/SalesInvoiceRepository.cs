@@ -61,12 +61,12 @@ INSERT INTO dbo.SalesInvoiceLine
 (SiId, SourceType, SourceLineId,
  ItemId, ItemName, Uom,
  Qty, UnitPrice, DiscountPct, GstPct, Tax,
- TaxCodeId, LineAmount, Description)
+ TaxCodeId, LineAmount, Description,BudgetLineId)
 VALUES
 (@SiId, @SourceType, @SourceLineId,
  @ItemId, @ItemName, @Uom,
  @Qty, @UnitPrice, @DiscountPct, @GstPct, @Tax,
- @TaxCodeId, @LineAmount, @Description);";
+ @TaxCodeId, @LineAmount, @Description,@BudgetLineId);";
 
             foreach (var l in req.Lines)
             {
@@ -89,7 +89,8 @@ VALUES
                         l.LineAmount,
                         Description = string.IsNullOrWhiteSpace(l.Description)
                             ? l.ItemName
-                            : l.Description
+                            : l.Description,
+                        l.BudgetLineId
                     }
                 );
             }
@@ -134,7 +135,7 @@ SELECT
     Id, SiId, SourceType, SourceLineId,
     ItemId, ItemName, Uom,
     Qty, UnitPrice, DiscountPct, GstPct, Tax,
-    TaxCodeId, LineAmount, Description
+    TaxCodeId, LineAmount, Description,BudgetLineId
 FROM dbo.SalesInvoiceLine
 WHERE SiId=@Id;";
 
@@ -192,13 +193,13 @@ INSERT INTO dbo.SalesInvoiceLine
 (SiId, SourceType, SourceLineId,
  ItemId, ItemName, Uom,
  Qty, UnitPrice, DiscountPct, GstPct, Tax,
- TaxCodeId, LineAmount, Description)
+ TaxCodeId, LineAmount, Description,BudgetLineId)
 OUTPUT INSERTED.Id
 VALUES
 (@SiId, @SourceType, @SourceLineId,
  @ItemId, @ItemName, @Uom,
  @Qty, @UnitPrice, @DiscountPct, @GstPct, @Tax,
- @TaxCodeId, @LineAmount, @Description);";
+ @TaxCodeId, @LineAmount, @Description,@BudgetLineId);";
 
             var lineId = await Connection.ExecuteScalarAsync<int>(
                 sql,
@@ -219,7 +220,8 @@ VALUES
                     l.LineAmount,
                     Description = string.IsNullOrWhiteSpace(l.Description)
                         ? l.ItemName
-                        : l.Description
+                        : l.Description,
+                   l.BudgetLineId
                 });
 
             await RecalculateTotalAsync(siId);
@@ -236,6 +238,7 @@ VALUES
             int? taxCodeId,
             decimal? lineAmount,
             string? description,
+            int? budgetLineId,
             int userId)
         {
             const string updateSql = @"
@@ -247,7 +250,8 @@ SET Qty        = @Qty,
     Tax        = @Tax,
     TaxCodeId  = @TaxCodeId,
     LineAmount = @LineAmount,
-    Description= @Description
+    Description= @Description,
+    BudgetLineId = @BudgetLineId
 WHERE Id = @Id;";
 
             await Connection.ExecuteAsync(updateSql, new
@@ -260,7 +264,8 @@ WHERE Id = @Id;";
                 Tax = tax,
                 TaxCodeId = taxCodeId,
                 LineAmount = lineAmount,
-                Description = description
+                Description = description,
+                BudgetLineId = budgetLineId
             });
 
             var siId = await Connection.ExecuteScalarAsync<int>(

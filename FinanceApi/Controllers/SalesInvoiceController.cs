@@ -112,13 +112,15 @@ namespace FinanceApi.Controllers
             public int? TaxCodeId { get; set; }
             public decimal? LineAmount { get; set; }
             public string? Description { get; set; }   // <— NEW
+
+            public int? BudgetLineId { get; set; }
         }
 
         [HttpPut("UpdateLine/{lineId:int}")]
         public async Task<IActionResult> UpdateLine(int lineId, [FromBody] LineUpdateDto dto)
         {
             int userId = 1;
-            await _svc.UpdateLineAsync(lineId, dto.Qty, dto.UnitPrice, dto.DiscountPct,dto.GstPct,dto.Tax, dto.TaxCodeId,dto.LineAmount, dto.Description, userId);
+            await _svc.UpdateLineAsync(lineId, dto.Qty, dto.UnitPrice, dto.DiscountPct,dto.GstPct,dto.Tax, dto.TaxCodeId,dto.LineAmount, dto.Description,dto.BudgetLineId, userId);
             return Ok(new ResponseResult(true, "Line updated", null));
         }
 
