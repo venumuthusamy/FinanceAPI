@@ -339,44 +339,18 @@ SignedRaw AS (
         OpeningBalanceBase,
         OpeningMov,
         PeriodMov,
+       -- Opening = OpeningBalanceBase + movements BEFORE FromDate
         OpeningSigned_raw =
-            CASE 
-                WHEN HeadType IN ('A','E')   -- Assets / Expenses
-                    THEN OpeningBalanceBase + OpeningMov
-                ELSE                         -- Liabilities / Income / Equity
-                    OpeningBalanceBase - OpeningMov
-            END,
-        ClosingSigned_raw =
-            CASE 
-                WHEN HeadType IN ('A','E')
-                    THEN OpeningBalanceBase + OpeningMov + PeriodMov
-                ELSE
-                    OpeningBalanceBase - OpeningMov - PeriodMov
-            END
+            OpeningBalanceBase + OpeningMov,
+
+        -- Closing = Opening + movements IN period
+        ClosingSigned_raw  =
+            OpeningBalanceBase + OpeningMov + PeriodMov
     FROM Movements
 ),
 
 ------------------------------------------------------------
--- 4) COA HIERARCHY (each parent + all its children)
-------------------------------------------------------------
-Hierarchy AS (
-    SELECT
-        s.HeadId  AS ParentId,
-        s.HeadId  AS ChildId
-    FROM SignedRaw s
-
-    UNION ALL
-
-    SELECT
-        h.ParentId,
-        s.HeadId AS ChildId
-    FROM Hierarchy h
-    JOIN SignedRaw s
-      ON s.ParentHead = h.ChildId
-),
-
-------------------------------------------------------------
--- 5) ROLLUP: PARENT HEAD = SUM(children balances)
+-- 4) ROLLUP BY HEADCODE PREFIX (parent = all codes starting with its code)
 ------------------------------------------------------------
 Aggregated AS (
     SELECT
@@ -384,14 +358,14 @@ Aggregated AS (
         p.HeadCode,
         p.HeadName,
         p.HeadType,
-        p.ParentHead,
+        p.ParentHead,   -- this is parent HEAD CODE
+
         OpeningSigned = SUM(ISNULL(c.OpeningSigned_raw,0)),
         ClosingSigned = SUM(ISNULL(c.ClosingSigned_raw,0))
     FROM SignedRaw p
-    JOIN Hierarchy h
-      ON h.ParentId = p.HeadId
     JOIN SignedRaw c
-      ON c.HeadId = h.ChildId
+      ON CAST(c.HeadCode AS varchar(50))
+         LIKE CAST(p.HeadCode AS varchar(50)) + '%'   -- 🔴 Cast both sides
     GROUP BY
         p.HeadId,
         p.HeadCode,
@@ -399,6 +373,8 @@ Aggregated AS (
         p.HeadType,
         p.ParentHead
 )
+
+
 
 SELECT
     HeadId,
@@ -408,12 +384,17 @@ SELECT
 
     OpeningDebit  = CASE WHEN OpeningSigned > 0 THEN OpeningSigned ELSE 0 END,
     OpeningCredit = CASE WHEN OpeningSigned < 0 THEN -OpeningSigned ELSE 0 END,
-
     ClosingDebit  = CASE WHEN ClosingSigned > 0 THEN ClosingSigned ELSE 0 END,
     ClosingCredit = CASE WHEN ClosingSigned < 0 THEN -ClosingSigned ELSE 0 END
 FROM Aggregated
-WHERE (OpeningSigned <> 0 OR ClosingSigned <> 0)
+WHERE
+    -- keep all heads that have any balance
+    (OpeningSigned <> 0 OR ClosingSigned <> 0)
+    -- OR always keep root heads (Assets, Liabilities, Equity, Income, Expense)
+    OR ParentHead IS NULL
+    OR ParentHead = 0
 ORDER BY HeadCode;
+
 ";
 
             return await Connection.QueryAsync<TrialBalanceDTO>(
