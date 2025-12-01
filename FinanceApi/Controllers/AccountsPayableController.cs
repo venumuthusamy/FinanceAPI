@@ -77,5 +77,34 @@ namespace FinanceApi.Controllers
             var rows = await _service.GetMatchListAsync();
             return Ok(new { isSuccess = true, data = rows });
         }
+        [HttpGet("bankaccount")]
+        public async Task<IActionResult> GetAll()
+        {
+            var list = await _service.GetAllAsync();
+            return Ok(new { isSuccess = true, data = list });
+        }
+
+        // GET: /finance/bank-accounts/{id}
+        [HttpGet("bankaccount/{id}")]
+        public async Task<IActionResult> GetById(int id)
+        {
+            var item = await _service.GetByIdAsync(id);
+            if (item == null)
+                return NotFound(new { isSuccess = false, message = "Bank account not found" });
+
+            return Ok(new { isSuccess = true, data = item });
+        }
+        [HttpPost("update-bank-balance")]
+        public async Task<IActionResult> UpdateBankBalance([FromBody] BankBalanceUpdateDto dto)
+        {
+            var count = await _service.UpdateBankBalance(dto.BankHeadId, dto.NewBalance);
+
+            if (count <= 0)
+                return Ok(new { isSuccess = false, message = "No row updated" });
+
+            return Ok(new { isSuccess = true, message = "Bank balance updated" });
+        }
+
+
     }
 }

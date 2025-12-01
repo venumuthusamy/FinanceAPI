@@ -40,5 +40,19 @@ namespace FinanceApi.Services
             // ✅ Insert payment
             return await _repo.CreatePaymentAsync(dto, userId);
         }
+        public Task<IEnumerable<BankAccountDTO>> GetAllAsync()
+        {
+            return _repo.GetAllAsync();
+        }
+
+        public Task<BankAccountDTO?> GetByIdAsync(int bankId)
+        {
+            return _repo.GetByIdAsync(bankId);
+        }
+        public async Task<int> UpdateBankBalance(int bankId, decimal newBal)
+        {
+            return await _repo.UpdateBankBalance(bankId, newBal);
+        }
+
     }
 }
