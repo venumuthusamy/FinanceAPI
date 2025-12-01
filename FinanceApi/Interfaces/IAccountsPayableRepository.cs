@@ -12,5 +12,8 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<ApMatchDTO>> GetMatchListAsync();
         Task<int> CreatePaymentAsync(ApPaymentCreateDto dto, int userId);
         Task<IEnumerable<ApPaymentListDto>> GetPaymentsAsync();
+        Task<IEnumerable<BankAccountDTO>> GetAllAsync();
+        Task<BankAccountDTO?> GetByIdAsync(int bankId);
+        Task<int> UpdateBankBalance(int bankId, decimal newBalance);
     }
 }

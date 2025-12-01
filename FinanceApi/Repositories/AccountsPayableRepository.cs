@@ -1,12 +1,14 @@
 ﻿// Data/AccountsPayableRepository.cs
-using System.Collections.Generic;
-using System.Data;
-using System.Threading.Tasks;
 using Dapper;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
+using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
 
 namespace FinanceApi.Data
 {
@@ -376,5 +378,29 @@ ORDER BY sp.PaymentDate DESC, sp.Id DESC;";
             using var conn = Connection;
             return await conn.QueryAsync<ApPaymentListDto>(sql);
         }
+
+        public async Task<IEnumerable<BankAccountDTO>> GetAllAsync()
+        {
+            const string sql = @"SELECT * FROM vwBankAccountsBalance ORDER BY BankName";
+            return await Connection.QueryAsync<BankAccountDTO>(sql);
+        }
+
+        public async Task<BankAccountDTO?> GetByIdAsync(int bankId)
+        {
+            const string sql = @"SELECT * FROM vwBankAccountsBalance WHERE BankId = @bankId";
+            return await Connection.QueryFirstOrDefaultAsync<BankAccountDTO>(sql, new { bankId });
+        }
+        public async Task<int> UpdateBankBalance(int bankHeadId, decimal newBalance)
+        {
+            const string sql = "EXEC dbo.sp_UpdateBankAvailableBalance @BankHeadId, @NewBalance;";
+
+            return await Connection.ExecuteAsync(sql, new
+            {
+                BankHeadId = bankHeadId,
+                NewBalance = newBalance
+            });
+        }
+
+
     }
 }

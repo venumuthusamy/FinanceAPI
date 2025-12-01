@@ -117,6 +117,7 @@ INSERT INTO dbo.SupplierPayment
     ReferenceNo,
     Amount,
     Notes,
+    BankId,       -- 🔹 NEW COLUMN
     Status,
     CreatedBy,
     CreatedDate,
@@ -132,7 +133,8 @@ VALUES
     @ReferenceNo,
     @Amount,
     @Notes,
-    1,              -- 1 = Posted
+    @BankId,      -- 🔹 NEW PARAM
+    1,            -- 1 = Posted
     @CreatedBy,
     SYSDATETIME(),
     1
@@ -148,11 +150,12 @@ VALUES
                 dto.ReferenceNo,
                 dto.Amount,
                 dto.Notes,
+                dto.BankId,       // 🔹 pass through
                 dto.CreatedBy
             });
 
-            // no need to touch SupplierInvoicePin here, AP list uses SUM(Amount) from SupplierPayment
             return affected > 0;
         }
+
     }
 }
