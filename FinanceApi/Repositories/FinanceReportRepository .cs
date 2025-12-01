@@ -16,9 +16,6 @@ namespace FinanceApi.Repositories
         // ============================================================
         //  TRIAL BALANCE SUMMARY  (Opening / Closing, Hierarchical)
         // ============================================================
-        // ============================================================
-        //  TRIAL BALANCE SUMMARY  (Opening / Closing, Hierarchical)
-        // ============================================================
         public async Task<IEnumerable<TrialBalanceDTO>> GetTrialBalanceAsync(ReportBaseDTO dto)
         {
             const string sql = @"
@@ -56,7 +53,9 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- B) Sales Invoice lines  (Revenue / Item side)
+    -- B) Sales Invoice lines  (P&L / revenue / expense)
+    --    Use line-level BudgetLineId if present,
+    --    otherwise fallback to Item.BudgetLineId
     --------------------------------------------------------
     SELECT
         si.InvoiceDate                        AS TransDate,
@@ -73,13 +72,16 @@ GlLines AS (
     INNER JOIN dbo.Item i
         ON i.Id = sil.ItemId AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = i.BudgetLineId AND coa.IsActive = 1
+        ON coa.Id = COALESCE(sil.BudgetLineId, i.BudgetLineId)
+       AND coa.IsActive = 1
     WHERE si.InvoiceDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
     --------------------------------------------------------
-    -- C) Credit Note lines  (Reverse revenue / item)
+    -- C) Credit Note lines  (reverse of B)
+    --    Here we still use Item.BudgetLineId.
+    --    (If you later add cnl.BudgetLineId, we can COALESCE it.)
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate                     AS TransDate,
@@ -180,7 +182,9 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- G1) AP – PIN LINES -> Inventory/Expense (from LinesJson)
+    -- G1) AP – PIN LINES -> P&L / Asset
+    --     BudgetLine comes from JSON (budgetLineId) if given,
+    --     otherwise from Item.BudgetLineId
     --------------------------------------------------------
     SELECT
         si.InvoiceDate                        AS TransDate,
@@ -192,14 +196,15 @@ GlLines AS (
         CAST(0 AS decimal(18,2))              AS Credit
     FROM dbo.SupplierInvoicePin si
     CROSS APPLY OPENJSON(si.LinesJson) WITH (
-        ItemCode  nvarchar(50)  '$.item',
-        LineTotal decimal(18,2) '$.lineTotal'
+        ItemCode     nvarchar(50)  '$.item',
+        LineTotal    decimal(18,2) '$.lineTotal',
+        BudgetLineId int           '$.budgetLineId'
     ) j
     INNER JOIN dbo.Item i
         ON i.ItemCode = j.ItemCode
        AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = i.BudgetLineId
+        ON coa.Id = COALESCE(j.BudgetLineId, i.BudgetLineId)
        AND coa.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
@@ -311,8 +316,6 @@ Movements AS (
                 ELSE 0
             END
         ),
-        -- Opening balance column removed from ChartOfAccount,
-        -- treat base opening as 0 for all accounts
         OpeningBalanceBase = CAST(0 AS decimal(18,2))
     FROM dbo.ChartOfAccount coa
     LEFT JOIN GlLines gl
@@ -339,11 +342,8 @@ SignedRaw AS (
         OpeningBalanceBase,
         OpeningMov,
         PeriodMov,
-       -- Opening = OpeningBalanceBase + movements BEFORE FromDate
         OpeningSigned_raw =
             OpeningBalanceBase + OpeningMov,
-
-        -- Closing = Opening + movements IN period
         ClosingSigned_raw  =
             OpeningBalanceBase + OpeningMov + PeriodMov
     FROM Movements
@@ -358,14 +358,13 @@ Aggregated AS (
         p.HeadCode,
         p.HeadName,
         p.HeadType,
-        p.ParentHead,   -- this is parent HEAD CODE
-
+        p.ParentHead,
         OpeningSigned = SUM(ISNULL(c.OpeningSigned_raw,0)),
         ClosingSigned = SUM(ISNULL(c.ClosingSigned_raw,0))
     FROM SignedRaw p
     JOIN SignedRaw c
       ON CAST(c.HeadCode AS varchar(50))
-         LIKE CAST(p.HeadCode AS varchar(50)) + '%'   -- 🔴 Cast both sides
+         LIKE CAST(p.HeadCode AS varchar(50)) + '%'
     GROUP BY
         p.HeadId,
         p.HeadCode,
@@ -374,27 +373,21 @@ Aggregated AS (
         p.ParentHead
 )
 
-
-
 SELECT
     HeadId,
     HeadCode,
     HeadName,
     ParentHead,
-
     OpeningDebit  = CASE WHEN OpeningSigned > 0 THEN OpeningSigned ELSE 0 END,
     OpeningCredit = CASE WHEN OpeningSigned < 0 THEN -OpeningSigned ELSE 0 END,
     ClosingDebit  = CASE WHEN ClosingSigned > 0 THEN ClosingSigned ELSE 0 END,
     ClosingCredit = CASE WHEN ClosingSigned < 0 THEN -ClosingSigned ELSE 0 END
 FROM Aggregated
 WHERE
-    -- keep all heads that have any balance
     (OpeningSigned <> 0 OR ClosingSigned <> 0)
-    -- OR always keep root heads (Assets, Liabilities, Equity, Income, Expense)
     OR ParentHead IS NULL
     OR ParentHead = 0
 ORDER BY HeadCode;
-
 ";
 
             return await Connection.QueryAsync<TrialBalanceDTO>(
@@ -411,8 +404,9 @@ ORDER BY HeadCode;
         // ============================================================
         //  TRIAL BALANCE DETAIL  (includes bank legs & PINL)
         // ============================================================
+
         public async Task<IEnumerable<TrialBalanceDetailDTO>> GetTrialBalanceDetailAsync(
-            TrialBalanceDetailRequestDTO dto)
+    TrialBalanceDetailRequestDTO dto)
         {
             const string sql = @"
 ;WITH
@@ -447,7 +441,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- B) SI lines (Revenue / item)
+    -- B) SI lines (P&L side, using line BudgetLineId/Item)
     --------------------------------------------------------
     SELECT
         si.InvoiceDate AS TransDate,
@@ -464,14 +458,15 @@ GlLines AS (
     INNER JOIN dbo.Item i
         ON i.Id = sil.ItemId AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = i.BudgetLineId AND coa.IsActive = 1
+        ON coa.Id = COALESCE(sil.BudgetLineId, i.BudgetLineId)
+       AND coa.IsActive = 1
     WHERE si.InvoiceDate BETWEEN ISNULL(@FromDate, '1900-01-01')
                              AND ISNULL(@ToDate,   '9999-12-31')
 
     UNION ALL
 
     --------------------------------------------------------
-    -- C) CN lines (reverse revenue / item)
+    -- C) CN lines (reverse P&L, using item BudgetLineId)
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate AS TransDate,
@@ -578,7 +573,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- G1) AP – Supplier Invoice LINES (PINL -> item heads)
+    -- G1) AP – Supplier Invoice LINES (PINL -> item/budgetLineId)
     --------------------------------------------------------
     SELECT
         si.InvoiceDate AS TransDate,
@@ -590,14 +585,15 @@ GlLines AS (
         CAST(0 AS decimal(18,2)) AS Credit
     FROM dbo.SupplierInvoicePin si
     CROSS APPLY OPENJSON(si.LinesJson) WITH (
-        ItemCode  nvarchar(50)  '$.item',
-        LineTotal decimal(18,2) '$.lineTotal'
+        ItemCode     nvarchar(50)  '$.item',
+        LineTotal    decimal(18,2) '$.lineTotal',
+        BudgetLineId int           '$.budgetLineId'
     ) j
     INNER JOIN dbo.Item i
         ON i.ItemCode = j.ItemCode
        AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = i.BudgetLineId
+        ON coa.Id = COALESCE(j.BudgetLineId, i.BudgetLineId)
        AND coa.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
