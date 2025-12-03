@@ -714,7 +714,7 @@ CoaIE AS (
         c.HeadCode,
         c.HeadName,
         c.HeadType
-    FROM Finance.dbo.ChartOfAccount c
+    FROM ChartOfAccount c
     WHERE c.IsActive = 1
       AND c.HeadType IN ('I','E')
       -- AND c.HeadLevel = 3      -- uncomment if you only want level 3
@@ -732,7 +732,7 @@ AllGl AS (
         gt.TxnDate      AS TransDate,
         Debit  = CASE WHEN gt.AmountBase > 0 THEN gt.AmountBase ELSE 0 END,
         Credit = CASE WHEN gt.AmountBase < 0 THEN -gt.AmountBase ELSE 0 END
-    FROM Finance.dbo.GlTransaction gt
+    FROM GlTransaction gt
 
     UNION ALL
 
@@ -742,7 +742,7 @@ AllGl AS (
         mj.JournalDate  AS TransDate,
         Debit  = ISNULL(mj.Debit,  0.00),
         Credit = ISNULL(mj.Credit, 0.00)
-    FROM Finance.dbo.ManualJournal mj
+    FROM ManualJournal mj
     WHERE mj.IsActive = 1
       AND mj.isPosted = 1
 ),
