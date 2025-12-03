@@ -36,49 +36,120 @@ where isActive = 1
 
         public async Task<int> CreateAsync(Bank bankDto)
         {
-            const string query = @"
-        INSERT INTO Bank 
-        (
-            BankName,
-            AccountHolderName,
-            AccountNo,
-            AccountType,
-            Branch,
-            IFSC,
-            Routing,
-            CurrencyId,
-            CountryId,
-            PrimaryContact,
-            Email,
-            ContactNo,
-            Address,
-            IsActive,
-            BudgetLineId
-        )
-        OUTPUT INSERTED.Id
-        VALUES
-        (
-            @BankName,
-            @AccountHolderName,
-            @AccountNo,
-            @AccountType,
-            @Branch,
-            @IFSC,
-            @Routing,
-            @CurrencyId,
-            @CountryId,
-            @PrimaryContact,
-            @Email,
-            @ContactNo,
-            @Address,
-            @IsActive,
-            @BudgetLineId
-        )";
+            // 1) Get parent COA row (the group under which the bank account will sit)
+            const string parentSql = @"
+SELECT TOP 1 Id, HeadCode, HeadName, HeadLevel, HeadType
+FROM ChartOfAccount
+WHERE Id = @Id AND IsActive = 1;";
 
-            return await Connection.QueryFirstAsync<int>(query, bankDto);
+            var parent = await Connection.QuerySingleAsync<dynamic>(
+                parentSql,
+                new { Id = bankDto.BudgetLineId }
+            );
+
+            int parentHeadCode = parent.HeadCode;
+            string parentName = parent.HeadName;
+            int parentHeadLevel = parent.HeadLevel;
+            string parentType = parent.HeadType;   // usually 'A' for Asset
+
+            // 2) Generate next HeadCode under this parent
+            const string nextCodeSql = @"
+SELECT ISNULL(MAX(HeadCode), 0) + 1
+FROM ChartOfAccount
+WHERE ParentHead = @ParentHead;";
+
+            int newHeadCode = await Connection.ExecuteScalarAsync<int>(
+                nextCodeSql,
+                new { ParentHead = parentHeadCode }
+            );
+
+            // 3) Insert new ChartOfAccount row for this bank
+            var now = DateTime.UtcNow;
+
+            var coaParams = new
+            {
+                HeadCode = newHeadCode,
+                HeadLevel = parentHeadLevel + 1,
+                HeadName = bankDto.BankName,
+                HeadType = parentType,
+                HeadCodeName = $"{newHeadCode} - {bankDto.BankName}",
+                IsGl = true,
+                IsTransaction = true,
+                ParentHead = parentHeadCode,
+                PHeadName = parentName,
+                CreatedBy = bankDto.CreatedBy,
+                CreatedDate = now,
+                UpdatedBy = bankDto.UpdatedBy,
+                UpdatedDate = now,
+                IsActive = true
+            };
+
+            const string coaInsertSql = @"
+INSERT INTO ChartOfAccount
+(HeadCode, HeadLevel, HeadName, HeadType, HeadCodeName,
+ IsGl, IsTransaction, ParentHead, PHeadName,
+ CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+OUTPUT INSERTED.Id
+VALUES
+(@HeadCode, @HeadLevel, @HeadName, @HeadType, @HeadCodeName,
+ @IsGl, @IsTransaction, @ParentHead, @PHeadName,
+ @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive);";
+
+            int newCoaId = await Connection.QueryFirstAsync<int>(
+                coaInsertSql,
+                coaParams
+            );
+
+            // 4) Use that COA Id as the bank's BudgetLineId
+            bankDto.BudgetLineId = newCoaId;
+
+            // 5) Insert Bank
+            const string bankInsertSql = @"
+INSERT INTO Bank 
+(
+    BankName,
+    AccountHolderName,
+    AccountNo,
+    AccountType,
+    Branch,
+    IFSC,
+    Routing,
+    CurrencyId,
+    CountryId,
+    PrimaryContact,
+    Email,
+    ContactNo,
+    Address,
+    IsActive,
+    BudgetLineId
+)
+OUTPUT INSERTED.Id
+VALUES
+(
+    @BankName,
+    @AccountHolderName,
+    @AccountNo,
+    @AccountType,
+    @Branch,
+    @IFSC,
+    @Routing,
+    @CurrencyId,
+    @CountryId,
+    @PrimaryContact,
+    @Email,
+    @ContactNo,
+    @Address,
+    @IsActive,
+    @BudgetLineId
+);";
+
+            int newBankId = await Connection.QueryFirstAsync<int>(
+                bankInsertSql,
+                bankDto
+            );
+
+            return newBankId;
         }
-
-
 
         public async Task UpdateAsync(Bank bankDto)
         {
