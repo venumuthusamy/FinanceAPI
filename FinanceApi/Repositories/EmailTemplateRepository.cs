@@ -68,7 +68,7 @@ SELECT
     p.InvoiceNo,
     ISNULL(s.Name, '') AS PartyName
 FROM dbo.SupplierInvoicePin p
-LEFT JOIN dbo.Supplier s ON s.Id = p.SupplierId
+LEFT JOIN dbo.Suppliers s ON s.Id = p.SupplierId
 WHERE p.IsActive = 1
 ORDER BY p.InvoiceDate DESC, p.InvoiceNo DESC;
 ";
