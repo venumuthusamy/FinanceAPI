@@ -224,6 +224,25 @@ VALUES
                         transaction: tx);
                 }
 
+                // ===========================================
+                // NEW: update AccountBalance for BANK head
+                // HeadId = Bank.BudgetLineId
+                // ===========================================
+                // NEW
+                if (dto.BankId.HasValue && dto.BankId.Value > 0)
+                {
+                    var bankHeadId = await GetBankBudgetLineIdAsync(conn, tx, dto.BankId.Value);
+                    if (bankHeadId.HasValue)
+                    {
+                        await UpsertAccountBalanceAsync(
+                            conn,
+                            tx,
+                            headId: bankHeadId.Value,
+                            deltaAmount: totalAllocated); // or dto.AmountReceived
+                    }
+                }
+
+
                 tx.Commit();
                 return receiptId;
             }
@@ -247,6 +266,26 @@ VALUES
 
             try
             {
+                // -------------------------------------------------
+                // 1) Load old header info (old BankId & TotalAllocated)
+                // -------------------------------------------------
+                const string getOldHdrSql = @"
+SELECT BankId,
+       ISNULL(TotalAllocated, 0.0) AS TotalAllocated
+FROM dbo.ArReceipt
+WHERE Id = @Id AND IsActive = 1;";
+
+                var oldHdr = await conn.QuerySingleAsync<dynamic>(
+                    getOldHdrSql,
+                    new { Id = dto.Id.Value },
+                    transaction: tx);
+
+                int oldBankId = (int)oldHdr.BankId;
+                decimal oldTotalAllocated = (decimal)oldHdr.TotalAllocated;
+
+                // -------------------------------------------------
+                // 2) New totals from DTO
+                // -------------------------------------------------
                 var totalAllocated = dto.Allocations.Sum(a => a.AllocatedAmount);
                 var unallocated = dto.AmountReceived - totalAllocated;
 
@@ -283,7 +322,9 @@ WHERE Id = @Id AND IsActive = 1;";
                     },
                     transaction: tx);
 
-                // delete existing lines
+                // -------------------------------------------------
+                // 3) Delete existing lines & re-insert
+                // -------------------------------------------------
                 const string deleteLinesSql = @"
 DELETE FROM dbo.ArReceiptAllocation WHERE ReceiptId = @ReceiptId;";
 
@@ -292,7 +333,6 @@ DELETE FROM dbo.ArReceiptAllocation WHERE ReceiptId = @ReceiptId;";
                     new { ReceiptId = dto.Id.Value },
                     transaction: tx);
 
-                // re-insert lines
                 const string insertLineSql = @"
 INSERT INTO dbo.ArReceiptAllocation
 (
@@ -319,6 +359,56 @@ VALUES
                         transaction: tx);
                 }
 
+                // -------------------------------------------------
+                // 4) Adjust AccountBalance for BANK head(s)
+                //    HeadId = Bank.BudgetLineId
+                // -------------------------------------------------
+                int? oldBankHeadId = null;
+                int? newBankHeadId = null;
+
+                if (oldBankId > 0)
+                    oldBankHeadId = await GetBankBudgetLineIdAsync(conn, tx, oldBankId);
+
+                if (dto.BankId.HasValue && dto.BankId.Value > 0)
+                    newBankHeadId = await GetBankBudgetLineIdAsync(conn, tx, dto.BankId.Value);
+
+
+                if (oldBankHeadId.HasValue &&
+                    newBankHeadId.HasValue &&
+                    oldBankHeadId.Value == newBankHeadId.Value)
+                {
+                    // Same bank (same BudgetLineId) – apply only the difference
+                    var delta = totalAllocated - oldTotalAllocated;
+                    await UpsertAccountBalanceAsync(
+                        conn,
+                        tx,
+                        headId: oldBankHeadId.Value,
+                        deltaAmount: delta);
+                }
+                else
+                {
+                    // Bank changed (or BudgetLine changed)
+                    if (oldBankHeadId.HasValue)
+                    {
+                        // Reverse old effect
+                        await UpsertAccountBalanceAsync(
+                            conn,
+                            tx,
+                            headId: oldBankHeadId.Value,
+                            deltaAmount: -oldTotalAllocated);
+                    }
+
+                    if (newBankHeadId.HasValue)
+                    {
+                        // Apply new effect
+                        await UpsertAccountBalanceAsync(
+                            conn,
+                            tx,
+                            headId: newBankHeadId.Value,
+                            deltaAmount: totalAllocated);
+                    }
+                }
+
                 tx.Commit();
             }
             catch
@@ -327,6 +417,7 @@ VALUES
                 throw;
             }
         }
+
 
         public async Task DeleteAsync(int id, int userId)
         {
@@ -362,6 +453,79 @@ WHERE ReceiptId = @Id;";
             }
         }
 
+        // ===============================================
+        // Helpers for Bank -> AccountBalance
+        // ===============================================
+
+        // Get the COA Head (BudgetLineId) for the selected bank
+        private async Task<int?> GetBankBudgetLineIdAsync(
+            IDbConnection conn,
+            IDbTransaction tx,
+            int bankId)
+        {
+            const string sql = @"
+SELECT BudgetLineId
+FROM dbo.Bank
+WHERE Id = @BankId
+  AND IsActive = 1;";  // adjust IsActive column name if needed
+
+            var headId = await conn.ExecuteScalarAsync<int?>(
+                sql,
+                new { BankId = bankId },
+                transaction: tx);
+
+            return headId;     // this goes into AccountBalance.HeadId
+        }
+
+        // Upsert / update AccountBalance for that head
+        private async Task UpsertAccountBalanceAsync(
+            IDbConnection conn,
+            IDbTransaction tx,
+            int headId,
+            decimal deltaAmount)
+        {
+            if (deltaAmount == 0) return;
+
+            const string sql = @"
+IF EXISTS (SELECT 1 FROM dbo.AccountBalance WHERE HeadId = @HeadId)
+BEGIN
+    UPDATE dbo.AccountBalance
+    SET
+        AvailableBalance = ISNULL(AvailableBalance, 0) + @DeltaAmount,
+        LastUpdated      = SYSUTCDATETIME(),
+        UpdatedDate      = SYSUTCDATETIME()
+    WHERE HeadId = @HeadId;
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AccountBalance
+    (
+        HeadId,
+        PeriodDebit,
+        PeriodCredit,
+        LastUpdated,
+        AvailableBalance,
+        UpdatedDate
+    )
+    VALUES
+    (
+        @HeadId,
+        0,
+        0,
+        SYSUTCDATETIME(),
+        @DeltaAmount,
+        SYSUTCDATETIME()
+    );
+END";
+
+            await conn.ExecuteAsync(
+                sql,
+                new { HeadId = headId, DeltaAmount = deltaAmount },
+                transaction: tx);
+        }
+
+
         #endregion
     }
+
 }
