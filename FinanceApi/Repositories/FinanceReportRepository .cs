@@ -38,14 +38,14 @@ GlLines AS (
     FROM dbo.ManualJournal mj
     WHERE mj.IsActive   = 1
       AND mj.isPosted   = 1
-      AND mj.JournalDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND mj.JournalDate BETWEEN '1900-01-01'
+                            AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
     --------------------------------------------------------
     -- B) Sales Invoice lines  (P&L / revenue / expense)
-    --    Use line-level BudgetLineId if present,
-    --    otherwise fallback to Item.BudgetLineId
+    --    Line.BudgetLineId -> fallback Item.BudgetLineId
     --------------------------------------------------------
     SELECT
         si.InvoiceDate                        AS TransDate,
@@ -64,14 +64,13 @@ GlLines AS (
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = COALESCE(sil.BudgetLineId, i.BudgetLineId)
        AND coa.IsActive = 1
-    WHERE si.InvoiceDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+    WHERE si.InvoiceDate BETWEEN '1900-01-01'
+                             AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
     --------------------------------------------------------
     -- C) Credit Note lines  (reverse of B)
-    --    Here we still use Item.BudgetLineId.
-    --    (If you later add cnl.BudgetLineId, we can COALESCE it.)
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate                     AS TransDate,
@@ -89,7 +88,8 @@ GlLines AS (
         ON i.Id = cnl.ItemId AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = i.BudgetLineId AND coa.IsActive = 1
-    WHERE cn.CreditNoteDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+    WHERE cn.CreditNoteDate BETWEEN '1900-01-01'
+                                AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -112,7 +112,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = so.CustomerId AND c.IsActive = 1
     WHERE si.IsActive = 1
-      AND si.InvoiceDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND si.InvoiceDate BETWEEN '1900-01-01'
+                             AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -131,7 +132,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = r.CustomerId AND c.IsActive = 1
     WHERE r.IsActive = 1
-      AND r.ReceiptDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND r.ReceiptDate BETWEEN '1900-01-01'
+                            AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -139,20 +141,20 @@ GlLines AS (
     -- E2) AR – Receipt : BANK / CASH (Debit bank)
     --------------------------------------------------------
     SELECT
-    r.ReceiptDate AS TransDate,
-    'ARRECBNK'    AS SourceType,
-    r.ReceiptNo   AS SourceNo,
-    'AR Receipt - ' + ISNULL(b.BankName,'') AS Description,
-    b.BudgetLineId AS HeadId,                     -- 🔴 change
-    ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
-    CAST(0 AS decimal(18,2)) AS Credit
-FROM dbo.ArReceipt r
-INNER JOIN dbo.Bank b
-    ON b.Id = r.BankId AND b.IsActive = 1
-WHERE r.IsActive = 1
-  AND r.PaymentMode = 'BANK'
-  AND r.ReceiptDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                        AND ISNULL(@ToDate,   '9999-12-31')
+        r.ReceiptDate AS TransDate,
+        'ARRECBNK'    AS SourceType,
+        r.ReceiptNo   AS SourceNo,
+        'AR Receipt - ' + ISNULL(b.BankName,'') AS Description,
+        b.BudgetLineId AS HeadId,
+        ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
+        CAST(0 AS decimal(18,2)) AS Credit
+    FROM dbo.ArReceipt r
+    INNER JOIN dbo.Bank b
+        ON b.Id = r.BankId AND b.IsActive = 1
+    WHERE r.IsActive = 1
+      AND r.PaymentMode = 'BANK'
+      AND r.ReceiptDate BETWEEN '1900-01-01'
+                            AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -171,14 +173,13 @@ WHERE r.IsActive = 1
     INNER JOIN dbo.Customer c
         ON c.Id = cn.CustomerId AND c.IsActive = 1
     WHERE cn.IsActive = 1
-      AND cn.CreditNoteDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND cn.CreditNoteDate BETWEEN '1900-01-01'
+                                AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
     --------------------------------------------------------
     -- G1) AP – PIN LINES -> P&L / Asset
-    --     BudgetLine comes from JSON (budgetLineId) if given,
-    --     otherwise from Item.BudgetLineId
     --------------------------------------------------------
     SELECT
         si.InvoiceDate                        AS TransDate,
@@ -224,27 +225,29 @@ WHERE r.IsActive = 1
         ON s.Id = si.SupplierId AND s.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND si.InvoiceDate BETWEEN '1900-01-01'
+                             AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
     --------------------------------------------------------
-    -- H) AP – Supplier Payment (Debit AP)
+    -- H) AP – Supplier Payment  (Debit AP – Supplier head)
     --------------------------------------------------------
     SELECT
-        sp.PaymentDate                        AS TransDate,
-        'SPAY'                                AS SourceType,
-        sp.PaymentNo                          AS SourceNo,
-        'Supplier Payment'                    AS Description,
-        s.BudgetLineId                        AS HeadId,
+        sp.PaymentDate AS TransDate,
+        'SPAY'         AS SourceType,
+        sp.PaymentNo   AS SourceNo,
+        'Supplier Payment' AS Description,
+        s.BudgetLineId AS HeadId,           -- AP COA
         ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
+        CAST(0 AS decimal(18,2)) AS Credit
     FROM dbo.SupplierPayment sp
     INNER JOIN dbo.Suppliers s
         ON s.Id = sp.SupplierId AND s.IsActive = 1
     WHERE sp.IsActive = 1
       AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND sp.PaymentDate BETWEEN '1900-01-01'
+                             AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -252,20 +255,20 @@ WHERE r.IsActive = 1
     -- H2) AP – Supplier Payment : BANK / CASH (Credit bank)
     --------------------------------------------------------
     SELECT
-    sp.PaymentDate AS TransDate,
-    'SPAYBNK'      AS SourceType,
-    sp.PaymentNo   AS SourceNo,
-    'Supplier Payment - ' + ISNULL(b.BankName,'') AS Description,
-    b.BudgetLineId AS HeadId,                     -- 🔴 change
-    CAST(0 AS decimal(18,2)) AS Debit,
-    ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
-FROM dbo.SupplierPayment sp
-INNER JOIN dbo.Bank b
-    ON b.Id = sp.BankId AND b.IsActive = 1
-WHERE sp.IsActive = 1
-  AND sp.Status   = 1
-  AND sp.PaymentDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                         AND ISNULL(@ToDate,   '9999-12-31')
+        sp.PaymentDate AS TransDate,
+        'SPAYBNK'      AS SourceType,
+        sp.PaymentNo   AS SourceNo,
+        'Supplier Payment - ' + ISNULL(b.BankName,'') AS Description,
+        b.BudgetLineId AS HeadId,           -- Bank COA
+        CAST(0 AS decimal(18,2)) AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Bank b
+        ON b.Id = sp.BankId AND b.IsActive = 1
+    WHERE sp.IsActive = 1
+      AND sp.Status   = 1
+      AND sp.PaymentDate BETWEEN '1900-01-01'
+                             AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -285,8 +288,10 @@ WHERE sp.IsActive = 1
         ON s.Id = dn.SupplierId AND s.IsActive = 1
     WHERE dn.IsActive = 1
       AND dn.Status   = 2
-      AND dn.NoteDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+      AND dn.NoteDate BETWEEN '1900-01-01'
+                          AND ISNULL(@ToDate, '9999-12-31')
 ),
+
 
 ------------------------------------------------------------
 -- 2) MOVEMENTS PER LEAF ACCOUNT
@@ -525,21 +530,21 @@ GlLines AS (
     --------------------------------------------------------
     -- E2) AR – Receipt : BANK / CASH (Debit bank)
     --------------------------------------------------------
-    SELECT
-    r.ReceiptDate AS TransDate,
-    'ARRECBNK'    AS SourceType,
-    r.ReceiptNo   AS SourceNo,
-    'AR Receipt - ' + ISNULL(b.BankName,'') AS Description,
-    b.BudgetLineId AS HeadId,                     -- 🔴 change
-    ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
-    CAST(0 AS decimal(18,2)) AS Credit
-FROM dbo.ArReceipt r
-INNER JOIN dbo.Bank b
-    ON b.Id = r.BankId AND b.IsActive = 1
-WHERE r.IsActive = 1
-  AND r.PaymentMode = 'BANK'
-  AND r.ReceiptDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                        AND ISNULL(@ToDate,   '9999-12-31')
+        SELECT
+        r.ReceiptDate AS TransDate,
+        'ARRECBNK'    AS SourceType,
+        r.ReceiptNo   AS SourceNo,
+        'AR Receipt - ' + ISNULL(b.BankName,'') AS Description,
+        b.BudgetLineId AS HeadId,   -- 🔴 use bank’s COA
+        ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
+        CAST(0 AS decimal(18,2)) AS Credit
+    FROM dbo.ArReceipt r
+    INNER JOIN dbo.Bank b
+        ON b.Id = r.BankId AND b.IsActive = 1
+    WHERE r.IsActive = 1
+      AND r.PaymentMode = 'BANK'
+      AND r.ReceiptDate BETWEEN '1900-01-01'
+                            AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -639,21 +644,21 @@ WHERE r.IsActive = 1
     --------------------------------------------------------
     -- H2) AP – Supplier Payment : BANK / CASH (Credit bank)
     --------------------------------------------------------
-   SELECT
-    sp.PaymentDate AS TransDate,
-    'SPAYBNK'      AS SourceType,
-    sp.PaymentNo   AS SourceNo,
-    'Supplier Payment - ' + ISNULL(b.BankName,'') AS Description,
-    b.BudgetLineId AS HeadId,                     -- 🔴 change
-    CAST(0 AS decimal(18,2)) AS Debit,
-    ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
-FROM dbo.SupplierPayment sp
-INNER JOIN dbo.Bank b
-    ON b.Id = sp.BankId AND b.IsActive = 1
-WHERE sp.IsActive = 1
-  AND sp.Status   = 1
-  AND sp.PaymentDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                         AND ISNULL(@ToDate,   '9999-12-31')
+     SELECT
+        sp.PaymentDate AS TransDate,
+        'SPAYBNK'      AS SourceType,
+        sp.PaymentNo   AS SourceNo,
+        'Supplier Payment - ' + ISNULL(b.BankName,'') AS Description,
+        b.BudgetLineId AS HeadId,   -- 🔴 use bank’s COA
+        CAST(0 AS decimal(18,2)) AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Bank b
+        ON b.Id = sp.BankId AND b.IsActive = 1
+    WHERE sp.IsActive = 1
+      AND sp.Status   = 1
+      AND sp.PaymentDate BETWEEN '1900-01-01'
+                             AND ISNULL(@ToDate, '9999-12-31')
 
     UNION ALL
 
@@ -698,7 +703,6 @@ ORDER BY TransDate, SourceType, SourceNo;
                     dto.CompanyId
                 });
         }
-
         public async Task<IEnumerable<ProfitLossViewInfo>> GetProfitLossDetails()
         {
             const string sql = @"
