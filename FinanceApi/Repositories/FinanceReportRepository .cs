@@ -12,7 +12,6 @@ namespace FinanceApi.Repositories
             : base(factory)
         {
         }
-
         // ============================================================
         //  TRIAL BALANCE SUMMARY  (Opening / Closing, Hierarchical)
         // ============================================================
@@ -20,15 +19,6 @@ namespace FinanceApi.Repositories
         {
             const string sql = @"
 ;WITH
-------------------------------------------------------------
--- 0) BANK HEAD (used for receipts & payments)
-------------------------------------------------------------
-BankHead AS (
-    SELECT TOP (1) Id AS BankHeadId
-    FROM dbo.ChartOfAccount
-    WHERE IsActive = 1
-      AND (HeadName = 'Bank Accounts' OR HeadCode = '10103')
-),
 
 ------------------------------------------------------------
 -- 1) VIRTUAL GL LINES (ALL MODULES)
@@ -149,16 +139,20 @@ GlLines AS (
     -- E2) AR – Receipt : BANK / CASH (Debit bank)
     --------------------------------------------------------
     SELECT
-        r.ReceiptDate                         AS TransDate,
-        'ARRECBNK'                            AS SourceType,
-        r.ReceiptNo                           AS SourceNo,
-        'AR Receipt - Bank'                   AS Description,
-        (SELECT BankHeadId FROM BankHead)     AS HeadId,
-        ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
-    FROM dbo.ArReceipt r
-    WHERE r.IsActive = 1
-      AND r.ReceiptDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+    r.ReceiptDate AS TransDate,
+    'ARRECBNK'    AS SourceType,
+    r.ReceiptNo   AS SourceNo,
+    'AR Receipt - ' + ISNULL(b.BankName,'') AS Description,
+    b.BudgetLineId AS HeadId,                     -- 🔴 change
+    ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
+    CAST(0 AS decimal(18,2)) AS Credit
+FROM dbo.ArReceipt r
+INNER JOIN dbo.Bank b
+    ON b.Id = r.BankId AND b.IsActive = 1
+WHERE r.IsActive = 1
+  AND r.PaymentMode = 'BANK'
+  AND r.ReceiptDate BETWEEN ISNULL(@FromDate, '1900-01-01')
+                        AND ISNULL(@ToDate,   '9999-12-31')
 
     UNION ALL
 
@@ -258,17 +252,20 @@ GlLines AS (
     -- H2) AP – Supplier Payment : BANK / CASH (Credit bank)
     --------------------------------------------------------
     SELECT
-        sp.PaymentDate                        AS TransDate,
-        'SPAYBNK'                             AS SourceType,
-        sp.PaymentNo                          AS SourceNo,
-        'Supplier Payment - Bank'             AS Description,
-        (SELECT BankHeadId FROM BankHead)     AS HeadId,
-        CAST(0 AS decimal(18,2))              AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
-    FROM dbo.SupplierPayment sp
-    WHERE sp.IsActive = 1
-      AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN '1900-01-01' AND ISNULL(@ToDate, '9999-12-31')
+    sp.PaymentDate AS TransDate,
+    'SPAYBNK'      AS SourceType,
+    sp.PaymentNo   AS SourceNo,
+    'Supplier Payment - ' + ISNULL(b.BankName,'') AS Description,
+    b.BudgetLineId AS HeadId,                     -- 🔴 change
+    CAST(0 AS decimal(18,2)) AS Debit,
+    ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
+FROM dbo.SupplierPayment sp
+INNER JOIN dbo.Bank b
+    ON b.Id = sp.BankId AND b.IsActive = 1
+WHERE sp.IsActive = 1
+  AND sp.Status   = 1
+  AND sp.PaymentDate BETWEEN ISNULL(@FromDate, '1900-01-01')
+                         AND ISNULL(@ToDate,   '9999-12-31')
 
     UNION ALL
 
@@ -410,15 +407,6 @@ ORDER BY HeadCode;
         {
             const string sql = @"
 ;WITH
-------------------------------------------------------------
--- 0) BANK HEAD (same as summary)
-------------------------------------------------------------
-BankHead AS (
-    SELECT TOP (1) Id AS BankHeadId
-    FROM dbo.ChartOfAccount
-    WHERE IsActive = 1
-      AND (HeadName = 'Bank Accounts' OR HeadCode = '10103')
-),
 
 GlLines AS (
     --------------------------------------------------------
@@ -538,17 +526,20 @@ GlLines AS (
     -- E2) AR – Receipt : BANK / CASH (Debit bank)
     --------------------------------------------------------
     SELECT
-        r.ReceiptDate AS TransDate,
-        'ARRECBNK'    AS SourceType,
-        r.ReceiptNo   AS SourceNo,
-        'AR Receipt - Bank' AS Description,
-        (SELECT BankHeadId FROM BankHead) AS HeadId,
-        ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
-        CAST(0 AS decimal(18,2)) AS Credit
-    FROM dbo.ArReceipt r
-    WHERE r.IsActive = 1
-      AND r.ReceiptDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                            AND ISNULL(@ToDate,   '9999-12-31')
+    r.ReceiptDate AS TransDate,
+    'ARRECBNK'    AS SourceType,
+    r.ReceiptNo   AS SourceNo,
+    'AR Receipt - ' + ISNULL(b.BankName,'') AS Description,
+    b.BudgetLineId AS HeadId,                     -- 🔴 change
+    ISNULL(TRY_CONVERT(decimal(18,2), r.AmountReceived),0) AS Debit,
+    CAST(0 AS decimal(18,2)) AS Credit
+FROM dbo.ArReceipt r
+INNER JOIN dbo.Bank b
+    ON b.Id = r.BankId AND b.IsActive = 1
+WHERE r.IsActive = 1
+  AND r.PaymentMode = 'BANK'
+  AND r.ReceiptDate BETWEEN ISNULL(@FromDate, '1900-01-01')
+                        AND ISNULL(@ToDate,   '9999-12-31')
 
     UNION ALL
 
@@ -648,19 +639,21 @@ GlLines AS (
     --------------------------------------------------------
     -- H2) AP – Supplier Payment : BANK / CASH (Credit bank)
     --------------------------------------------------------
-    SELECT
-        sp.PaymentDate AS TransDate,
-        'SPAYBNK'      AS SourceType,
-        sp.PaymentNo   AS SourceNo,
-        'Supplier Payment - Bank' AS Description,
-        (SELECT BankHeadId FROM BankHead) AS HeadId,
-        CAST(0 AS decimal(18,2)) AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
-    FROM dbo.SupplierPayment sp
-    WHERE sp.IsActive = 1
-      AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+   SELECT
+    sp.PaymentDate AS TransDate,
+    'SPAYBNK'      AS SourceType,
+    sp.PaymentNo   AS SourceNo,
+    'Supplier Payment - ' + ISNULL(b.BankName,'') AS Description,
+    b.BudgetLineId AS HeadId,                     -- 🔴 change
+    CAST(0 AS decimal(18,2)) AS Debit,
+    ISNULL(TRY_CONVERT(decimal(18,2), sp.Amount),0) AS Credit
+FROM dbo.SupplierPayment sp
+INNER JOIN dbo.Bank b
+    ON b.Id = sp.BankId AND b.IsActive = 1
+WHERE sp.IsActive = 1
+  AND sp.Status   = 1
+  AND sp.PaymentDate BETWEEN ISNULL(@FromDate, '1900-01-01')
+                         AND ISNULL(@ToDate,   '9999-12-31')
 
     UNION ALL
 
