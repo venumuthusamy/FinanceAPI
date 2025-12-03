@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,52 +17,51 @@ namespace FinanceApi.Controllers
         }
 
         [HttpGet("getAll")]
-        public async Task<ActionResult<List<OpeningBalanceDto>>> GetAll()
+        public async Task<IActionResult> GetAll()
         {
-            return Ok(await _service.GetAllAsync());
+            var list = await _service.GetAllAsync();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
         }
 
-        [HttpGet("get/{id}")]
-        public async Task<ActionResult<OpeningBalanceDto>> GetById(int id)
-        {
-            var openingBalance = await _service.GetByIdAsync(id);
-            if (openingBalance == null) return NotFound();
-            return Ok(openingBalance);
-        }
+
 
         [HttpPost("insert")]
-        public async Task<ActionResult<OpeningBalance>> Create(OpeningBalance openingBalance)
+        public async Task<ActionResult> Create(OpeningBalance openingBalance)
         {
-            try
-            {
-                var created = await _service.CreateAsync(openingBalance);
-                return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
-            }
-            catch (ArgumentException ex)
-            {
-                return BadRequest(ex.Message);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, "An unexpected error occurred: " + ex.Message);
-            }
+
+            var id = await _service.CreateAsync(openingBalance);
+            ResponseResult data = new ResponseResult(true, "OpeningBalance created sucessfully", id);
+            return Ok(data);
+
         }
 
-        [HttpPut("update/{id}")]
-        public async Task<ActionResult<OpeningBalance>> Update(int id, OpeningBalance openingBalance)
+
+        [HttpGet("get/{id}")]
+        public async Task<IActionResult> GetById(int id)
         {
-            var updated = await _service.UpdateAsync(id, openingBalance);
-            if (updated == null) return NotFound();
-            return (updated);
+            var licenseObj = await _service.GetById(id);
+            ResponseResult data = new ResponseResult(true, "Success", licenseObj);
+            return Ok(data);
         }
 
-        [HttpDelete("delete/{id}")]
-        public async Task<ActionResult<OpeningBalance>> Delete(int id)
-        {
-            var deleted = await _service.DeleteAsync(id);
-            if (!deleted) return NotFound();
-            return NoContent();
 
+        [HttpPut("update")]
+        public async Task<IActionResult> Update(OpeningBalance openingBalance)
+        {
+            await _service.UpdateAsync(openingBalance);
+            ResponseResult data = new ResponseResult(true, "OpeningBalance updated successfully.", null);
+            return Ok(data);
+        }
+
+
+
+        [HttpDelete("Delete/{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            await _service.DeleteAsync(id);
+            ResponseResult data = new ResponseResult(true, "OpeningBalance Deleted sucessfully", null);
+            return Ok(data);
         }
     }
 }
