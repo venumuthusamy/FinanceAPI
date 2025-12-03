@@ -4,10 +4,12 @@ namespace FinanceApi.Interfaces
 {
     public interface IOpeningBalanceService
     {
-        Task<List<OpeningBalanceDto>> GetAllAsync();
-        Task<OpeningBalanceDto?> GetByIdAsync(int id);
-        Task<OpeningBalance> CreateAsync(OpeningBalance openingBalance);
-        Task<OpeningBalance?> UpdateAsync(int id, OpeningBalance openingBalance);
-        Task<bool> DeleteAsync(int id);
+        Task<IEnumerable<OpeningBalanceDto>> GetAllAsync();
+
+        Task<OpeningBalanceDto> GetById(int id);
+        Task<int> CreateAsync(OpeningBalance OpeningBalance);
+        Task UpdateAsync(OpeningBalance OpeningBalance);
+
+        Task DeleteAsync(int id);
     }
 }

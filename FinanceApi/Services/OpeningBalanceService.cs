@@ -12,29 +12,31 @@ namespace FinanceApi.Services
             _repository = repository;
         }
 
-        public async Task<List<OpeningBalanceDto>> GetAllAsync()
+        public async Task<IEnumerable<OpeningBalanceDto>> GetAllAsync()
         {
             return await _repository.GetAllAsync();
         }
 
-        public async Task<OpeningBalanceDto?> GetByIdAsync(int id)
+        public async Task<int> CreateAsync(OpeningBalance OpeningBalance)
+        {
+            return await _repository.CreateAsync(OpeningBalance);
+
+        }
+
+        public async Task<OpeningBalanceDto> GetById(int id)
         {
             return await _repository.GetByIdAsync(id);
         }
 
-        public async Task<OpeningBalance> CreateAsync(OpeningBalance openingBalance)
+        public Task UpdateAsync(OpeningBalance OpeningBalance)
         {
-            return await _repository.CreateAsync(openingBalance);
+            return _repository.UpdateAsync(OpeningBalance);
         }
 
-        public async Task<OpeningBalance?> UpdateAsync(int id, OpeningBalance openingBalance)
-        {
-            return await _repository.UpdateAsync(id, openingBalance);
-        }
 
-        public async Task<bool> DeleteAsync(int id)
+        public async Task DeleteAsync(int id)
         {
-            return await _repository.DeleteAsync(id);
+            await _repository.DeactivateAsync(id);
         }
     }
 }

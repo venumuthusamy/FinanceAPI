@@ -38,7 +38,7 @@ namespace FinanceApi.Data
         public DbSet<Attendees> Attendees { get; set; }
         public DbSet<PasswordResetToken> PasswordResetToken { get; set; }
         public DbSet<ChartOfAccount> ChartOfAccount { get; set; }
-        public DbSet<OpeningBalance> OpeningBalance { get; set; }
+        //public DbSet<OpeningBalance> OpeningBalance { get; set; }
 
         public DbSet<PurchaseRequest> PurchaseRequests { get; set; }
         public DbSet<PurchaseRequestTemp> PurchaseRequestsTemp { get; set; }
@@ -72,14 +72,14 @@ namespace FinanceApi.Data
 
 
             // Configure User - PasswordResetToken relationship
-            modelBuilder.Entity<PasswordResetToken>()
-                .HasOne(t => t.User)
-                .WithMany(u => u.PasswordResetTokens)
-                .HasForeignKey(t => t.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-            modelBuilder.Entity<OpeningBalance>()
-     .Property(e => e.Date)
-     .HasColumnType("datetime2");
+     //       modelBuilder.Entity<PasswordResetToken>()
+     //           .HasOne(t => t.User)
+     //           .WithMany(u => u.PasswordResetTokens)
+     //           .HasForeignKey(t => t.UserId)
+     //           .OnDelete(DeleteBehavior.Cascade);
+     //       modelBuilder.Entity<OpeningBalance>()
+     //.Property(e => e.Date)
+     //.HasColumnType("datetime2");
 
         }
 
