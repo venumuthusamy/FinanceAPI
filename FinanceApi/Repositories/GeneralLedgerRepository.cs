@@ -539,13 +539,18 @@ ItemLines AS (
 
 ------------------------------------------------------------
 -- 4) OPENING BALANCE FROM OpeningBalance TABLE
+--    (JOIN via BudgetLineId -> ChartOfAccount.Id)
 ------------------------------------------------------------
 Opening AS (
     SELECT
-        ob.BudgetLineId AS HeadId,
-        OpeningBalance  = SUM(ISNULL(ob.OpeningBalanceAmount, 0))
+        coa.Id AS HeadId,
+        OpeningBalance = SUM(ISNULL(ob.OpeningBalanceAmount, 0))
     FROM dbo.OpeningBalance ob
-    GROUP BY ob.BudgetLineId
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id      = ob.BudgetLineId   -- <<=== IMPORTANT JOIN
+       AND coa.IsActive = 1
+    WHERE ob.IsActive = 1
+    GROUP BY coa.Id
 ),
 
 ------------------------------------------------------------
@@ -644,11 +649,10 @@ SELECT
     b.RootHeadType,
     b.ParentHead,
 
-    OpeningBalance =
-        CASE WHEN awi.HeadId IS NOT NULL THEN 0
-             ELSE b.OpeningBalance
-        END,
+    -- ✅ OpeningBalance epovume table-la irundhu dhan varanum
+    OpeningBalance = b.OpeningBalance,
 
+    -- ✅ Debit / Credit mattum items irundha 0 pannrom
     Debit =
         CASE WHEN awi.HeadId IS NOT NULL THEN 0
              ELSE b.DebitTotal
@@ -691,6 +695,7 @@ FROM ItemBase
 
 ORDER BY HeadCode
 OPTION (MAXRECURSION 0);
+
 
 ";
 

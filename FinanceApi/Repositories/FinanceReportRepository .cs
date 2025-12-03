@@ -811,10 +811,9 @@ ORDER BY HeadCode;
        public async Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync()
         {
             const string sql = @"
-;WITH
+;;WITH
 --------------------------------------------------------------------
--- 1) BUILD COA TREE (ParentHead = parent HeadCode, but we also
---    compute ParentId = actual parent Id for tree usage)
+-- 1) COA TREE  (ParentHead = parent HeadCode, we build ParentId)
 --------------------------------------------------------------------
 CoaTree AS (
     -- ROOT HEADS
@@ -822,9 +821,9 @@ CoaTree AS (
         c.Id,
         c.HeadCode,
         c.HeadName,
-        c.HeadType,
-        c.ParentHead,                           -- stores parent HeadCode
-        ParentId     = CAST(0 AS INT),          -- no parent
+        c.HeadType,            -- 'A','L','E','I','X'
+        c.ParentHead,          -- stores parent HeadCode
+        ParentId     = CAST(0 AS INT),
         RootHeadId   = c.Id,
         RootHeadType = c.HeadType
     FROM ChartOfAccount c
@@ -833,14 +832,14 @@ CoaTree AS (
 
     UNION ALL
 
-    -- CHILD HEADS (join via ParentHead = parent HeadCode)
+    -- CHILD HEADS
     SELECT
         c.Id,
         c.HeadCode,
         c.HeadName,
         c.HeadType,
         c.ParentHead,
-        ParentId     = t.Id,                    -- real parent Id
+        ParentId     = t.Id,        -- REAL parent Id
         t.RootHeadId,
         t.RootHeadType
     FROM ChartOfAccount c
@@ -850,15 +849,27 @@ CoaTree AS (
 ),
 
 --------------------------------------------------------------------
--- 2) GL LINES (ALL MODULES) – ALL AMOUNTS USING TRY_CONVERT
+-- 2) OPENING BALANCES  (COA level)
+--------------------------------------------------------------------
+Ob AS (
+    SELECT
+        ob.BudgetLineId AS HeadId,
+        Opening = SUM(TRY_CONVERT(decimal(18,2), ob.OpeningBalanceAmount))
+    FROM OpeningBalance ob
+    WHERE ob.IsActive = 1
+    GROUP BY ob.BudgetLineId
+),
+
+--------------------------------------------------------------------
+-- 3) GL LINES (ALL MODULES)  *** SAME BASE AS GL REPORT ***
 --------------------------------------------------------------------
 GlLines AS (
     --------------------------------------------------------
     -- Manual Journal
     --------------------------------------------------------
     SELECT
-        mj.JournalDate                           AS TransDate,
-        mj.AccountId                             AS HeadId,
+        mj.JournalDate                    AS TransDate,
+        mj.AccountId                      AS HeadId,
         TRY_CONVERT(decimal(18,2), mj.Debit)  AS Debit,
         TRY_CONVERT(decimal(18,2), mj.Credit) AS Credit
     FROM ManualJournal mj
@@ -868,13 +879,13 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Sales Invoice (AR – Customer BudgetLine)
+    -- Sales Invoice – customer (AR control)
     --------------------------------------------------------
     SELECT
         si.InvoiceDate,
-        c.BudgetLineId                           AS HeadId,
+        c.BudgetLineId                    AS HeadId,
         TRY_CONVERT(decimal(18,2), si.Total)  AS Debit,
-        CAST(0 AS decimal(18,2))                 AS Credit
+        CAST(0 AS decimal(18,2))          AS Credit
     FROM SalesInvoice si
     INNER JOIN SalesOrder so ON so.Id = si.SoId
     INNER JOIN Customer c    ON c.Id = so.CustomerId
@@ -884,7 +895,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- AR Receipt Allocation
+    -- AR Receipt allocation – customer
     --------------------------------------------------------
     SELECT
         r.ReceiptDate,
@@ -899,7 +910,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Credit Note (AR) – Customer side
+    -- Credit Note – customer
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate,
@@ -921,7 +932,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Sales Invoice Line (Item income/COGS – Item BudgetLine)
+    -- Sales Invoice line – item (income/COGS)
     --------------------------------------------------------
     SELECT
         si.InvoiceDate,
@@ -939,7 +950,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Credit Note Line (reverse item)
+    -- Credit Note line – reverse item
     --------------------------------------------------------
     SELECT
         cn.CreditNoteDate,
@@ -958,7 +969,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Supplier Invoice PIN (expense/asset – Item BudgetLine)
+    -- Supplier Invoice PIN – item (expense/asset)
     --------------------------------------------------------
     SELECT
         pin.InvoiceDate,
@@ -968,8 +979,8 @@ GlLines AS (
     FROM SupplierInvoicePin pin
     CROSS APPLY OPENJSON(pin.LinesJson)
     WITH (
-        item      NVARCHAR(50)   '$.item',
-        lineTotal NVARCHAR(50)   '$.lineTotal'
+        item      NVARCHAR(50) '$.item',
+        lineTotal NVARCHAR(50) '$.lineTotal'
     ) j
     INNER JOIN Item i ON i.ItemCode = j.item
     WHERE pin.IsActive = 1
@@ -978,7 +989,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Supplier Invoice PIN (AP – Supplier BudgetLine)
+    -- Supplier Invoice PIN – supplier (AP control)
     --------------------------------------------------------
     SELECT
         pin.InvoiceDate,
@@ -996,7 +1007,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Supplier Debit Note
+    -- Supplier Debit Note – reverse AP
     --------------------------------------------------------
     SELECT
         dn.NoteDate,
@@ -1011,7 +1022,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- Supplier Payment
+    -- Supplier Payment – pay supplier (Debit AP)
     --------------------------------------------------------
     SELECT
         sp.PaymentDate,
@@ -1021,78 +1032,50 @@ GlLines AS (
     FROM SupplierPayment sp
     INNER JOIN Suppliers s ON s.Id = sp.SupplierId
     WHERE sp.IsActive = 1
-)
-,
-
---------------------------------------------------------------------
--- 3) ITEM VIRTUAL HEADS
---------------------------------------------------------------------
-ItemHeads AS (
-    SELECT
-        i.Id          AS HeadId,        -- Item Id
-        i.ItemCode    AS HeadCode,      -- nvarchar
-        i.ItemName    AS HeadName,
-        'A'           AS HeadType,      -- treat items as Assets
-        i.BudgetLineId AS ParentHead    -- parent COA Id
-    FROM Item i
-    WHERE i.IsActive = 1
 ),
 
 --------------------------------------------------------------------
--- 4) BASE (COA + ITEM HEADS) – all types aligned
+-- 4) AGGREGATE GL BY HEAD
+--------------------------------------------------------------------
+GlAgg AS (
+    SELECT
+        HeadId,
+        Debit  = SUM(TRY_CONVERT(decimal(18,2), Debit)),
+        Credit = SUM(TRY_CONVERT(decimal(18,2), Credit))
+    FROM GlLines
+    GROUP BY HeadId
+),
+
+--------------------------------------------------------------------
+-- 5) BASE – ONE ROW PER COA HEAD (Opening + movements)
 --------------------------------------------------------------------
 Base AS (
-    --------------------------------------------------------
-    -- COA HEADS
-    --------------------------------------------------------
     SELECT
-        HeadId      = ct.Id,
-        HeadCode    = CAST(ct.HeadCode AS NVARCHAR(50)),   -- CAST to nvarchar
-        HeadName    = ct.HeadName,
-        HeadType    = ct.HeadType,
-        ParentHead  = ct.ParentId,                         -- parent Id for tree
+        HeadId       = ct.Id,
+        HeadCode     = CAST(ct.HeadCode AS NVARCHAR(50)),
+        HeadName     = ct.HeadName,
+        HeadType     = ct.HeadType,
+        ParentHead   = ct.ParentId,          -- ALWAYS parent Id
         RootHeadType = ct.RootHeadType,
 
-        Debit  = SUM(TRY_CONVERT(decimal(18,2), ISNULL(gl.Debit, 0))),
-        Credit = SUM(TRY_CONVERT(decimal(18,2), ISNULL(gl.Credit, 0)))
+        Opening = ISNULL(ob.Opening, 0),
+        Debit   = ISNULL(ga.Debit, 0),
+        Credit  = ISNULL(ga.Credit, 0)
     FROM CoaTree ct
-    LEFT JOIN GlLines gl
-        ON gl.HeadId = ct.Id
-    GROUP BY
-        ct.Id, ct.HeadCode, ct.HeadName, ct.HeadType,
-        ct.ParentId, ct.RootHeadType
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- ITEM HEADS (children of Asset BudgetLines)
-    --------------------------------------------------------
-    SELECT
-        HeadId      = ih.HeadId,
-        HeadCode    = ih.HeadCode,      -- already nvarchar
-        HeadName    = ih.HeadName,
-        HeadType    = ih.HeadType,
-        ParentHead  = ih.ParentHead,    -- parent COA Id
-        RootHeadType = 'A',
-
-        Debit  = SUM(TRY_CONVERT(decimal(18,2), ISNULL(gl.Debit, 0))),
-        Credit = SUM(TRY_CONVERT(decimal(18,2), ISNULL(gl.Credit, 0)))
-    FROM ItemHeads ih
-    LEFT JOIN GlLines gl
-        ON gl.HeadId = ih.ParentHead    -- use parent budget line's postings
-    GROUP BY
-        ih.HeadId, ih.HeadCode, ih.HeadName,
-        ih.HeadType, ih.ParentHead
+    LEFT JOIN GlAgg ga
+        ON ga.HeadId = ct.Id
+    LEFT JOIN Ob ob
+        ON ob.HeadId = ct.Id
 )
 
 --------------------------------------------------------------------
--- 5) FINAL OUTPUT FOR BALANCE SHEET (USE IN YOUR BS / GL UI)
+-- 6) FINAL BALANCE-SHEET RESULT FOR ANGULAR
 --------------------------------------------------------------------
 SELECT
     b.HeadId,
     b.HeadCode,
     b.HeadName,
-    b.ParentHead,       -- this is ALWAYS parent Id (for Angular)
+    b.ParentHead,        -- use as parentId in Angular tree
     b.RootHeadType,
     Balance =
         CASE 
@@ -1101,16 +1084,18 @@ SELECT
                 FROM Base b2
                 WHERE b2.ParentHead = b.HeadId
             )
-                THEN 0   -- parents always 0
+                THEN 0   -- parents always 0, children carry values
             ELSE
-                CASE
-                    WHEN b.RootHeadType = 'L'
-                        THEN -(b.Debit - b.Credit)  -- Liab: credit positive
-                    ELSE  (b.Debit - b.Credit)      -- Assets: debit positive
+                CASE 
+                    WHEN b.RootHeadType IN ('A','X')      -- Assets/Expense
+                        THEN b.Opening + b.Debit - b.Credit
+                    ELSE                                   -- Liab/Equity/Income
+                         b.Opening - b.Debit + b.Credit
                 END
         END
 FROM Base b
 ORDER BY b.HeadCode;
+
 
 
 ";
