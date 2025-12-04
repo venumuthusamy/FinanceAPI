@@ -14,6 +14,8 @@ namespace FinanceApi.ModelDTO
         public decimal Debit { get; set; }
         public decimal Credit { get; set; }
         public int? ItemId { get; set; }
+        public int? BudgetLineId { get; set; }
+     
 
         // Recurring flags
         public bool IsRecurring { get; set; }

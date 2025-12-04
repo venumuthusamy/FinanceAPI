@@ -21,6 +21,9 @@
         public decimal Debit { get; set; }
         public decimal Credit { get; set; }
 
+        public int? BudgetLineId { get; set; }
+        
+
         public bool IsRecurring { get; set; }
         public string? RecurringFrequency { get; set; }
         public int? RecurringInterval { get; set; }
