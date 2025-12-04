@@ -97,16 +97,21 @@ ORDER BY sp.PaymentDate DESC, sp.Id DESC;";
             return await conn.QueryAsync<SupplierPaymentDTO>(sql, new { SupplierId = supplierId });
         }
 
-        // ===== CREATE PAYMENT (no manual conn.Open, no tx) =====
         public async Task<bool> CreateAsync(SupplierPaymentCreateDTO dto)
         {
-            using var conn = Connection;
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
 
-            // 1) Generate the new payment number
-            var paymentNo = await GeneratePaymentNoAsync(conn);
+            using var tx = conn.BeginTransaction();
 
-            // 2) Insert payment row
-            const string insertSql = @"
+            try
+            {
+                // 1) Generate the new payment number
+                var paymentNo = await GeneratePaymentNoAsync(conn, tx);
+
+                // 2) Insert payment row
+                const string insertSql = @"
 INSERT INTO dbo.SupplierPayment
 (
     PaymentNo,
@@ -117,7 +122,7 @@ INSERT INTO dbo.SupplierPayment
     ReferenceNo,
     Amount,
     Notes,
-    BankId,       -- 🔹 NEW COLUMN
+    BankId,
     Status,
     CreatedBy,
     CreatedDate,
@@ -133,29 +138,60 @@ VALUES
     @ReferenceNo,
     @Amount,
     @Notes,
-    @BankId,      -- 🔹 NEW PARAM
+    @BankId,
     1,            -- 1 = Posted
     @CreatedBy,
     SYSDATETIME(),
     1
-);";
+);
 
-            var affected = await conn.ExecuteAsync(insertSql, new
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+                var paymentId = await conn.ExecuteScalarAsync<int>(
+                    insertSql,
+                    new
+                    {
+                        PaymentNo = paymentNo,
+                        dto.SupplierId,
+                        dto.SupplierInvoiceId,
+                        dto.PaymentDate,
+                        dto.PaymentMethodId,
+                        dto.ReferenceNo,
+                        dto.Amount,
+                        dto.Notes,
+                        dto.BankId,
+                        dto.CreatedBy
+                    },
+                    transaction: tx);
+
+                // 3) Post to GL
+                await conn.ExecuteAsync(
+                    "dbo.sp_PostSupplierPaymentToGl",
+                    new { PaymentId = paymentId, UserId = dto.CreatedBy },
+                    transaction: tx,
+                    commandType: CommandType.StoredProcedure);
+
+                tx.Commit();
+                return true;
+            }
+            catch
             {
-                PaymentNo = paymentNo,
-                dto.SupplierId,
-                dto.SupplierInvoiceId,
-                dto.PaymentDate,
-                dto.PaymentMethodId,
-                dto.ReferenceNo,
-                dto.Amount,
-                dto.Notes,
-                dto.BankId,       // 🔹 pass through
-                dto.CreatedBy
-            });
-
-            return affected > 0;
+                tx.Rollback();
+                throw;
+            }
         }
+
+
+        // helper to use same transaction
+        private async Task<string> GeneratePaymentNoAsync(IDbConnection conn, IDbTransaction tx)
+        {
+            const string sql = @"
+DECLARE @Next INT = (SELECT ISNULL(MAX(Id),0) + 1 FROM dbo.SupplierPayment);
+SELECT 'SP-' + FORMAT(@Next, '000000');";
+
+            return await conn.ExecuteScalarAsync<string>(sql, transaction: tx);
+        }
+
 
     }
 }

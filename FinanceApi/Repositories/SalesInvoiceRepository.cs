@@ -29,16 +29,43 @@ namespace FinanceApi.Repositories
 
         public async Task<int> CreateAsync(int userId, SiCreateRequest req)
         {
+            // 1) Insert SalesInvoice header
             const string insHead = @"
 INSERT INTO dbo.SalesInvoice
-(InvoiceDate, SourceType, SoId, DoId,
- Subtotal, ShippingCost, Total,
- Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive, Remarks)
+(
+    InvoiceDate, 
+    SourceType, 
+    SoId, 
+    DoId,
+    Subtotal, 
+    ShippingCost, 
+    Total,
+    Status, 
+    CreatedBy, 
+    CreatedDate, 
+    UpdatedBy, 
+    UpdatedDate, 
+    IsActive, 
+    Remarks
+)
 OUTPUT INSERTED.Id
 VALUES
-(@InvoiceDate, @SourceType, @SoId, @DoId,
- @Subtotal, @ShippingCost, @Total,
- 0, @UserId, SYSUTCDATETIME(), @UserId, SYSUTCDATETIME(), 1, @Remarks);";
+(
+    @InvoiceDate, 
+    @SourceType, 
+    @SoId, 
+    @DoId,
+    @Subtotal, 
+    @ShippingCost, 
+    @Total,
+    0, 
+    @UserId, 
+    SYSUTCDATETIME(), 
+    @UserId, 
+    SYSUTCDATETIME(), 
+    1, 
+    @Remarks
+);";
 
             var siId = await Connection.ExecuteScalarAsync<int>(
                 insHead,
@@ -56,17 +83,42 @@ VALUES
                 }
             );
 
+            // 2) Insert SalesInvoice lines
             const string insLine = @"
 INSERT INTO dbo.SalesInvoiceLine
-(SiId, SourceType, SourceLineId,
- ItemId, ItemName, Uom,
- Qty, UnitPrice, DiscountPct, GstPct, Tax,
- TaxCodeId, LineAmount, Description,BudgetLineId)
+(
+    SiId, 
+    SourceType, 
+    SourceLineId,
+    ItemId, 
+    ItemName, 
+    Uom,
+    Qty, 
+    UnitPrice, 
+    DiscountPct, 
+    GstPct, 
+    Tax,
+    TaxCodeId, 
+    LineAmount, 
+    Description
+)
 VALUES
-(@SiId, @SourceType, @SourceLineId,
- @ItemId, @ItemName, @Uom,
- @Qty, @UnitPrice, @DiscountPct, @GstPct, @Tax,
- @TaxCodeId, @LineAmount, @Description,@BudgetLineId);";
+(
+    @SiId, 
+    @SourceType, 
+    @SourceLineId,
+    @ItemId, 
+    @ItemName, 
+    @Uom,
+    @Qty, 
+    @UnitPrice, 
+    @DiscountPct, 
+    @GstPct, 
+    @Tax,
+    @TaxCodeId, 
+    @LineAmount, 
+    @Description
+);";
 
             foreach (var l in req.Lines)
             {
@@ -89,22 +141,73 @@ VALUES
                         l.LineAmount,
                         Description = string.IsNullOrWhiteSpace(l.Description)
                             ? l.ItemName
-                            : l.Description,
-                        l.BudgetLineId
+                            : l.Description
                     }
                 );
             }
 
+            // 3) Recalculate totals
             await RecalculateTotalAsync(siId);
 
+            // 4) Set InvoiceNo (SI-000001 style)
             await Connection.ExecuteAsync(
                 @"UPDATE dbo.SalesInvoice
-                  SET InvoiceNo = CONCAT('SI-', RIGHT(CONVERT(VARCHAR(8), Id + 100000), 6))
-                  WHERE Id=@Id",
-                new { Id = siId });
+          SET InvoiceNo = CONCAT('SI-', RIGHT(CONVERT(VARCHAR(8), Id + 100000), 6))
+          WHERE Id = @Id;",
+                new { Id = siId }
+            );
+
+            // ============================================================
+            // 5) POST TO GlTransaction
+            //    Convention:
+            //      - AmountBase > 0  => Debit
+            //      - AmountBase < 0  => Credit
+            //
+            //    a) Customer (AR)  : DR Total
+            //    b) Revenue (Items): CR (LineAmount + Tax) per item line
+            // ============================================================
+            const string glInsertSql = @"
+INSERT INTO dbo.GlTransaction
+(
+    AccountId,
+    TxnDate,
+    CurrencyId,
+    AmountFC,
+    AmountBase
+)
+-- a) AR line (Customer BudgetLineId)
+SELECT
+    c.BudgetLineId              AS AccountId,
+    si.InvoiceDate              AS TxnDate,
+    1                           AS CurrencyId,      -- TODO: change if you add CurrencyId on SI
+    si.Total                    AS AmountFC,
+    si.Total                    AS AmountBase       -- DR AR (positive)
+FROM dbo.SalesInvoice si
+INNER JOIN dbo.SalesOrder so ON so.Id = si.SoId
+INNER JOIN dbo.Customer    c  ON c.Id = so.CustomerId
+WHERE si.Id = @SiId
+  AND c.BudgetLineId IS NOT NULL
+
+UNION ALL
+
+-- b) Revenue lines (Item BudgetLineId)
+SELECT
+    i.BudgetLineId              AS AccountId,
+    si.InvoiceDate              AS TxnDate,
+    1                           AS CurrencyId,
+    (sil.LineAmount + sil.GstPct)  AS AmountFC,
+    - (sil.LineAmount + sil.GstPct)AS AmountBase       -- CR Income (negative)
+FROM dbo.SalesInvoiceLine sil
+INNER JOIN dbo.SalesInvoice si ON si.Id = sil.SiId
+INNER JOIN dbo.Item         i   ON i.Id = sil.ItemId
+WHERE sil.SiId = @SiId
+  AND i.BudgetLineId IS NOT NULL;";
+
+            await Connection.ExecuteAsync(glInsertSql, new { SiId = siId });
 
             return siId;
         }
+
 
         public async Task<SiHeaderDto?> GetAsync(int id)
         {

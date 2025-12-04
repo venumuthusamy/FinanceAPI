@@ -3,6 +3,7 @@ using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using Microsoft.Data.SqlClient;
 using System.Data;
 
 namespace FinanceApi.Repositories
@@ -56,17 +57,22 @@ WHERE Id IN @Ids
 
         public async Task<int> CreateAsync(ManualJournalCreateDto dto)
         {
+            var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
+
+            using var tx = conn.BeginTransaction();
+
             const string sql = @"
 INSERT INTO dbo.ManualJournal
 (
     AccountId,
-    ItemId,              -- 👈 NEW
+    ItemId,
     JournalDate,
     Type,
     CustomerId,
     SupplierId,
     Description,
-    BudgetLineId,  
     Debit,
     Credit,
     IsRecurring,
@@ -86,21 +92,20 @@ INSERT INTO dbo.ManualJournal
 VALUES
 (
     @AccountId,
-    @ItemId,             -- 👈 NEW
-    @JournalDateUtc,     -- UTC
+    @ItemId,
+    @JournalDateUtc,
     @Type,
     @CustomerId,
     @SupplierId,
     @Description,
-    @BudgetLineId,
     @Debit,
     @Credit,
     @IsRecurring,
     @RecurringFrequency,
     @RecurringInterval,
-    @RecurringStartDateUtc, 
+    @RecurringStartDateUtc,
     @RecurringEndType,
-    @RecurringEndDateUtc,    
+    @RecurringEndDateUtc,
     @RecurringCount,
     0,
     CASE 
@@ -111,14 +116,35 @@ VALUES
     @CreatedBy,
     SYSUTCDATETIME(),
     1,
-    0
+    1   -- isPosted = 1 so it will go to GL
 );
 
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
-            var id = await Connection.ExecuteScalarAsync<int>(sql, dto);
-            return id;
+            try
+            {
+                var id = await conn.ExecuteScalarAsync<int>(
+                    sql,
+                    dto,
+                    transaction: tx);
+
+                // Post to GL
+                await conn.ExecuteAsync(
+                    "dbo.sp_PostManualJournalToGl",
+                    new { JournalId = id, UserId = dto.CreatedBy },
+                    transaction: tx,
+                    commandType: CommandType.StoredProcedure);
+
+                tx.Commit();
+                return id;
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
         }
+
 
         public async Task<IEnumerable<ManualJournalDto>> GetAllRecurringDetails()
         {

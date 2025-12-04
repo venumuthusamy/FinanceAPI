@@ -42,7 +42,7 @@ SELECT
 
     -- Gross invoice amount (Amount + Tax)
     GrandTotal =
-        ISNULL(si.Amount, 0) + ISNULL(si.Tax, 0),
+        ISNULL(si.Amount, 0),
 
     -- Total payments
     PaidAmount =
@@ -57,7 +57,7 @@ SELECT
 
     -- Net Outstanding = Invoice - Payment - DebitNote
     OutstandingAmount =
-        (ISNULL(si.Amount, 0) + ISNULL(si.Tax, 0))
+        (ISNULL(si.Amount, 0))
         - ISNULL(pay.PaidAmount, 0)
         - ISNULL(dn.DebitNoteAmount, 0),
 
@@ -145,7 +145,7 @@ SELECT
     END AS DueDate,
 
     GrandTotal =
-        ISNULL(si.Amount, 0) + ISNULL(si.Tax, 0),
+        ISNULL(si.Amount, 0),
 
     PaidAmount =
         ISNULL(pay.PaidAmount, 0),
@@ -154,7 +154,7 @@ SELECT
         ISNULL(dn.DebitNoteAmount, 0),
 
     OutstandingAmount =
-        (ISNULL(si.Amount, 0) + ISNULL(si.Tax, 0))
+        (ISNULL(si.Amount, 0))
         - ISNULL(pay.PaidAmount, 0)
         - ISNULL(dn.DebitNoteAmount, 0),
 
