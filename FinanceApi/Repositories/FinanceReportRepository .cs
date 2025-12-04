@@ -38,8 +38,8 @@ GlLines AS (
     FROM dbo.ManualJournal mj
     WHERE mj.IsActive   = 1
       AND mj.isPosted   = 1
-      AND mj.JournalDate BETWEEN '1900-01-01'
-                            AND ISNULL(@ToDate, '9999-12-31')
+      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -64,8 +64,8 @@ GlLines AS (
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = COALESCE(sil.BudgetLineId, i.BudgetLineId)
        AND coa.IsActive = 1
-    WHERE si.InvoiceDate BETWEEN '1900-01-01'
-                             AND ISNULL(@ToDate, '9999-12-31')
+    WHERE si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -88,9 +88,8 @@ GlLines AS (
         ON i.Id = cnl.ItemId AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = i.BudgetLineId AND coa.IsActive = 1
-    WHERE cn.CreditNoteDate BETWEEN '1900-01-01'
-                                AND ISNULL(@ToDate, '9999-12-31')
-
+    WHERE cn.CreditNoteDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
     UNION ALL
 
     --------------------------------------------------------
@@ -112,8 +111,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = so.CustomerId AND c.IsActive = 1
     WHERE si.IsActive = 1
-      AND si.InvoiceDate BETWEEN '1900-01-01'
-                             AND ISNULL(@ToDate, '9999-12-31')
+      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -132,8 +131,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = r.CustomerId AND c.IsActive = 1
     WHERE r.IsActive = 1
-      AND r.ReceiptDate BETWEEN '1900-01-01'
-                            AND ISNULL(@ToDate, '9999-12-31')
+      AND r.ReceiptDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -153,8 +152,8 @@ GlLines AS (
         ON b.Id = r.BankId AND b.IsActive = 1
     WHERE r.IsActive = 1
       AND r.PaymentMode = 'BANK'
-      AND r.ReceiptDate BETWEEN '1900-01-01'
-                            AND ISNULL(@ToDate, '9999-12-31')
+      AND r.ReceiptDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -173,8 +172,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = cn.CustomerId AND c.IsActive = 1
     WHERE cn.IsActive = 1
-      AND cn.CreditNoteDate BETWEEN '1900-01-01'
-                                AND ISNULL(@ToDate, '9999-12-31')
+      AND cn.CreditNoteDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -203,8 +202,8 @@ GlLines AS (
        AND coa.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN '1900-01-01'
-                              AND ISNULL(@ToDate, '9999-12-31')
+      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -225,8 +224,8 @@ GlLines AS (
         ON s.Id = si.SupplierId AND s.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN '1900-01-01'
-                             AND ISNULL(@ToDate, '9999-12-31')
+      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -246,8 +245,8 @@ GlLines AS (
         ON s.Id = sp.SupplierId AND s.IsActive = 1
     WHERE sp.IsActive = 1
       AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN '1900-01-01'
-                             AND ISNULL(@ToDate, '9999-12-31')
+      AND sp.PaymentDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -267,8 +266,8 @@ GlLines AS (
         ON b.Id = sp.BankId AND b.IsActive = 1
     WHERE sp.IsActive = 1
       AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN '1900-01-01'
-                             AND ISNULL(@ToDate, '9999-12-31')
+      AND sp.PaymentDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -288,8 +287,8 @@ GlLines AS (
         ON s.Id = dn.SupplierId AND s.IsActive = 1
     WHERE dn.IsActive = 1
       AND dn.Status   = 2
-      AND dn.NoteDate BETWEEN '1900-01-01'
-                          AND ISNULL(@ToDate, '9999-12-31')
+      AND dn.NoteDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 ),
 
 
@@ -428,8 +427,8 @@ GlLines AS (
     FROM dbo.ManualJournal mj
     WHERE mj.IsActive   = 1
       AND mj.isPosted   = 1
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -453,8 +452,8 @@ GlLines AS (
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = COALESCE(sil.BudgetLineId, i.BudgetLineId)
        AND coa.IsActive = 1
-    WHERE si.InvoiceDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+    WHERE si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -477,8 +476,8 @@ GlLines AS (
         ON i.Id = cnl.ItemId AND i.IsActive = 1
     INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = i.BudgetLineId AND coa.IsActive = 1
-    WHERE cn.CreditNoteDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                                AND ISNULL(@ToDate,   '9999-12-31')
+    WHERE cn.CreditNoteDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                                AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -502,8 +501,8 @@ GlLines AS (
         ON c.Id = so.CustomerId
        AND c.IsActive = 1
     WHERE si.IsActive = 1
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -522,8 +521,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = r.CustomerId AND c.IsActive = 1
     WHERE r.IsActive = 1
-      AND r.ReceiptDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                            AND ISNULL(@ToDate,   '9999-12-31')
+      AND r.ReceiptDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                            AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -543,8 +542,8 @@ GlLines AS (
         ON b.Id = r.BankId AND b.IsActive = 1
     WHERE r.IsActive = 1
       AND r.PaymentMode = 'BANK'
-      AND r.ReceiptDate BETWEEN '1900-01-01'
-                            AND ISNULL(@ToDate, '9999-12-31')
+      AND r.ReceiptDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -563,8 +562,8 @@ GlLines AS (
     INNER JOIN dbo.Customer c
         ON c.Id = cn.CustomerId AND c.IsActive = 1
     WHERE cn.IsActive = 1
-      AND cn.CreditNoteDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                                AND ISNULL(@ToDate,   '9999-12-31')
+      AND cn.CreditNoteDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                                AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -593,8 +592,8 @@ GlLines AS (
        AND coa.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -615,8 +614,8 @@ GlLines AS (
         ON s.Id = si.SupplierId AND s.IsActive = 1
     WHERE si.IsActive = 1
       AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -636,8 +635,8 @@ GlLines AS (
         ON s.Id = sp.SupplierId AND s.IsActive = 1
     WHERE sp.IsActive = 1
       AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                             AND ISNULL(@ToDate,   '9999-12-31')
+      AND sp.PaymentDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -657,8 +656,8 @@ GlLines AS (
         ON b.Id = sp.BankId AND b.IsActive = 1
     WHERE sp.IsActive = 1
       AND sp.Status   = 1
-      AND sp.PaymentDate BETWEEN '1900-01-01'
-                             AND ISNULL(@ToDate, '9999-12-31')
+      AND sp.PaymentDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                        AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
@@ -678,8 +677,8 @@ GlLines AS (
         ON s.Id = dn.SupplierId AND s.IsActive = 1
     WHERE dn.IsActive = 1
       AND dn.Status   = 2
-      AND dn.NoteDate BETWEEN ISNULL(@FromDate, '1900-01-01')
-                          AND ISNULL(@ToDate,   '9999-12-31')
+      AND dn.NoteDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                          AND ISNULL(@ToDate,'9999-12-31')
 )
 SELECT
     TransDate,
