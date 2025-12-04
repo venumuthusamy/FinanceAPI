@@ -139,7 +139,6 @@ ORDER BY InvoiceDate;";
 
         public async Task<int> CreateAsync(ArReceiptCreateUpdateDto dto, int userId)
         {
-            // ==== open connection like PickingRepository ====
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
                 await (conn as SqlConnection)!.OpenAsync();
@@ -148,17 +147,19 @@ ORDER BY InvoiceDate;";
 
             try
             {
-                // Generate next receipt number
+                // 1) Generate next receipt number
                 const string nextNoSql = @"
 DECLARE @Next INT = (SELECT ISNULL(MAX(Id),0) + 1 FROM dbo.ArReceipt);
 SELECT 'RC-' + FORMAT(@Next, '000000');";
 
                 var receiptNo = await conn.ExecuteScalarAsync<string>(
-                    nextNoSql, transaction: tx);
+                    nextNoSql,
+                    transaction: tx);
 
                 var totalAllocated = dto.Allocations.Sum(a => a.AllocatedAmount);
                 var unallocated = dto.AmountReceived - totalAllocated;
 
+                // 2) Insert header
                 const string insertHdrSql = @"
 INSERT INTO dbo.ArReceipt
 (
@@ -198,6 +199,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
                     },
                     transaction: tx);
 
+                // 3) Insert allocations
                 const string insertLineSql = @"
 INSERT INTO dbo.ArReceiptAllocation
 (
@@ -224,24 +226,12 @@ VALUES
                         transaction: tx);
                 }
 
-                // ===========================================
-                // NEW: update AccountBalance for BANK head
-                // HeadId = Bank.BudgetLineId
-                // ===========================================
-                // NEW
-                if (dto.BankId.HasValue && dto.BankId.Value > 0)
-                {
-                    var bankHeadId = await GetBankBudgetLineIdAsync(conn, tx, dto.BankId.Value);
-                    if (bankHeadId.HasValue)
-                    {
-                        await UpsertAccountBalanceAsync(
-                            conn,
-                            tx,
-                            headId: bankHeadId.Value,
-                            deltaAmount: totalAllocated); // or dto.AmountReceived
-                    }
-                }
-
+                // 4) Post to GL
+                await conn.ExecuteAsync(
+                    "dbo.sp_PostArReceiptToGl",
+                    new { ReceiptId = receiptId, UserId = userId },
+                    transaction: tx,
+                    commandType: CommandType.StoredProcedure);
 
                 tx.Commit();
                 return receiptId;
@@ -252,6 +242,7 @@ VALUES
                 throw;
             }
         }
+
 
         public async Task UpdateAsync(ArReceiptCreateUpdateDto dto, int userId)
         {
