@@ -8,7 +8,7 @@
         public int ParentHead { get; set; }
 
         public string HeadType { get; set; } = string.Empty;      // 'A', 'L', ...
-        public string RootHeadType { get; set; } = string.Empty;  // top-level type
+        public string RootHeadType { get; set; } = string.Empty;  
 
         public decimal OpeningBalance { get; set; }
         public decimal Debit { get; set; }

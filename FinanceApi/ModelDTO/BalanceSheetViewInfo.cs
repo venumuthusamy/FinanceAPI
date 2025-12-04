@@ -10,7 +10,7 @@
         public string HeadCode { get; set; }
         public string HeadName { get; set; }
         public int ParentHead { get; set; }
-
+        public string RootHeadType { get; set; }
         public decimal? OpeningBalance { get; set; }  // null for non AR/AP
         public decimal Balance { get; set; }
     }
