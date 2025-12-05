@@ -502,11 +502,11 @@ SELECT @n;";
             const string insertHeader = @"
 INSERT INTO dbo.SalesOrder
 (QuotationNo, CustomerId, RequestedDate, DeliveryDate, Status, Shipping, Discount, GstPct,
- SalesOrderNo, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive, ApprovedBy)
+ SalesOrderNo,SubTotal,GrandTotal, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive, ApprovedBy)
 OUTPUT INSERTED.Id
 VALUES
 (@QuotationNo, @CustomerId, @RequestedDate, @DeliveryDate, @Status, @Shipping, @Discount, @GstPct,
- @SalesOrderNo, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1, @ApprovedBy);";
+ @SalesOrderNo,@SubTotal,@GrandTotal, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1, @ApprovedBy);";
 
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
@@ -528,6 +528,8 @@ VALUES
                     so.Discount, // initial value, will be overwritten by recompute
                     so.GstPct,
                     SalesOrderNo = soNo,
+                    so.SubTotal,
+                    so.GrandTotal,
                     so.CreatedBy,
                     so.CreatedDate,
                     so.UpdatedBy,

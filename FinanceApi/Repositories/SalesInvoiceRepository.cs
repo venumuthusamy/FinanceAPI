@@ -100,7 +100,8 @@ INSERT INTO dbo.SalesInvoiceLine
     Tax,
     TaxCodeId, 
     LineAmount, 
-    Description
+    Description,
+BudgetLineId
 )
 VALUES
 (
@@ -117,7 +118,8 @@ VALUES
     @Tax,
     @TaxCodeId, 
     @LineAmount, 
-    @Description
+    @Description,
+@BudgetLineId
 );";
 
             foreach (var l in req.Lines)
@@ -141,7 +143,8 @@ VALUES
                         l.LineAmount,
                         Description = string.IsNullOrWhiteSpace(l.Description)
                             ? l.ItemName
-                            : l.Description
+                            : l.Description,
+                        l.BudgetLineId
                     }
                 );
             }
