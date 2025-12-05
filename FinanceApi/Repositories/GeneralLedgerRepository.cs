@@ -17,7 +17,7 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<GeneralLedgerDTO>> GetAllAsync()
         {
             const string query = @"
-;WITH
+WITH
 ------------------------------------------------------------
 -- A) SAFE COA TREE (ParentHead = parent HEADCODE)
 ------------------------------------------------------------
@@ -86,7 +86,7 @@ CoaRoot AS (
 GlLines AS (
 
     --------------------------------------------------------
-    -- 1 ► Opening Balance
+    -- 1 ► Opening Balance  (only active rows)
     --------------------------------------------------------
     SELECT
         ob.BudgetLineId AS HeadId,
@@ -94,7 +94,8 @@ GlLines AS (
         Debit  = 0,
         Credit = 0
     FROM dbo.OpeningBalance ob
-WHERE ob.IsActive = 1;
+    WHERE ob.IsActive = 1
+
     UNION ALL
 
     --------------------------------------------------------
@@ -127,9 +128,7 @@ WHERE ob.IsActive = 1;
       AND UPPER(mj.[Type]) = 'SUPPLIER'      -- adjust value if needed
       AND ISNULL(mj.Debit, 0) <> 0
       AND cashCoa.IsActive = 1
-      AND (
-            cashCoa.HeadName = 'Cash'
-      )
+      AND cashCoa.HeadName = 'Cash'
 
     UNION ALL
 
@@ -149,26 +148,30 @@ WHERE ob.IsActive = 1;
       AND UPPER(mj.[Type]) = 'CUSTOMER'      -- adjust value if needed
       AND ISNULL(mj.Credit, 0) <> 0
       AND cashCoa.IsActive = 1
-      AND (
-            cashCoa.HeadName = 'Cash'
-
-      )
+      AND cashCoa.HeadName = 'Cash'
 
     UNION ALL
 
     --------------------------------------------------------
     -- 3 ► Sales Invoice – DR Customer, CR Income/Asset
     --------------------------------------------------------
-    -- DR Customer  (AR +)
+
+    --------------------------------------------------------
+    -- 3a) DR Customer via SalesOrder (normal path – SoId on SI)
+    --------------------------------------------------------
     SELECT
         coaCust.Id AS HeadId,                -- COA Id from Customer.BudgetLineId
         0,
         Debit  = ISNULL(sil.LineAmount, 0),
         0
     FROM dbo.SalesInvoiceLine sil
-    INNER JOIN dbo.SalesInvoice si ON si.Id = sil.SiId
-    INNER JOIN dbo.SalesOrder  so ON so.Id = si.SoId
-    INNER JOIN dbo.Customer    cs ON cs.Id = so.CustomerId
+    INNER JOIN dbo.SalesInvoice si
+        ON si.Id = sil.SiId
+       AND si.SoId IS NOT NULL              -- only when SoId is directly on invoice
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = si.SoId
+    INNER JOIN dbo.Customer cs
+        ON cs.Id = so.CustomerId
     INNER JOIN dbo.ChartOfAccount coaCust
         ON coaCust.Id = cs.BudgetLineId
         -- IF Customer.BudgetLineId stores HEADCODE instead of Id:
@@ -176,7 +179,37 @@ WHERE ob.IsActive = 1;
 
     UNION ALL
 
-    -- CR Income / Asset (item line’s BudgetLineId already COA Id)
+    --------------------------------------------------------
+    -- 3b) DR Customer via DeliveryOrderLine → SalesOrderLines
+    --     when SalesInvoice has DoId (and SoId is NULL)
+    --------------------------------------------------------
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        Debit  = ISNULL(sil.LineAmount, 0),
+        0
+    FROM dbo.SalesInvoiceLine sil
+    INNER JOIN dbo.SalesInvoice si
+        ON si.Id = sil.SiId
+       AND si.SoId IS NULL                 -- no direct SO
+       AND si.DoId IS NOT NULL             -- but DO is linked
+    INNER JOIN dbo.DeliveryOrderLine dol
+        ON dol.DoId = si.DoId              -- DO header → DO line
+    INNER JOIN dbo.SalesOrderLines sol
+        ON sol.Id = dol.SoLineId           -- DO line → SO line
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = sol.SalesOrderId        -- SO header
+    INNER JOIN dbo.Customer cs
+        ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+        -- or: ON coaCust.HeadCode = cs.BudgetLineId
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 3c) CR Income / Asset (item line’s BudgetLineId already COA Id)
+    --------------------------------------------------------
     SELECT
         sil.BudgetLineId AS HeadId,
         0,
@@ -205,13 +238,12 @@ WHERE ob.IsActive = 1;
     SELECT
         L.BudgetLineId AS HeadId,
         0,
-        Debit = ISNULL(L.LineTotal, 0),
+        Debit = ISNULL(sip.Amount, 0),
         0
     FROM dbo.SupplierInvoicePin sip
     CROSS APPLY OPENJSON(sip.LinesJson)
     WITH (
-        BudgetLineId INT            '$.budgetLineId',
-        LineTotal    DECIMAL(18,2)  '$.lineTotal'
+        BudgetLineId INT            '$.budgetLineId'
     ) AS L
     WHERE sip.IsActive = 1
 
@@ -246,7 +278,7 @@ WHERE ob.IsActive = 1;
       AND (ar.BankId IS NULL OR ar.BankId = 0)
       AND cashCoa.IsActive = 1
       AND (
-            cashCoa.HeadName = 'Cash-in-hand'
+            cashCoa.HeadName = 'Cash'
          OR cashCoa.HeadCode = 10102       -- put your Cash-in-hand HeadCode here
       )
 
@@ -273,27 +305,47 @@ WHERE ob.IsActive = 1;
     --------------------------------------------------------
     -- 6 ► Supplier Payment – DR Supplier, CR Bank
     --------------------------------------------------------
-    -- DR Supplier (AP −)
+-- 6a) DR Supplier (AP −)
     SELECT
         sps.BudgetLineId AS HeadId,
-        0,
-        Debit = ISNULL(sp.Amount, 0),
-        0
+        OpeningBalance = 0,
+        Debit  = ISNULL(sp.Amount, 0),
+        Credit = 0
     FROM dbo.SupplierPayment sp
     INNER JOIN dbo.Suppliers sps ON sps.Id = sp.SupplierId
     WHERE sp.IsActive = 1
 
     UNION ALL
 
-    -- CR Bank (Bank −)
+    -- 6b) CR Bank (NON-CASH payments)
+    --     PaymentMethodId <> 1 → post to Bank account
     SELECT
         bk.BudgetLineId AS HeadId,
-        0,
-        0,
+        OpeningBalance = 0,
+        Debit  = 0,
         Credit = ISNULL(sp.Amount, 0)
     FROM dbo.SupplierPayment sp
     INNER JOIN dbo.Bank bk ON bk.Id = sp.BankId
     WHERE sp.IsActive = 1
+      AND sp.PaymentMethodId <> 1     -- not cash
+
+    UNION ALL
+
+    -- 6c) CR Cash (CASH payments)
+    --     PaymentMethodId = 1 → post to child 'Cash' under Cash-in-hand
+    SELECT
+        cashCoa.Id AS HeadId,
+        OpeningBalance = 0,
+        Debit  = 0,
+        Credit = ISNULL(sp.Amount, 0)
+    FROM dbo.SupplierPayment sp
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE sp.IsActive = 1
+      AND sp.PaymentMethodId = 1      -- CASH
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
+      -- If you want to be extra strict:
+      -- AND cashCoa.ParentHead = 10102   -- HeadCode of 'Cash-in-hand' parent
 
     UNION ALL
 
