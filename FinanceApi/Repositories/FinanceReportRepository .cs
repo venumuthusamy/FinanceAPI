@@ -986,105 +986,452 @@ ORDER BY TransDate, SourceType, SourceNo;
             const string sql = @"
 
 
-;;WITH
+WITH
 ------------------------------------------------------------
--- 1) INCOME / EXPENSE HEADS
+-- A) SAFE COA TREE (ParentHead = parent HEADCODE)
 ------------------------------------------------------------
-CoaIE AS (
+CoaCTE AS (
+    -- ROOT (no parent)
     SELECT
-        c.Id        AS HeadId,
-        c.HeadCode,
-        c.HeadName,
-        c.HeadType
-    FROM ChartOfAccount c
-    WHERE c.IsActive = 1
-      AND c.HeadType IN ('I','E')
-      -- AND c.HeadLevel = 3      -- uncomment if you only want level 3
-),
-
-------------------------------------------------------------
--- 2) UNIFIED GL:
---      a) GlTransaction  (AmountBase split into Dr/Cr)
---      b) ManualJournal   (Debit/Credit)
-------------------------------------------------------------
-AllGl AS (
-    -- a) GlTransaction
-    SELECT
-        gt.AccountId,
-        gt.TxnDate      AS TransDate,
-        Debit  = CASE WHEN gt.AmountBase > 0 THEN gt.AmountBase ELSE 0 END,
-        Credit = CASE WHEN gt.AmountBase < 0 THEN -gt.AmountBase ELSE 0 END
-    FROM GlTransaction gt
-
-    UNION ALL
-
-    -- b) ManualJournal
-    SELECT
-        mj.AccountId,
-        mj.JournalDate  AS TransDate,
-        Debit  = ISNULL(mj.Debit,  0.00),
-        Credit = ISNULL(mj.Credit, 0.00)
-    FROM ManualJournal mj
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-),
-
-------------------------------------------------------------
--- 3) SUM BY ACCOUNT (COA HEAD)
-------------------------------------------------------------
-AggByHead AS (
-    SELECT
-        ag.AccountId AS HeadId,
-
-        Sales =
-            SUM(
-                CASE
-                    WHEN c.HeadType = 'I' THEN ag.Credit - ag.Debit
-                    ELSE 0
-                END
-            ),
-
-        Purchase =
-            SUM(
-                CASE
-                    WHEN c.HeadType = 'E' THEN ag.Debit - ag.Credit
-                    ELSE 0
-                END
-            )
-    FROM AllGl ag
-    INNER JOIN CoaIE c
-        ON c.HeadId = ag.AccountId
-    GROUP BY ag.AccountId
-),
-
-------------------------------------------------------------
--- 4) FINAL P&L PER HEAD
-------------------------------------------------------------
-Final AS (
-    SELECT
-        c.HeadId,
+        c.Id,
         c.HeadCode,
         c.HeadName,
         c.HeadType,
-        Sales    = ISNULL(a.Sales, 0.00),
-        Purchase = ISNULL(a.Purchase, 0.00)
-    FROM CoaIE c
-    LEFT JOIN AggByHead a
-        ON a.HeadId = c.HeadId
+        c.ParentHead,
+        RootHeadId   = c.Id,
+        RootHeadType =
+            CASE c.HeadType
+                WHEN 'A' THEN 'ASSET'
+                WHEN 'L' THEN 'LIABILITY'
+                WHEN 'E' THEN 'EQUITY'
+                WHEN 'I' THEN 'INCOME'
+                WHEN 'X' THEN 'EXPENSE'
+                ELSE c.HeadType
+            END,
+        Level = 0
+    FROM dbo.ChartOfAccount c
+    WHERE (c.ParentHead IS NULL OR c.ParentHead = 0)
+      AND c.IsActive = 1
+
+    UNION ALL
+
+    -- CHILDREN
+    SELECT
+        c.Id,
+        c.HeadCode,
+        c.HeadName,
+        c.HeadType,
+        c.ParentHead,
+        cr.RootHeadId,
+        cr.RootHeadType,
+        Level = cr.Level + 1
+    FROM dbo.ChartOfAccount c
+    INNER JOIN CoaCTE cr
+        ON c.ParentHead = cr.HeadCode    -- ParentHead stores parent HEADCODE
+    WHERE c.IsActive = 1
+      AND cr.Level < 20
+),
+CoaRoot AS (
+    SELECT
+        Id,
+        HeadCode,
+        HeadName,
+        HeadType,
+        ParentHead,
+        RootHeadId,
+        RootHeadType
+    FROM (
+        SELECT
+            cte.*,
+            ROW_NUMBER() OVER (PARTITION BY cte.Id ORDER BY cte.Level) AS rn
+        FROM CoaCTE cte
+    ) x
+    WHERE x.rn = 1
+),
+
+------------------------------------------------------------
+-- B) GL LINES (all modules)
+------------------------------------------------------------
+GlLines AS (
+
+    --------------------------------------------------------
+    -- 1 ► Opening Balance  (only active rows)
+    --------------------------------------------------------
+    SELECT
+        ob.BudgetLineId AS HeadId,
+        OpeningBalance = ISNULL(ob.OpeningBalanceAmount, 0),
+        Debit  = 0,
+        Credit = 0
+    FROM dbo.OpeningBalance ob
+    WHERE ob.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 2 ► Manual Journal (original side – BudgetLineId)
+    --------------------------------------------------------
+    SELECT
+        mj.BudgetLineId AS HeadId,
+        OpeningBalance = 0,
+        Debit  = ISNULL(mj.Debit,  0),
+        Credit = ISNULL(mj.Credit, 0)
+    FROM dbo.ManualJournal mj
+    WHERE mj.IsActive = 1
+      AND mj.isPosted = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 2b ► Manual Journal – CASH side for Type = 'SUPPLIER'
+    --------------------------------------------------------
+    SELECT
+        cashCoa.Id AS HeadId,
+        OpeningBalance = 0,
+        Debit  = 0,
+        Credit = ISNULL(mj.Debit, 0)
+    FROM dbo.ManualJournal mj
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE mj.IsActive = 1
+      AND mj.isPosted = 1
+      AND UPPER(mj.[Type]) = 'SUPPLIER'
+      AND ISNULL(mj.Debit, 0) <> 0
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 2c ► Manual Journal – CASH side for Type = 'CUSTOMER'
+    --------------------------------------------------------
+    SELECT
+        cashCoa.Id AS HeadId,
+        OpeningBalance = 0,
+        Debit  = ISNULL(mj.Credit, 0),
+        Credit = 0
+    FROM dbo.ManualJournal mj
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE mj.IsActive = 1
+      AND mj.isPosted = 1
+      AND UPPER(mj.[Type]) = 'CUSTOMER'
+      AND ISNULL(mj.Credit, 0) <> 0
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 3 ► Sales Invoice – DR Customer, CR Income/Asset
+    --------------------------------------------------------
+
+    -- 3a) DR Customer via SalesOrder (SoId on SI)
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        Debit  = ISNULL(sil.LineAmount, 0),
+        0
+    FROM dbo.SalesInvoiceLine sil
+    INNER JOIN dbo.SalesInvoice si
+        ON si.Id = sil.SiId
+       AND si.SoId IS NOT NULL
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = si.SoId
+    INNER JOIN dbo.Customer cs
+        ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+
+    UNION ALL
+
+    -- 3b) DR Customer via DO → SO
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        Debit  = ISNULL(sil.LineAmount, 0),
+        0
+    FROM dbo.SalesInvoiceLine sil
+    INNER JOIN dbo.SalesInvoice si
+        ON si.Id = sil.SiId
+       AND si.SoId IS NULL
+       AND si.DoId IS NOT NULL
+    INNER JOIN dbo.DeliveryOrderLine dol
+        ON dol.DoId = si.DoId
+    INNER JOIN dbo.SalesOrderLines sol
+        ON sol.Id = dol.SoLineId
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = sol.SalesOrderId
+    INNER JOIN dbo.Customer cs
+        ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+
+    UNION ALL
+
+    -- 3c) CR Income / Asset (item line’s BudgetLineId)
+    SELECT
+        sil.BudgetLineId AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(sil.LineAmount, 0)
+    FROM dbo.SalesInvoiceLine sil
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 4 ► Supplier Invoice PIN – DR Expense/Asset, CR Supplier
+    --------------------------------------------------------
+    -- 4a) CR Supplier
+    SELECT
+        sps.BudgetLineId AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(sip.Amount, 0)
+    FROM dbo.SupplierInvoicePin sip
+    INNER JOIN dbo.Suppliers sps ON sps.Id = sip.SupplierId
+    WHERE sip.IsActive = 1
+
+    UNION ALL
+
+    -- 4b) DR Expense / Asset from PIN lines  (use sip.Amount)
+    SELECT
+        L.BudgetLineId AS HeadId,
+        0,
+        Debit = ISNULL(sip.Amount, 0),
+        0
+    FROM dbo.SupplierInvoicePin sip
+    CROSS APPLY OPENJSON(sip.LinesJson)
+    WITH (
+        BudgetLineId INT '$.budgetLineId'
+    ) AS L
+    WHERE sip.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 5 ► AR Receipt – DR Bank / Cash, CR Customer
+    --------------------------------------------------------
+    -- 5a) DR BANK  (BankId NOT NULL)
+    SELECT
+        bk.BudgetLineId AS HeadId,
+        0,
+        Debit  = ISNULL(ar.TotalAllocated, 0),
+        0
+    FROM dbo.ArReceipt ar
+    INNER JOIN dbo.Bank bk ON bk.Id = ar.BankId
+    WHERE ar.IsActive = 1
+      AND ar.BankId IS NOT NULL
+
+    UNION ALL
+
+    -- 5b) DR CASH-IN-HAND  (BankId NULL or 0)
+    SELECT
+        cashCoa.Id AS HeadId,
+        0,
+        Debit = ISNULL(ar.TotalAllocated, 0),
+        0
+    FROM dbo.ArReceipt ar
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE ar.IsActive = 1
+      AND (ar.BankId IS NULL OR ar.BankId = 0)
+      AND cashCoa.IsActive = 1
+      AND (
+            cashCoa.HeadName = 'Cash'
+         OR cashCoa.HeadCode = 10102
+      )
+
+    UNION ALL
+
+    -- 5c) CR Customer
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(ra.AllocatedAmount, 0)
+    FROM dbo.ArReceiptAllocation ra
+    INNER JOIN dbo.ArReceipt    ar ON ar.Id = ra.ReceiptId
+    INNER JOIN dbo.SalesInvoice si ON si.Id = ra.InvoiceId
+    INNER JOIN dbo.SalesOrder  so ON so.Id = si.SoId
+    INNER JOIN dbo.Customer    cs ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+    WHERE ra.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 6 ► Supplier Payment – DR Supplier, CR Bank/Cash
+    --------------------------------------------------------
+    -- 6a) DR Supplier
+    SELECT
+        sps.BudgetLineId AS HeadId,
+        0,
+        Debit  = ISNULL(sp.Amount, 0),
+        Credit = 0
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Suppliers sps ON sps.Id = sp.SupplierId
+    WHERE sp.IsActive = 1
+
+    UNION ALL
+
+    -- 6b) CR Bank (non-cash)
+    SELECT
+        bk.BudgetLineId AS HeadId,
+        0,
+        Debit  = 0,
+        Credit = ISNULL(sp.Amount, 0)
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Bank bk ON bk.Id = sp.BankId
+    WHERE sp.IsActive = 1
+      AND sp.PaymentMethodId <> 1
+
+    UNION ALL
+
+    -- 6c) CR Cash (cash)
+    SELECT
+        cashCoa.Id AS HeadId,
+        0,
+        Debit  = 0,
+        Credit = ISNULL(sp.Amount, 0)
+    FROM dbo.SupplierPayment sp
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE sp.IsActive = 1
+      AND sp.PaymentMethodId = 1
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 7 ► Supplier Debit Note – DR Supplier, CR Expense/Income
+    --------------------------------------------------------
+    -- 7a) DR Supplier
+    SELECT
+        sps.BudgetLineId AS HeadId,
+        0,
+        Debit = ISNULL(sdn.Amount, 0),
+        0
+    FROM dbo.SupplierDebitNote sdn
+    INNER JOIN dbo.Suppliers sps ON sps.Id = sdn.SupplierId
+    WHERE sdn.IsActive = 1
+
+    UNION ALL
+
+    -- 7b) CR Expense/Income (lines)
+    SELECT
+        L.BudgetLineId AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(L.Amount, 0)
+    FROM dbo.SupplierDebitNote sdn
+    CROSS APPLY OPENJSON(sdn.LinesJson)
+    WITH (
+        BudgetLineId INT            '$.budgetLineId',
+        Amount       DECIMAL(18,2)  '$.amount'
+    ) AS L
+    WHERE sdn.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 8 ► Customer Credit Note – DR Income, CR Customer
+    --------------------------------------------------------
+    -- 8a) DR Income (item’s account)
+    SELECT
+        siLine.BudgetLineId AS HeadId,
+        0,
+        Debit = ISNULL(cn.Subtotal, 0),
+        0
+    FROM dbo.CreditNote cn
+    INNER JOIN dbo.SalesInvoice     si     ON si.Id = cn.SiId
+    INNER JOIN dbo.SalesInvoiceLine siLine ON siLine.SiId = si.Id
+    WHERE cn.IsActive = 1
+
+    UNION ALL
+
+    -- 8b) CR Customer
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(cn.Subtotal, 0)
+    FROM dbo.CreditNote cn
+    INNER JOIN dbo.Customer cs ON cs.Id = cn.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+    WHERE cn.IsActive = 1
+),
+
+------------------------------------------------------------
+-- C) Aggregate per Head
+------------------------------------------------------------
+GlAgg AS (
+    SELECT
+        HeadId,
+        OpeningBalance = SUM(ISNULL(OpeningBalance, 0)),
+        Debit          = SUM(ISNULL(Debit, 0)),
+        Credit         = SUM(ISNULL(Credit, 0)),
+        Balance        = SUM(ISNULL(OpeningBalance, 0))
+                        + SUM(ISNULL(Debit, 0))
+                        - SUM(ISNULL(Credit, 0))
+    FROM GlLines
+    GROUP BY HeadId
+),
+
+------------------------------------------------------------
+-- D) Profit & Loss rows: use ROOT HEAD NAME (Income / Expense)
+------------------------------------------------------------
+PlRows AS (
+    SELECT
+        c.HeadName,
+        c.HeadCode,
+        RootName = root.HeadName,
+        Balance  = ISNULL(ga.Balance, 0),
+
+        -- EXPENSE roots → Purchase
+        PurchaseVal =
+            CASE
+                WHEN root.HeadName IN ('Expense','Expenses','EXPENSE','EXPENSES')
+                    THEN ISNULL(ga.Balance, 0)
+                ELSE 0
+            END,
+
+        -- INCOME roots → Sales  (flip sign)
+        SalesVal =
+            CASE
+                WHEN root.HeadName IN ('Income','Incomes','INCOME','INCOMES')
+                    THEN -ISNULL(ga.Balance, 0)
+                ELSE 0
+            END
+    FROM dbo.ChartOfAccount c
+    INNER JOIN CoaRoot cr
+        ON cr.Id = c.Id
+    INNER JOIN dbo.ChartOfAccount root
+        ON root.Id = cr.RootHeadId
+    LEFT JOIN GlAgg ga
+        ON ga.HeadId = c.Id
+    WHERE c.IsActive = 1
+      AND root.HeadName IN (
+            'Income','Incomes','INCOME','INCOMES',
+            'Expense','Expenses','EXPENSE','EXPENSES'
+          )
 )
 
+------------------------------------------------------------
+-- E) Final SELECT mapped to ProfitLossViewInfo DTO
+------------------------------------------------------------
 SELECT
-    HeadId,
-    HeadCode,
-    HeadName,
-    HeadType,
-    Purchase,
-    Sales,
-    NetProfit = Sales - Purchase
-FROM Final
+    HeadName = PlRows.HeadName,
+    HeadCode = PlRows.HeadCode,
+
+    Purchase = CAST(ROUND(PurchaseVal, 0) AS int),
+    Sales    = CAST(ROUND(SalesVal,    0) AS int),
+
+    NetProfit = CAST(
+                    ROUND(
+                        SalesVal - PurchaseVal, 0
+                    ) AS int
+                )
+FROM PlRows
 ORDER BY HeadCode;
-
-
 ";
 
             return await Connection.QueryAsync<ProfitLossViewInfo>(sql);
@@ -1093,293 +1440,464 @@ ORDER BY HeadCode;
        public async Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync()
         {
             const string sql = @"
-;;WITH
---------------------------------------------------------------------
--- 1) COA TREE  (ParentHead = parent HeadCode, we build ParentId)
---------------------------------------------------------------------
-CoaTree AS (
-    -- ROOT HEADS
-    SELECT
-        c.Id,
-        c.HeadCode,
-        c.HeadName,
-        c.HeadType,            -- 'A','L','E','I','X'
-        c.ParentHead,          -- stores parent HeadCode
-        ParentId     = CAST(0 AS INT),
-        RootHeadId   = c.Id,
-        RootHeadType = c.HeadType
-    FROM ChartOfAccount c
-    WHERE c.IsActive = 1
-      AND (c.ParentHead = 0 OR c.ParentHead IS NULL)
-
-    UNION ALL
-
-    -- CHILD HEADS
+WITH
+------------------------------------------------------------
+-- A) SAFE COA TREE (ParentHead = parent HEADCODE)
+------------------------------------------------------------
+CoaCTE AS (
+    -- ROOT (no parent)
     SELECT
         c.Id,
         c.HeadCode,
         c.HeadName,
         c.HeadType,
         c.ParentHead,
-        ParentId     = t.Id,        -- REAL parent Id
-        t.RootHeadId,
-        t.RootHeadType
-    FROM ChartOfAccount c
-    INNER JOIN CoaTree t
-        ON c.ParentHead = t.HeadCode
+        RootHeadId   = c.Id,
+        RootHeadType =
+            CASE c.HeadType
+                WHEN 'A' THEN 'ASSET'
+                WHEN 'L' THEN 'LIABILITY'
+                WHEN 'E' THEN 'EQUITY'
+                WHEN 'I' THEN 'INCOME'
+                WHEN 'X' THEN 'EXPENSE'
+                ELSE c.HeadType
+            END,
+        Level = 0
+    FROM dbo.ChartOfAccount c
+    WHERE (c.ParentHead IS NULL OR c.ParentHead = 0)
+      AND c.IsActive = 1
+
+    UNION ALL
+
+    -- CHILDREN
+    SELECT
+        c.Id,
+        c.HeadCode,
+        c.HeadName,
+        c.HeadType,
+        c.ParentHead,
+        cr.RootHeadId,
+        cr.RootHeadType,
+        Level = cr.Level + 1
+    FROM dbo.ChartOfAccount c
+    INNER JOIN CoaCTE cr
+        ON c.ParentHead = cr.HeadCode    -- ParentHead stores parent HEADCODE
     WHERE c.IsActive = 1
+      AND cr.Level < 20
+),
+CoaRoot AS (
+    SELECT
+        Id,
+        HeadCode,
+        HeadName,
+        HeadType,
+        ParentHead,
+        RootHeadId,
+        RootHeadType
+    FROM (
+        SELECT
+            cte.*,
+            ROW_NUMBER() OVER (PARTITION BY cte.Id ORDER BY cte.Level) AS rn
+        FROM CoaCTE cte
+    ) x
+    WHERE x.rn = 1
 ),
 
---------------------------------------------------------------------
--- 2) OPENING BALANCES  (COA level)
---------------------------------------------------------------------
-Ob AS (
+------------------------------------------------------------
+-- B) GL LINES (all modules)
+------------------------------------------------------------
+GlLines AS (
+
+    --------------------------------------------------------
+    -- 1 ► Opening Balance  (only active rows)
+    --------------------------------------------------------
     SELECT
         ob.BudgetLineId AS HeadId,
-        Opening = SUM(TRY_CONVERT(decimal(18,2), ob.OpeningBalanceAmount))
-    FROM OpeningBalance ob
+        OpeningBalance = ISNULL(ob.OpeningBalanceAmount, 0),
+        Debit  = 0,
+        Credit = 0
+    FROM dbo.OpeningBalance ob
     WHERE ob.IsActive = 1
-    GROUP BY ob.BudgetLineId
-),
 
---------------------------------------------------------------------
--- 3) GL LINES (ALL MODULES)  *** SAME BASE AS GL REPORT ***
---------------------------------------------------------------------
-GlLines AS (
+    UNION ALL
+
     --------------------------------------------------------
-    -- Manual Journal
+    -- 2 ► Manual Journal (original side – BudgetLineId)
     --------------------------------------------------------
     SELECT
-        mj.JournalDate                    AS TransDate,
-        mj.AccountId                      AS HeadId,
-        TRY_CONVERT(decimal(18,2), mj.Debit)  AS Debit,
-        TRY_CONVERT(decimal(18,2), mj.Credit) AS Credit
-    FROM ManualJournal mj
+        mj.BudgetLineId AS HeadId,
+        OpeningBalance = 0,
+        Debit  = ISNULL(mj.Debit,  0),
+        Credit = ISNULL(mj.Credit, 0)
+    FROM dbo.ManualJournal mj
     WHERE mj.IsActive = 1
       AND mj.isPosted = 1
 
     UNION ALL
 
     --------------------------------------------------------
-    -- Sales Invoice – customer (AR control)
+    -- 2b ► Manual Journal – CASH side for Type = 'SUPPLIER'
     --------------------------------------------------------
     SELECT
-        si.InvoiceDate,
-        c.BudgetLineId                    AS HeadId,
-        TRY_CONVERT(decimal(18,2), si.Total)  AS Debit,
-        CAST(0 AS decimal(18,2))          AS Credit
-    FROM SalesInvoice si
-    INNER JOIN SalesOrder so ON so.Id = si.SoId
-    INNER JOIN Customer c    ON c.Id = so.CustomerId
-    WHERE si.IsActive = 1
-      AND c.BudgetLineId IS NOT NULL
+        cashCoa.Id AS HeadId,
+        OpeningBalance = 0,
+        Debit  = 0,
+        Credit = ISNULL(mj.Debit, 0)
+    FROM dbo.ManualJournal mj
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE mj.IsActive = 1
+      AND mj.isPosted = 1
+      AND UPPER(mj.[Type]) = 'SUPPLIER'
+      AND ISNULL(mj.Debit, 0) <> 0
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
 
     UNION ALL
 
     --------------------------------------------------------
-    -- AR Receipt allocation – customer
+    -- 2c ► Manual Journal – CASH side for Type = 'CUSTOMER'
     --------------------------------------------------------
     SELECT
-        r.ReceiptDate,
-        c.BudgetLineId,
-        CAST(0 AS decimal(18,2)) AS Debit,
-        TRY_CONVERT(decimal(18,2), ra.AllocatedAmount) AS Credit
-    FROM ArReceiptAllocation ra
-    INNER JOIN ArReceipt r ON r.Id = ra.ReceiptId
-    INNER JOIN Customer c ON c.Id = r.CustomerId
+        cashCoa.Id AS HeadId,
+        OpeningBalance = 0,
+        Debit  = ISNULL(mj.Credit, 0),
+        Credit = 0
+    FROM dbo.ManualJournal mj
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE mj.IsActive = 1
+      AND mj.isPosted = 1
+      AND UPPER(mj.[Type]) = 'CUSTOMER'
+      AND ISNULL(mj.Credit, 0) <> 0
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 3 ► Sales Invoice – DR Customer, CR Income/Asset
+    --------------------------------------------------------
+
+    -- 3a) DR Customer via SalesOrder (SoId on SI)
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        Debit  = ISNULL(sil.LineAmount, 0),
+        0
+    FROM dbo.SalesInvoiceLine sil
+    INNER JOIN dbo.SalesInvoice si
+        ON si.Id = sil.SiId
+       AND si.SoId IS NOT NULL
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = si.SoId
+    INNER JOIN dbo.Customer cs
+        ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+
+    UNION ALL
+
+    -- 3b) DR Customer via DO → SO
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        Debit  = ISNULL(sil.LineAmount, 0),
+        0
+    FROM dbo.SalesInvoiceLine sil
+    INNER JOIN dbo.SalesInvoice si
+        ON si.Id = sil.SiId
+       AND si.SoId IS NULL
+       AND si.DoId IS NOT NULL
+    INNER JOIN dbo.DeliveryOrderLine dol
+        ON dol.DoId = si.DoId
+    INNER JOIN dbo.SalesOrderLines sol
+        ON sol.Id = dol.SoLineId
+    INNER JOIN dbo.SalesOrder so
+        ON so.Id = sol.SalesOrderId
+    INNER JOIN dbo.Customer cs
+        ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+
+    UNION ALL
+
+    -- 3c) CR Income / Asset (item line’s BudgetLineId)
+    SELECT
+        sil.BudgetLineId AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(sil.LineAmount, 0)
+    FROM dbo.SalesInvoiceLine sil
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 4 ► Supplier Invoice PIN – DR Expense/Asset, CR Supplier
+    --------------------------------------------------------
+    -- 4a) CR Supplier
+    SELECT
+        sps.BudgetLineId AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(sip.Amount, 0)
+    FROM dbo.SupplierInvoicePin sip
+    INNER JOIN dbo.Suppliers sps ON sps.Id = sip.SupplierId
+    WHERE sip.IsActive = 1
+
+    UNION ALL
+
+    -- 4b) DR Expense / Asset from PIN lines
+    SELECT
+        L.BudgetLineId AS HeadId,
+        0,
+        Debit = ISNULL(sip.Amount, 0),
+        0
+    FROM dbo.SupplierInvoicePin sip
+    CROSS APPLY OPENJSON(sip.LinesJson)
+    WITH (
+        BudgetLineId INT '$.budgetLineId'
+    ) AS L
+    WHERE sip.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 5 ► AR Receipt – DR Bank / Cash, CR Customer
+    --------------------------------------------------------
+    -- 5a) DR Bank
+    SELECT
+        bk.BudgetLineId AS HeadId,
+        0,
+        Debit  = ISNULL(ar.TotalAllocated, 0),
+        0
+    FROM dbo.ArReceipt ar
+    INNER JOIN dbo.Bank bk ON bk.Id = ar.BankId
+    WHERE ar.IsActive = 1
+      AND ar.BankId IS NOT NULL
+
+    UNION ALL
+
+    -- 5b) DR Cash
+    SELECT
+        cashCoa.Id AS HeadId,
+        0,
+        Debit = ISNULL(ar.TotalAllocated, 0),
+        0
+    FROM dbo.ArReceipt ar
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE ar.IsActive = 1
+      AND (ar.BankId IS NULL OR ar.BankId = 0)
+      AND cashCoa.IsActive = 1
+      AND (
+            cashCoa.HeadName = 'Cash'
+         OR cashCoa.HeadCode = 10102
+      )
+
+    UNION ALL
+
+    -- 5c) CR Customer
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(ra.AllocatedAmount, 0)
+    FROM dbo.ArReceiptAllocation ra
+    INNER JOIN dbo.ArReceipt    ar ON ar.Id = ra.ReceiptId
+    INNER JOIN dbo.SalesInvoice si ON si.Id = ra.InvoiceId
+    INNER JOIN dbo.SalesOrder  so ON so.Id = si.SoId
+    INNER JOIN dbo.Customer    cs ON cs.Id = so.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
     WHERE ra.IsActive = 1
 
     UNION ALL
 
     --------------------------------------------------------
-    -- Credit Note – customer
+    -- 6 ► Supplier Payment – DR Supplier, CR Bank
     --------------------------------------------------------
+    -- 6a) DR Supplier
     SELECT
-        cn.CreditNoteDate,
-        COALESCE(c1.BudgetLineId, c2.BudgetLineId) AS HeadId,
-        CAST(0 AS decimal(18,2)) AS Debit,
-        (
-          ISNULL(TRY_CONVERT(decimal(18,2), cnl.LineNet), 0) +
-          ISNULL(TRY_CONVERT(decimal(18,2), cnl.Tax), 0)
-        ) AS Credit
-    FROM CreditNoteLine cnl
-    INNER JOIN CreditNote cn ON cn.Id = cnl.CreditNoteId
-    LEFT JOIN Customer c1 ON c1.Id = cn.CustomerId
-    LEFT JOIN SalesInvoice si2 ON si2.Id = cn.SiId
-    LEFT JOIN SalesOrder so2 ON so2.Id = si2.SoId
-    LEFT JOIN Customer c2 ON c2.Id = so2.CustomerId
-    WHERE cn.IsActive = 1
-      AND cnl.IsActive = 1
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- Sales Invoice line – item (income/COGS)
-    --------------------------------------------------------
-    SELECT
-        si.InvoiceDate,
-        i.BudgetLineId AS HeadId,
-        CAST(0 AS decimal(18,2)) AS Debit,
-        (
-          ISNULL(TRY_CONVERT(decimal(18,2), sil.LineAmount), 0) +
-          ISNULL(TRY_CONVERT(decimal(18,2), sil.Tax), 0)
-        ) AS Credit
-    FROM SalesInvoiceLine sil
-    INNER JOIN SalesInvoice si ON si.Id = sil.SiId
-    INNER JOIN Item i          ON i.Id = sil.ItemId
-    WHERE si.IsActive = 1
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- Credit Note line – reverse item
-    --------------------------------------------------------
-    SELECT
-        cn.CreditNoteDate,
-        i.BudgetLineId AS HeadId,
-        (
-          ISNULL(TRY_CONVERT(decimal(18,2), cnl.LineNet), 0) +
-          ISNULL(TRY_CONVERT(decimal(18,2), cnl.Tax), 0)
-        ) AS Debit,
-        CAST(0 AS decimal(18,2)) AS Credit
-    FROM CreditNoteLine cnl
-    INNER JOIN CreditNote cn ON cn.Id = cnl.CreditNoteId
-    INNER JOIN Item i        ON i.Id = cnl.ItemId
-    WHERE cn.IsActive = 1
-      AND cnl.IsActive = 1
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- Supplier Invoice PIN – item (expense/asset)
-    --------------------------------------------------------
-    SELECT
-        pin.InvoiceDate,
-        i.BudgetLineId AS HeadId,
-        TRY_CONVERT(decimal(18,2), j.lineTotal) AS Debit,
-        CAST(0 AS decimal(18,2)) AS Credit
-    FROM SupplierInvoicePin pin
-    CROSS APPLY OPENJSON(pin.LinesJson)
-    WITH (
-        item      NVARCHAR(50) '$.item',
-        lineTotal NVARCHAR(50) '$.lineTotal'
-    ) j
-    INNER JOIN Item i ON i.ItemCode = j.item
-    WHERE pin.IsActive = 1
-      AND pin.Status = 3
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- Supplier Invoice PIN – supplier (AP control)
-    --------------------------------------------------------
-    SELECT
-        pin.InvoiceDate,
-        s.BudgetLineId AS HeadId,
-        CAST(0 AS decimal(18,2)) AS Debit,
-        (
-          ISNULL(TRY_CONVERT(decimal(18,2), pin.Amount), 0) +
-          ISNULL(TRY_CONVERT(decimal(18,2), pin.Tax), 0)
-        ) AS Credit
-    FROM SupplierInvoicePin pin
-    INNER JOIN Suppliers s ON s.Id = pin.SupplierId
-    WHERE pin.IsActive = 1
-      AND pin.Status = 3
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- Supplier Debit Note – reverse AP
-    --------------------------------------------------------
-    SELECT
-        dn.NoteDate,
-        s.BudgetLineId AS HeadId,
-        TRY_CONVERT(decimal(18,2), dn.Amount) AS Debit,
-        CAST(0 AS decimal(18,2)) AS Credit
-    FROM SupplierDebitNote dn
-    INNER JOIN Suppliers s ON s.Id = dn.SupplierId
-    WHERE dn.IsActive = 1
-      AND dn.Status = 2
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- Supplier Payment – pay supplier (Debit AP)
-    --------------------------------------------------------
-    SELECT
-        sp.PaymentDate,
-        s.BudgetLineId AS HeadId,
-        TRY_CONVERT(decimal(18,2), sp.Amount) AS Debit,
-        CAST(0 AS decimal(18,2)) AS Credit
-    FROM SupplierPayment sp
-    INNER JOIN Suppliers s ON s.Id = sp.SupplierId
+        sps.BudgetLineId AS HeadId,
+        0,
+        Debit  = ISNULL(sp.Amount, 0),
+        Credit = 0
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Suppliers sps ON sps.Id = sp.SupplierId
     WHERE sp.IsActive = 1
+
+    UNION ALL
+
+    -- 6b) CR Bank (non-cash)
+    SELECT
+        bk.BudgetLineId AS HeadId,
+        0,
+        Debit  = 0,
+        Credit = ISNULL(sp.Amount, 0)
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Bank bk ON bk.Id = sp.BankId
+    WHERE sp.IsActive = 1
+      AND sp.PaymentMethodId <> 1
+
+    UNION ALL
+
+    -- 6c) CR Cash (cash)
+    SELECT
+        cashCoa.Id AS HeadId,
+        0,
+        Debit  = 0,
+        Credit = ISNULL(sp.Amount, 0)
+    FROM dbo.SupplierPayment sp
+    CROSS JOIN dbo.ChartOfAccount cashCoa
+    WHERE sp.IsActive = 1
+      AND sp.PaymentMethodId = 1
+      AND cashCoa.IsActive = 1
+      AND cashCoa.HeadName = 'Cash'
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 7 ► Supplier Debit Note – DR Supplier, CR Expense/Income
+    --------------------------------------------------------
+    -- 7a) DR Supplier
+    SELECT
+        sps.BudgetLineId AS HeadId,
+        0,
+        Debit = ISNULL(sdn.Amount, 0),
+        0
+    FROM dbo.SupplierDebitNote sdn
+    INNER JOIN dbo.Suppliers sps ON sps.Id = sdn.SupplierId
+    WHERE sdn.IsActive = 1
+
+    UNION ALL
+
+    -- 7b) CR Expense/Income (lines)
+    SELECT
+        L.BudgetLineId AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(L.Amount, 0)
+    FROM dbo.SupplierDebitNote sdn
+    CROSS APPLY OPENJSON(sdn.LinesJson)
+    WITH (
+        BudgetLineId INT            '$.budgetLineId',
+        Amount       DECIMAL(18,2)  '$.amount'
+    ) AS L
+    WHERE sdn.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 8 ► Customer Credit Note – DR Income, CR Customer
+    --------------------------------------------------------
+    -- 8a) DR Income (item’s account)
+    SELECT
+        siLine.BudgetLineId AS HeadId,
+        0,
+        Debit = ISNULL(cn.Subtotal, 0),
+        0
+    FROM dbo.CreditNote cn
+    INNER JOIN dbo.SalesInvoice     si     ON si.Id = cn.SiId
+    INNER JOIN dbo.SalesInvoiceLine siLine ON siLine.SiId = si.Id
+    WHERE cn.IsActive = 1
+
+    UNION ALL
+
+    -- 8b) CR Customer
+    SELECT
+        coaCust.Id AS HeadId,
+        0,
+        0,
+        Credit = ISNULL(cn.Subtotal, 0)
+    FROM dbo.CreditNote cn
+    INNER JOIN dbo.Customer cs ON cs.Id = cn.CustomerId
+    INNER JOIN dbo.ChartOfAccount coaCust
+        ON coaCust.Id = cs.BudgetLineId
+    WHERE cn.IsActive = 1
 ),
 
---------------------------------------------------------------------
--- 4) AGGREGATE GL BY HEAD
---------------------------------------------------------------------
+------------------------------------------------------------
+-- C) Aggregate per Head
+------------------------------------------------------------
 GlAgg AS (
     SELECT
         HeadId,
-        Debit  = SUM(TRY_CONVERT(decimal(18,2), Debit)),
-        Credit = SUM(TRY_CONVERT(decimal(18,2), Credit))
+        OpeningBalance = SUM(ISNULL(OpeningBalance, 0)),
+        Debit          = SUM(ISNULL(Debit, 0)),
+        Credit         = SUM(ISNULL(Credit, 0)),
+        Balance        = SUM(ISNULL(OpeningBalance, 0))
+                        + SUM(ISNULL(Debit, 0))
+                        - SUM(ISNULL(Credit, 0))
     FROM GlLines
     GROUP BY HeadId
 ),
 
---------------------------------------------------------------------
--- 5) BASE – ONE ROW PER COA HEAD (Opening + movements)
---------------------------------------------------------------------
-Base AS (
+------------------------------------------------------------
+-- D) Balance Sheet rows (Assets / Liabilities, NO Income/Expenses)
+------------------------------------------------------------
+BsRows AS (
     SELECT
-        HeadId       = ct.Id,
-        HeadCode     = CAST(ct.HeadCode AS NVARCHAR(50)),
-        HeadName     = ct.HeadName,
-        HeadType     = ct.HeadType,
-        ParentHead   = ct.ParentId,          -- ALWAYS parent Id
-        RootHeadType = ct.RootHeadType,
+        Side =
+            CASE 
+                WHEN root.HeadName = 'Assets' THEN 'Assets'
+                WHEN root.HeadName IN ('Liabilities','Equity')
+                    THEN 'Liabilities'
+                ELSE root.HeadName
+            END,
 
-        Opening = ISNULL(ob.Opening, 0),
-        Debit   = ISNULL(ga.Debit, 0),
-        Credit  = ISNULL(ga.Credit, 0)
-    FROM CoaTree ct
+        GroupHeadId   = cr.RootHeadId,
+        GroupHeadName = root.HeadName,
+
+        HeadId     = c.Id,
+        HeadCode   = CAST(c.HeadCode AS varchar(50)),
+        HeadName   = c.HeadName,
+        ParentHead = c.ParentHead,
+        RootHeadType = cr.RootHeadType,
+
+        OpeningBalance = ISNULL(ga.OpeningBalance, 0),
+
+        -- Normalised balance:
+        --   Assets      → keep sign
+        --   Liab/Equity → flip sign so credits show +ve
+        Balance =
+            CASE
+                WHEN root.HeadName = 'Assets'
+                    THEN ISNULL(ga.Balance, 0)
+                WHEN root.HeadName IN ('Liabilities','Equity')
+                    THEN -ISNULL(ga.Balance, 0)
+                ELSE 0
+            END
+    FROM dbo.ChartOfAccount c
+    INNER JOIN CoaRoot cr
+        ON cr.Id = c.Id
+    INNER JOIN dbo.ChartOfAccount root
+        ON root.Id = cr.RootHeadId
     LEFT JOIN GlAgg ga
-        ON ga.HeadId = ct.Id
-    LEFT JOIN Ob ob
-        ON ob.HeadId = ct.Id
+        ON ga.HeadId = c.Id
+    WHERE c.IsActive = 1
+      -- *** only these 3 roots → Expenses & Income excluded ***
+      AND root.HeadName IN ('Assets','Liabilities','Equity')
+      -- optional: only show non-zero accounts
+      -- AND ISNULL(ga.Balance,0) <> 0
 )
 
---------------------------------------------------------------------
--- 6) FINAL BALANCE-SHEET RESULT FOR ANGULAR
---------------------------------------------------------------------
+------------------------------------------------------------
+-- E) Final SELECT
+------------------------------------------------------------
 SELECT
-    b.HeadId,
-    b.HeadCode,
-    b.HeadName,
-    b.ParentHead,        -- use as parentId in Angular tree
-    b.RootHeadType,
-    Balance =
-        CASE 
-            WHEN EXISTS (
-                SELECT 1
-                FROM Base b2
-                WHERE b2.ParentHead = b.HeadId
-            )
-                THEN 0   -- parents always 0, children carry values
-            ELSE
-                CASE 
-                    WHEN b.RootHeadType IN ('A','X')      -- Assets/Expense
-                        THEN b.Opening + b.Debit - b.Credit
-                    ELSE                                   -- Liab/Equity/Income
-                         b.Opening - b.Debit + b.Credit
-                END
-        END
-FROM Base b
-ORDER BY b.HeadCode;
-
-
-
+    Side,
+    GroupHeadId,
+    GroupHeadName,
+    HeadId,
+    HeadCode,
+    HeadName,
+    ParentHead,
+    RootHeadType,
+    OpeningBalance,
+    Balance
+FROM BsRows
+ORDER BY
+    CASE Side WHEN 'Liabilities' THEN 0 WHEN 'Assets' THEN 1 ELSE 2 END,
+    GroupHeadId,
+    HeadCode;
 ";
 
             return await Connection.QueryAsync<BalanceSheetViewInfo>(sql);
