@@ -197,7 +197,7 @@ GlLines AS (
         si.InvoiceNo                          AS SourceNo,
         'AR From Invoice ' + si.InvoiceNo     AS Description,
         c.BudgetLineId                        AS HeadId,
-        ISNULL(TRY_CONVERT(decimal(18,2), si.Subtotal),0) AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), si.total),0) AS Debit,
         CAST(0 AS decimal(18,2))              AS Credit
     FROM dbo.SalesInvoice si
     LEFT JOIN dbo.DeliveryOrder d
@@ -293,55 +293,71 @@ GlLines AS (
 
     UNION ALL
 
-    --------------------------------------------------------
-    -- G1) AP – PIN LINES -> P&L / Asset
-    --------------------------------------------------------
-    SELECT
-        si.InvoiceDate                        AS TransDate,
-        'PINL'                                AS SourceType,
-        si.InvoiceNo                          AS SourceNo,
-        'PIN Line - ' + ISNULL(i.ItemName,'') AS Description,
-        coa.Id                                AS HeadId,
-        ISNULL(j.LineTotal,0)                 AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
-    FROM dbo.SupplierInvoicePin si
-    CROSS APPLY OPENJSON(si.LinesJson) WITH (
-        ItemCode     nvarchar(50)  '$.item',
-        LineTotal    decimal(18,2) '$.lineTotal',
-        BudgetLineId int           '$.budgetLineId'
-    ) j
-    INNER JOIN dbo.Item i
-        ON i.ItemCode = j.ItemCode
-       AND i.IsActive = 1
-    INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = COALESCE(j.BudgetLineId, i.BudgetLineId)
-       AND coa.IsActive = 1
-    WHERE si.IsActive = 1
-      AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                        AND ISNULL(@ToDate,'9999-12-31')
+  --------------------------------------------------------
+-- G1) AP – Supplier Invoice LINES (PINL -> item/budgetLineId)
+--     Distribute si.Amount (inclusive of tax) across lines
+--------------------------------------------------------
+SELECT
+    si.InvoiceDate AS TransDate,
+    'PINL'         AS SourceType,
+    si.InvoiceNo   AS SourceNo,
+    'PIN Line - ' + ISNULL(i.ItemName,'') AS Description,
+    coa.Id         AS HeadId,
+
+    Debit =
+        CASE 
+            -- if, for some reason, total lineTotal = 0
+            WHEN ISNULL(SUM(j.LineTotal) OVER (PARTITION BY si.Id),0) = 0 THEN
+                ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0)
+            ELSE
+                ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0)
+                * ISNULL(j.LineTotal,0)
+                / NULLIF(SUM(j.LineTotal) OVER (PARTITION BY si.Id),0)
+        END,
+
+    Credit = CAST(0 AS decimal(18,2))
+
+FROM dbo.SupplierInvoicePin si
+CROSS APPLY OPENJSON(si.LinesJson) WITH (
+    ItemCode     nvarchar(50)  '$.item',
+    LineTotal    decimal(18,2) '$.lineTotal',
+    BudgetLineId int           '$.budgetLineId'
+) AS j
+INNER JOIN dbo.Item i
+    ON i.ItemCode = j.ItemCode
+   AND i.IsActive = 1
+INNER JOIN dbo.ChartOfAccount coa
+    ON coa.Id = COALESCE(j.BudgetLineId, i.BudgetLineId)
+   AND coa.IsActive = 1
+WHERE si.IsActive = 1
+  AND si.Status   = 3
+  AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                         AND ISNULL(@ToDate,'9999-12-31')
+
+
+
 
     UNION ALL
 
-    --------------------------------------------------------
-    -- G2) AP – PIN HEADER -> Supplier AP head (Credit)
-    --------------------------------------------------------
-    SELECT
-        si.InvoiceDate                        AS TransDate,
-        'PIN'                                 AS SourceType,
-        si.InvoiceNo                          AS SourceNo,
-        'Supplier Invoice'                    AS Description,
-        s.BudgetLineId                        AS HeadId,
-        CAST(0 AS decimal(18,2))              AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0)
-      + ISNULL(TRY_CONVERT(decimal(18,2), si.Tax),0)      AS Credit
-    FROM dbo.SupplierInvoicePin si
-    INNER JOIN dbo.Suppliers s
-        ON s.Id = si.SupplierId AND s.IsActive = 1
-    WHERE si.IsActive = 1
-      AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                        AND ISNULL(@ToDate,'9999-12-31')
+   --------------------------------------------------------
+-- G2) AP – Supplier Invoice (PIN -> supplier head)
+--------------------------------------------------------
+SELECT
+    si.InvoiceDate AS TransDate,
+    'PIN'          AS SourceType,
+    si.InvoiceNo   AS SourceNo,
+    'Supplier Invoice' AS Description,
+    s.BudgetLineId AS HeadId,
+    CAST(0 AS decimal(18,2)) AS Debit,
+    ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0) AS Credit
+FROM dbo.SupplierInvoicePin si
+INNER JOIN dbo.Suppliers s
+    ON s.Id = si.SupplierId AND s.IsActive = 1
+WHERE si.IsActive = 1
+  AND si.Status   = 3
+  AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                         AND ISNULL(@ToDate,'9999-12-31')
+
 
     UNION ALL
 
@@ -727,7 +743,7 @@ GlLines AS (
         si.InvoiceNo   AS SourceNo,
         'AR From Invoice ' + si.InvoiceNo AS Description,
         c.BudgetLineId AS HeadId,
-        ISNULL(TRY_CONVERT(decimal(18,2), si.Subtotal),0) AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), si.total),0) AS Debit,
         CAST(0 AS decimal(18,2)) AS Credit
     FROM dbo.SalesInvoice si
     LEFT JOIN dbo.DeliveryOrder d
@@ -824,55 +840,70 @@ GlLines AS (
 
     UNION ALL
 
-    --------------------------------------------------------
-    -- G1) AP – Supplier Invoice LINES (PINL -> item/budgetLineId)
-    --------------------------------------------------------
-    SELECT
-        si.InvoiceDate AS TransDate,
-        'PINL'         AS SourceType,
-        si.InvoiceNo   AS SourceNo,
-        'PIN Line - ' + ISNULL(i.ItemName,'') AS Description,
-        coa.Id         AS HeadId,
-        ISNULL(j.LineTotal,0) AS Debit,
-        CAST(0 AS decimal(18,2)) AS Credit
-    FROM dbo.SupplierInvoicePin si
-    CROSS APPLY OPENJSON(si.LinesJson) WITH (
-        ItemCode     nvarchar(50)  '$.item',
-        LineTotal    decimal(18,2) '$.lineTotal',
-        BudgetLineId int           '$.budgetLineId'
-    ) j
-    INNER JOIN dbo.Item i
-        ON i.ItemCode = j.ItemCode
-       AND i.IsActive = 1
-    INNER JOIN dbo.ChartOfAccount coa
-        ON coa.Id = COALESCE(j.BudgetLineId, i.BudgetLineId)
-       AND coa.IsActive = 1
-    WHERE si.IsActive = 1
-      AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
+  --------------------------------------------------------
+-- G1) AP – Supplier Invoice LINES (PINL -> item/budgetLineId)
+--     Distribute si.Amount (inclusive of tax) across lines
+--------------------------------------------------------
+SELECT
+    si.InvoiceDate AS TransDate,
+    'PINL'         AS SourceType,
+    si.InvoiceNo   AS SourceNo,
+    'PIN Line - ' + ISNULL(i.ItemName,'') AS Description,
+    coa.Id         AS HeadId,
+
+    Debit =
+        CASE 
+            -- if, for some reason, total lineTotal = 0
+            WHEN ISNULL(SUM(j.LineTotal) OVER (PARTITION BY si.Id),0) = 0 THEN
+                ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0)
+            ELSE
+                ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0)
+                * ISNULL(j.LineTotal,0)
+                / NULLIF(SUM(j.LineTotal) OVER (PARTITION BY si.Id),0)
+        END,
+
+    Credit = CAST(0 AS decimal(18,2))
+
+FROM dbo.SupplierInvoicePin si
+CROSS APPLY OPENJSON(si.LinesJson) WITH (
+    ItemCode     nvarchar(50)  '$.item',
+    LineTotal    decimal(18,2) '$.lineTotal',
+    BudgetLineId int           '$.budgetLineId'
+) AS j
+INNER JOIN dbo.Item i
+    ON i.ItemCode = j.ItemCode
+   AND i.IsActive = 1
+INNER JOIN dbo.ChartOfAccount coa
+    ON coa.Id = COALESCE(j.BudgetLineId, i.BudgetLineId)
+   AND coa.IsActive = 1
+WHERE si.IsActive = 1
+  AND si.Status   = 3
+  AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                         AND ISNULL(@ToDate,'9999-12-31')
+
+
+
 
     UNION ALL
 
-    --------------------------------------------------------
-    -- G2) AP – Supplier Invoice (PIN -> supplier head)
-    --------------------------------------------------------
-    SELECT
-        si.InvoiceDate AS TransDate,
-        'PIN'          AS SourceType,
-        si.InvoiceNo   AS SourceNo,
-        'Supplier Invoice' AS Description,
-        s.BudgetLineId AS HeadId,
-        CAST(0 AS decimal(18,2)) AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0)
-      + ISNULL(TRY_CONVERT(decimal(18,2), si.Tax),0)     AS Credit
-    FROM dbo.SupplierInvoicePin si
-    INNER JOIN dbo.Suppliers s
-        ON s.Id = si.SupplierId AND s.IsActive = 1
-    WHERE si.IsActive = 1
-      AND si.Status   = 3
-      AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
+   --------------------------------------------------------
+-- G2) AP – Supplier Invoice (PIN -> supplier head)
+--------------------------------------------------------
+SELECT
+    si.InvoiceDate AS TransDate,
+    'PIN'          AS SourceType,
+    si.InvoiceNo   AS SourceNo,
+    'Supplier Invoice' AS Description,
+    s.BudgetLineId AS HeadId,
+    CAST(0 AS decimal(18,2)) AS Debit,
+    ISNULL(TRY_CONVERT(decimal(18,2), si.Amount),0) AS Credit
+FROM dbo.SupplierInvoicePin si
+INNER JOIN dbo.Suppliers s
+    ON s.Id = si.SupplierId AND s.IsActive = 1
+WHERE si.IsActive = 1
+  AND si.Status   = 3
+  AND si.InvoiceDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                         AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
 
