@@ -1,7 +1,10 @@
-﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using Dapper;
+﻿using Dapper;
 using FinanceApi.Data;
+using FinanceApi.ModelDTO;
+using Microsoft.AspNetCore.Connections;
+using System.Collections.Generic;
+using System.Data;
+using System.Threading.Tasks;
 using UnityWorksERP.Finance.AR;
 
 namespace FinanceApi.Repositories
@@ -141,11 +144,92 @@ ORDER BY CustomerName, InvoiceDate, InvoiceNo;
             return await Connection.QueryAsync<ArInvoiceListDto>(sql);
         }
 
+        public async Task<int> CreateAdvanceAsync(ArAdvanceDto dto)
+        {
+            const string sql = @"
+DECLARE @AdvanceId INT;
+DECLARE @BankHeadId INT;
+DECLARE @CustomerHeadId INT;
+
+-- 1) Get Bank GL Head
+SELECT @BankHeadId = b.BudgetLineId
+FROM Bank b
+WHERE b.Id = @BankAccountId;
+
+-- 2) (Optional) Get Customer GL Head – used only for GL, not AccountBalance
+SELECT @CustomerHeadId = c.BudgetLineId
+FROM Customer c
+WHERE c.Id = @CustomerId;
+
+-- 3) Insert Advance Master
+INSERT INTO ArCustomerAdvance
+(
+    CustomerId,
+    SalesOrderId,
+    AdvanceNo,
+    AdvanceDate,
+    Amount,
+    BalanceAmount,
+    PaymentMode,
+    BankAccountId,
+    Remarks
+)
+VALUES
+(
+    @CustomerId,
+    @SalesOrderId,
+    CONCAT('ADV-', FORMAT(GETDATE(),'yyyyMMddHHmmss')),
+    @AdvanceDate,
+    @Amount,
+    @Amount,
+    @PaymentMode,
+    @BankAccountId,
+    @Remarks
+);
+
+SET @AdvanceId = SCOPE_IDENTITY();
+
+-------------------------------------------------
+-- ✅ ONLY BANK GOES TO AccountBalance
+-------------------------------------------------
+IF EXISTS (SELECT 1 FROM AccountBalance WHERE HeadId = @BankHeadId)
+BEGIN
+    UPDATE AccountBalance
+       SET PeriodDebit      = ISNULL(PeriodDebit,0) + @Amount,
+           AvailableBalance = (ISNULL(PeriodDebit,0) + @Amount)
+                              - ISNULL(PeriodCredit,0),
+           UpdatedDate      = GETDATE()
+     WHERE HeadId = @BankHeadId;
+END
+ELSE
+BEGIN
+    INSERT INTO AccountBalance
+        (HeadId, PeriodDebit, PeriodCredit, AvailableBalance, UpdatedDate)
+    VALUES
+        (@BankHeadId, @Amount, 0, @Amount, GETDATE());
+END
+
+-- ❌ NO ROW FOR CUSTOMER HERE
+
+SELECT @AdvanceId;
+";
+
+            return await Connection.ExecuteScalarAsync<int>(sql, dto);
+        }
 
 
+        public async Task<IEnumerable<ArOpenAdvanceDto>> GetOpenAdvancesAsync(int customerId, int? salesOrderId)
+        {
+            const string sql = "sp_ArCustomerOpenAdvances";
 
-
-
+           
+            return await Connection.QueryAsync<ArOpenAdvanceDto>(
+                sql,
+                new { CustomerId = customerId, SalesOrderId = salesOrderId },
+                commandType: CommandType.StoredProcedure
+            );
+        }
+       
 
     }
 }

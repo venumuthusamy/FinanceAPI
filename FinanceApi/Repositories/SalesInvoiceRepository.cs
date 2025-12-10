@@ -101,7 +101,7 @@ INSERT INTO dbo.SalesInvoiceLine
     TaxCodeId, 
     LineAmount, 
     Description,
-BudgetLineId
+    BudgetLineId
 )
 VALUES
 (
@@ -119,7 +119,7 @@ VALUES
     @TaxCodeId, 
     @LineAmount, 
     @Description,
-@BudgetLineId
+    @BudgetLineId
 );";
 
             foreach (var l in req.Lines)
@@ -160,15 +160,61 @@ VALUES
                 new { Id = siId }
             );
 
-            // ============================================================
-            // 5) POST TO GlTransaction
-            //    Convention:
-            //      - AmountBase > 0  => Debit
-            //      - AmountBase < 0  => Credit
-            //
-            //    a) Customer (AR)  : DR Total
-            //    b) Revenue (Items): CR (LineAmount + Tax) per item line
-            // ============================================================
+            // 5️⃣ If advance is applied – reduce ArCustomerAdvance.BalanceAmount
+            if (req.AdvanceId.HasValue &&
+                req.AdvanceApplyAmount.HasValue &&
+                req.AdvanceApplyAmount.Value > 0)
+            {
+                const string advanceSql = @"
+IF EXISTS (
+    SELECT 1
+    FROM dbo.ArCustomerAdvance
+    WHERE Id = @AdvanceId
+      AND BalanceAmount >= @ApplyAmount
+)
+BEGIN
+    -- 🔹 Log adjustment row
+    INSERT INTO dbo.ArCustomerAdvanceAdjust
+    (
+        AdvanceId,
+        SalesInvoiceId,
+        AdjustAmount,
+        AdjustDate,
+        CreatedDate
+    )
+    VALUES
+    (
+        @AdvanceId,
+        @SiId,
+        @ApplyAmount,
+        @InvoiceDate,
+        SYSUTCDATETIME()
+    );
+
+    -- 🔹 Reduce remaining balance
+    UPDATE dbo.ArCustomerAdvance
+    SET BalanceAmount = BalanceAmount - @ApplyAmount
+    WHERE Id = @AdvanceId;
+END
+ELSE
+BEGIN
+    THROW 50001, 'Advance balance is insufficient.', 1;
+END;";
+
+                await Connection.ExecuteAsync(
+                    advanceSql,
+                    new
+                    {
+                        AdvanceId = req.AdvanceId.Value,
+                        ApplyAmount = req.AdvanceApplyAmount.Value,
+                        SiId = siId,
+                        req.InvoiceDate
+                    }
+                );
+            }
+
+
+            // 6) POST TO GlTransaction (your existing logic)
             const string glInsertSql = @"
 INSERT INTO dbo.GlTransaction
 (
@@ -182,9 +228,9 @@ INSERT INTO dbo.GlTransaction
 SELECT
     c.BudgetLineId              AS AccountId,
     si.InvoiceDate              AS TxnDate,
-    1                           AS CurrencyId,      -- TODO: change if you add CurrencyId on SI
+    1                           AS CurrencyId,      -- TODO: Currency
     si.Total                    AS AmountFC,
-    si.Total                    AS AmountBase       -- DR AR (positive)
+    si.Total                    AS AmountBase       -- DR AR
 FROM dbo.SalesInvoice si
 INNER JOIN dbo.SalesOrder so ON so.Id = si.SoId
 INNER JOIN dbo.Customer    c  ON c.Id = so.CustomerId
@@ -199,7 +245,7 @@ SELECT
     si.InvoiceDate              AS TxnDate,
     1                           AS CurrencyId,
     (sil.LineAmount + sil.GstPct)  AS AmountFC,
-    - (sil.LineAmount + sil.GstPct)AS AmountBase       -- CR Income (negative)
+    - (sil.LineAmount + sil.GstPct)AS AmountBase       -- CR Income
 FROM dbo.SalesInvoiceLine sil
 INNER JOIN dbo.SalesInvoice si ON si.Id = sil.SiId
 INNER JOIN dbo.Item         i   ON i.Id = sil.ItemId
@@ -210,6 +256,7 @@ WHERE sil.SiId = @SiId
 
             return siId;
         }
+
 
 
         public async Task<SiHeaderDto?> GetAsync(int id)

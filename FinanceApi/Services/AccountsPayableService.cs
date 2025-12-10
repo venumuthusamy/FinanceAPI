@@ -54,5 +54,14 @@ namespace FinanceApi.Services
             return await _repo.UpdateBankBalance(bankId, newBal);
         }
 
+        public async Task<IEnumerable<ApSupplierAdvanceDto>> GetSupplierAdvancesAsync()
+        {
+            return await _repo.GetSupplierAdvancesAsync();
+        }
+
+        public async Task<int> CreateSupplierAdvanceAsync(int userId, ApSupplierAdvanceCreateRequest req)
+        {
+            return await _repo.CreateSupplierAdvanceAsync(userId, req);
+        }
     }
 }

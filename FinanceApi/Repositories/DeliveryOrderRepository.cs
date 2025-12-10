@@ -354,13 +354,36 @@ WHERE DoId=@doId;", new { doId });
 
         public Task<IEnumerable<DoHeaderDto>> GetAllAsync()
             => Connection.QueryAsync<DoHeaderDto>(@"
-SELECT d.Id, d.DoNumber, d.Status, d.SoId, d.PackId,SI.InvoiceNo,SI.Id AS SiId, d.DriverId, d.VehicleId,
-       d.RouteName, d.DeliveryDate, d.PodFileUrl, d.IsPosted, s.SalesOrderNo,s.CustomerId,c.CustomerName
-FROM dbo.DeliveryOrder d 
-LEFT JOIN dbo.SalesOrder s ON s.Id = d.SoId
-LEFT JOIN dbo.SalesInvoice SI ON SI.DoId = d.Id
-LEFT JOIN dbo.Customer c ON c.Id = s.CustomerId
-ORDER BY d.Id DESC;");
+SELECT 
+    d.Id,
+    d.DoNumber,
+    d.Status,
+    d.SoId,
+    d.PackId,
+    si1.InvoiceNo,
+    si1.Id       AS SiId,
+    d.DriverId,
+    d.VehicleId,
+    d.RouteName,
+    d.DeliveryDate,
+    d.PodFileUrl,
+    d.IsPosted,
+    s.SalesOrderNo,
+    s.CustomerId,
+    c.CustomerName
+FROM dbo.DeliveryOrder d
+LEFT JOIN dbo.SalesOrder s 
+    ON s.Id = d.SoId
+OUTER APPLY (
+    SELECT TOP (1) si.*
+    FROM dbo.SalesInvoice si
+    WHERE si.DoId = d.Id
+    ORDER BY si.Id DESC       -- or InvoiceDate DESC, etc.
+) si1
+LEFT JOIN dbo.Customer c 
+    ON c.Id = s.CustomerId
+ORDER BY d.Id DESC;
+;");
 
         // =============== UPDATE HEADER ===============
         public async Task UpdateHeaderAsync(int id, DoUpdateHeaderRequest req, int userId)
