@@ -2,6 +2,9 @@
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace FinanceApi.Services
 {

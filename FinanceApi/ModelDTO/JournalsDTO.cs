@@ -3,18 +3,16 @@
     public class JournalsDTO
     {
         public int Id { get; set; }
-        public string JournalNo { get; set; } = string.Empty;
+        public string? JournalNo { get; set; }
         public DateTime JournalDate { get; set; }
 
-        public decimal Amount { get; set; }       // Credit
-        public decimal DebitAmount { get; set; }  // Debit
+        public decimal DebitAmount { get; set; }
+        public decimal CreditAmount { get; set; }
 
         public bool IsRecurring { get; set; }
         public string? RecurringFrequency { get; set; }
-
         public bool IsPosted { get; set; }
 
-        public string HeadName { get; set; } = string.Empty;
-        public string HeadCode { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
     }
 }

@@ -17,25 +17,35 @@ namespace FinanceApi.Repositories
 
         #region LIST / DETAILS
 
+        // List screen – one row per journal, with total debit/credit
         public async Task<IEnumerable<JournalsDTO>> GetAllAsync()
         {
             const string sql = @"
 SELECT 
     mj.Id,
-    mj.JournalNo, 
+    mj.JournalNo,
     mj.JournalDate,
-    mj.Credit AS Amount,
-    mj.Debit  AS DebitAmount, 
+    SUM(mjl.Debit)  AS DebitAmount,
+    SUM(mjl.Credit) AS CreditAmount,
     mj.IsRecurring,
     mj.RecurringFrequency,
-    mj.isPosted,
-    coa.HeadName,
-    coa.HeadCode 
-FROM ManualJournal AS mj
-INNER JOIN ChartOfAccount AS coa ON coa.Id = mj.AccountId
-WHERE mj.IsActive    = 1 
-  AND mj.isPosted    = 0
-  AND mj.IsRecurring = 0;";
+    mj.IsPosted,
+    mj.[Description]
+FROM dbo.ManualJournal mj
+INNER JOIN dbo.ManualJournalLine mjl
+    ON mjl.JournalId = mj.Id
+WHERE mj.IsActive    = 1
+  AND mj.IsPosted    = 0          -- only not-posted journals
+  AND mj.IsRecurring = 0
+  AND mjl.IsActive   = 1
+GROUP BY
+    mj.Id,
+    mj.JournalNo,
+    mj.JournalDate,
+    mj.IsRecurring,
+    mj.RecurringFrequency,
+    mj.IsPosted,
+    mj.[Description];";
 
             return await Connection.QueryAsync<JournalsDTO>(sql);
         }
@@ -45,37 +55,47 @@ WHERE mj.IsActive    = 1
             const string sql = @"
 UPDATE dbo.ManualJournal
 SET 
-    isPosted    = 1,
+    IsPosted    = 1,
     UpdatedDate = SYSUTCDATETIME()
 WHERE Id IN @Ids
   AND IsActive    = 1
-  AND isPosted    = 0
+  AND IsPosted    = 0
   AND IsRecurring = 0;";
 
             return await Connection.ExecuteAsync(sql, new { Ids = ids });
         }
 
+        #endregion
+
+        #region CREATE
+
         public async Task<int> CreateAsync(ManualJournalCreateDto dto)
         {
             var conn = Connection;
             if (conn.State != ConnectionState.Open)
-                await (conn as SqlConnection)!.OpenAsync();
+                await ((SqlConnection)conn).OpenAsync();
 
             using var tx = conn.BeginTransaction();
 
-            const string sql = @"
+            // 1) Insert header (ManualJournal) with auto JournalNo
+            const string insertHeaderSql = @"
+DECLARE @NextNo INT;
+
+SELECT 
+    @NextNo = ISNULL(
+        MAX(CAST(SUBSTRING(JournalNo, 4, 10) AS INT)), 
+        0
+    ) + 1
+FROM dbo.ManualJournal WITH (UPDLOCK, HOLDLOCK);
+
+DECLARE @NewJournalNo VARCHAR(20) =
+    'JN-' + RIGHT('0000' + CAST(@NextNo AS VARCHAR(10)), 4);
+
 INSERT INTO dbo.ManualJournal
 (
-    AccountId,
-    ItemId,
+    JournalNo,
     JournalDate,
-    Type,
-    CustomerId,
-    SupplierId,
-    Description,
-    BudgetLineId,
-    Debit,
-    Credit,
+    [Description],
     IsRecurring,
     RecurringFrequency,
     RecurringInterval,
@@ -85,23 +105,17 @@ INSERT INTO dbo.ManualJournal
     RecurringCount,
     ProcessedCount,
     NextRunDate,
+    TimeZone,
     CreatedBy,
     CreatedDate,
     IsActive,
-    isPosted
+    IsPosted
 )
 VALUES
 (
-    @AccountId,
-    @ItemId,
+    @NewJournalNo,                -- auto generated JN-0001, JN-0002, ...
     @JournalDateUtc,
-    @Type,
-    @CustomerId,
-    @SupplierId,
     @Description,
-    @BudgetLineId,
-    @Debit,
-    @Credit,
     @IsRecurring,
     @RecurringFrequency,
     @RecurringInterval,
@@ -115,30 +129,71 @@ VALUES
             COALESCE(@RecurringStartDateUtc, @JournalDateUtc)
         ELSE NULL
     END,
+    @Timezone,
     @CreatedBy,
     SYSUTCDATETIME(),
     1,
-    1   -- isPosted = 1 so it will go to GL
+    0               -- not posted yet, will be set by Post button
 );
 
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
+            const string insertLineSql = @"
+INSERT INTO dbo.ManualJournalLine
+(
+    JournalId,
+    AccountId,
+    LineDescription,
+    Debit,
+    Credit,
+    IsActive,
+    CreatedBy,
+    CreatedDate
+)
+VALUES
+(
+    @JournalId,
+    @AccountId,
+    @LineDescription,
+    @Debit,
+    @Credit,
+    1,
+    @CreatedBy,
+    SYSUTCDATETIME()
+);";
+
             try
             {
-                var id = await conn.ExecuteScalarAsync<int>(
-                    sql,
+                // Insert header
+                var journalId = await conn.ExecuteScalarAsync<int>(
+                    insertHeaderSql,
                     dto,
                     transaction: tx);
 
-                // Post to GL
-                await conn.ExecuteAsync(
-                    "dbo.sp_PostManualJournalToGl",
-                    new { JournalId = id, UserId = dto.CreatedBy },
-                    transaction: tx,
-                    commandType: CommandType.StoredProcedure);
+                // Insert lines
+                foreach (var line in dto.Lines.Where(l => l.AccountId > 0 && (l.Debit != 0 || l.Credit != 0)))
+                {
+                    var lineParams = new
+                    {
+                        JournalId = journalId,
+                        AccountId = line.AccountId,
+                        LineDescription = line.Description,
+                        Debit = line.Debit,
+                        Credit = line.Credit,
+                        CreatedBy = dto.CreatedBy
+                    };
+
+                    await conn.ExecuteAsync(
+                        insertLineSql,
+                        lineParams,
+                        transaction: tx);
+                }
+
+                // ❌ NO GL POSTING – just save header + lines
+                // Posting will only set IsPosted=1 via MarkAsPostedAsync / Post button.
 
                 tx.Commit();
-                return id;
+                return journalId;
             }
             catch
             {
@@ -147,6 +202,9 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
             }
         }
 
+        #endregion
+
+        #region RECURRING – LIST & DETAILS
 
         public async Task<IEnumerable<ManualJournalDto>> GetAllRecurringDetails()
         {
@@ -154,19 +212,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
 SELECT
     mj.Id,
     mj.JournalNo,
-    mj.AccountId,
-    mj.ItemId,                    -- 👈 NEW
-    coa.HeadName AS AccountName,
     mj.JournalDate,
-    mj.Type,
-    mj.CustomerId,
-    c.CustomerName,
-    mj.SupplierId,
-    s.Name AS SupplierName,
-    mj.Description,
-    mj.BudgetLineId,
-    mj.Debit,
-    mj.Credit,
+    mj.[Description],
     mj.IsRecurring,
     mj.RecurringFrequency,
     mj.RecurringInterval,
@@ -175,37 +222,26 @@ SELECT
     mj.RecurringEndDate,
     mj.RecurringCount,
     mj.ProcessedCount,
-    mj.NextRunDate
+    mj.NextRunDate,
+    mj.IsPosted,
+    mj.TimeZone AS Timezone
 FROM dbo.ManualJournal mj
-LEFT JOIN dbo.ChartOfAccount coa ON coa.Id = mj.AccountId
-LEFT JOIN dbo.Customer c ON c.Id = mj.CustomerId
-LEFT JOIN dbo.Supplier s ON s.Id = mj.SupplierId
 WHERE mj.IsActive = 1
+  AND mj.IsRecurring = 1
 ORDER BY mj.JournalDate DESC, mj.Id DESC;";
 
-            var rows = await Connection.QueryAsync<ManualJournalDto>(sql);
-            return rows;
+            var headers = (await Connection.QueryAsync<ManualJournalDto>(sql)).ToList();
+            return headers;
         }
 
         public async Task<ManualJournalDto?> GetByIdAsync(int id)
         {
-            const string sql = @"
+            const string headerSql = @"
 SELECT
     mj.Id,
     mj.JournalNo,
-    mj.AccountId,
-    mj.ItemId,                    -- 👈 NEW
-    coa.HeadName AS AccountName,
     mj.JournalDate,
-    mj.Type,
-    mj.CustomerId,
-    c.CustomerName,
-    mj.SupplierId,
-    s.Name AS SupplierName,
-    mj.Description,
-    mj.BudgetLineId,
-    mj.Debit,
-    mj.Credit,
+    mj.[Description],
     mj.IsRecurring,
     mj.RecurringFrequency,
     mj.RecurringInterval,
@@ -214,14 +250,40 @@ SELECT
     mj.RecurringEndDate,
     mj.RecurringCount,
     mj.ProcessedCount,
-    mj.NextRunDate
+    mj.NextRunDate,
+    mj.IsPosted,
+    mj.TimeZone AS Timezone
 FROM dbo.ManualJournal mj
-LEFT JOIN dbo.ChartOfAccount coa ON coa.Id = mj.AccountId
-LEFT JOIN dbo.Customer c ON c.Id = mj.CustomerId
-LEFT JOIN dbo.Supplier s ON s.Id = mj.SupplierId
 WHERE mj.Id = @Id AND mj.IsActive = 1;";
 
-            return await Connection.QueryFirstOrDefaultAsync<ManualJournalDto>(sql, new { Id = id });
+            const string linesSql = @"
+SELECT
+    mjl.Id,
+    mjl.JournalId,
+    mjl.AccountId,
+    coa.HeadName AS AccountName,
+    mjl.LineDescription,
+    mjl.Debit,
+    mjl.Credit
+FROM dbo.ManualJournalLine mjl
+INNER JOIN dbo.ChartOfAccount coa
+    ON coa.Id = mjl.AccountId
+WHERE mjl.JournalId = @Id
+  AND mjl.IsActive = 1
+ORDER BY mjl.Id;";
+
+            using var multi = await Connection.QueryMultipleAsync(
+                headerSql + "\n" + linesSql,
+                new { Id = id });
+
+            var header = await multi.ReadFirstOrDefaultAsync<ManualJournalDto>();
+            if (header == null)
+                return null;
+
+            var lines = await multi.ReadAsync<ManualJournalLineDto>();
+            header.Lines = lines;
+
+            return header;
         }
 
         #endregion
@@ -230,19 +292,13 @@ WHERE mj.Id = @Id AND mj.IsActive = 1;";
 
         public async Task<int> ProcessRecurringAsync(DateTime processUtc)
         {
+            // 1) Select recurring templates whose NextRunDate <= now
             const string selectSql = @"
 SELECT
     mj.Id,
     mj.JournalNo,
-    mj.AccountId,
-    mj.ItemId,                 -- 👈 NEW
     mj.JournalDate,
-    mj.Type,
-    mj.CustomerId,
-    mj.SupplierId,
-    mj.Description,
-    mj.Debit,
-    mj.Credit,
+    mj.[Description],
     mj.IsRecurring,
     mj.RecurringFrequency,
     mj.RecurringInterval,
@@ -259,18 +315,12 @@ WHERE mj.IsActive = 1
   AND mj.NextRunDate IS NOT NULL
   AND mj.NextRunDate <= @NowUtc;";
 
-            const string insertSql = @"
+            const string insertHeaderSql = @"
 INSERT INTO dbo.ManualJournal
 (
-    AccountId,
-    ItemId,                    -- 👈 NEW
+    JournalNo,
     JournalDate,
-    Type,
-    CustomerId,
-    SupplierId,
-    Description,
-    Debit,
-    Credit,
+    [Description],
     IsRecurring,
     RecurringFrequency,
     RecurringInterval,
@@ -280,38 +330,60 @@ INSERT INTO dbo.ManualJournal
     RecurringCount,
     ProcessedCount,
     NextRunDate,
+    TimeZone,
     CreatedBy,
     CreatedDate,
     IsActive,
-    isPosted
+    IsPosted
 )
 VALUES
 (
-    @AccountId,
-    @ItemId,                   -- 👈 NEW
+    NULL,            -- you can later generate number if needed
     @JournalDate,
-    @Type,
-    @CustomerId,
-    @SupplierId,
     @Description,
-    @Debit,
-    @Credit,
+    0,               -- new entry is not recurring
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
     0,
     NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    0,
-    0,
     NULL,
     @CreatedBy,
     SYSUTCDATETIME(),
     1,
-    1
+    1               -- mark as posted
+);
+
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            const string insertLineSql = @"
+INSERT INTO dbo.ManualJournalLine
+(
+    JournalId,
+    AccountId,
+    LineDescription,
+    Debit,
+    Credit,
+    IsActive,
+    CreatedBy,
+    CreatedDate
+)
+VALUES
+(
+    @JournalId,
+    @AccountId,
+    @LineDescription,
+    @Debit,
+    @Credit,
+    1,
+    @CreatedBy,
+    SYSUTCDATETIME()
 );";
 
-            const string updateSql = @"
+            const string updateTemplateSql = @"
 UPDATE dbo.ManualJournal
 SET ProcessedCount = @ProcessedCount,
     NextRunDate    = @NextRunDate,
@@ -341,49 +413,60 @@ WHERE Id = @Id;";
 
                 foreach (var t in templates)
                 {
-                    decimal debitToPost = t.Debit;
-                    decimal creditToPost = t.Credit;
+                    if (!t.NextRunDate.HasValue)
+                        continue;
 
-                    if (t.RecurringEndType == "EndByCount"
-                        && t.RecurringCount.HasValue
-                        && t.RecurringCount.Value > 0)
+                    // Load template lines
+                    var templateLines = (await conn.QueryAsync<TemplateLineRow>(@"
+SELECT
+    AccountId,
+    LineDescription,
+    Debit,
+    Credit
+FROM dbo.ManualJournalLine
+WHERE JournalId = @JournalId
+  AND IsActive  = 1;",
+                        new { JournalId = t.Id }, tran)).ToList();
+
+                    if (templateLines.Count == 0)
+                        continue;
+
+                    // Insert new header (occurrence)
+                    var newHeaderParams = new
                     {
-                        int totalInstallments = t.RecurringCount.Value;
-                        int currentInstallment = t.ProcessedCount + 1;
-
-                        var baseDebit = Math.Round(t.Debit / totalInstallments, 2, MidpointRounding.AwayFromZero);
-                        var baseCredit = Math.Round(t.Credit / totalInstallments, 2, MidpointRounding.AwayFromZero);
-
-                        if (currentInstallment < totalInstallments)
-                        {
-                            debitToPost = baseDebit;
-                            creditToPost = baseCredit;
-                        }
-                        else
-                        {
-                            debitToPost = t.Debit - baseDebit * (totalInstallments - 1);
-                            creditToPost = t.Credit - baseCredit * (totalInstallments - 1);
-                        }
-                    }
-
-                    var newEntryParams = new
-                    {
-                        AccountId = t.AccountId,
-                        ItemId = t.ItemId,        // 👈 NEW
-                        JournalDate = t.NextRunDate!.Value, // UTC
-                        Type = t.Type,
-                        CustomerId = t.CustomerId,
-                        SupplierId = t.SupplierId,
+                        JournalDate = t.NextRunDate.Value,
                         Description = t.Description,
-                        Debit = debitToPost,
-                        Credit = creditToPost,
                         CreatedBy = t.CreatedBy
                     };
 
-                    await conn.ExecuteAsync(insertSql, newEntryParams, tran);
+                    var newJournalId = await conn.ExecuteScalarAsync<int>(
+                        insertHeaderSql,
+                        newHeaderParams,
+                        tran);
+
+                    // Insert lines
+                    foreach (var line in templateLines)
+                    {
+                        var lineParams = new
+                        {
+                            JournalId = newJournalId,
+                            AccountId = line.AccountId,
+                            LineDescription = line.LineDescription,
+                            Debit = line.Debit,
+                            Credit = line.Credit,
+                            CreatedBy = t.CreatedBy
+                        };
+
+                        await conn.ExecuteAsync(insertLineSql, lineParams, tran);
+                    }
+
+                    // ❌ No GL posting here either – just mark IsPosted = 1 on header (already set).
+
                     generatedCount++;
 
-                    var nextDate = GetNextRunDate(t.NextRunDate!.Value, t.RecurringFrequency, t.RecurringInterval);
+                    // Compute next run date
+                    var currentNextRun = t.NextRunDate.Value;
+                    var nextDate = GetNextRunDate(currentNextRun, t.RecurringFrequency, t.RecurringInterval);
                     var newProcessedCount = t.ProcessedCount + 1;
 
                     if (t.RecurringEndType == "EndByCount"
@@ -408,7 +491,7 @@ WHERE Id = @Id;";
                         NextRunDate = (object?)nextDate
                     };
 
-                    await conn.ExecuteAsync(updateSql, updateParams, tran);
+                    await conn.ExecuteAsync(updateTemplateSql, updateParams, tran);
                 }
 
                 tran.Commit();
@@ -423,19 +506,14 @@ WHERE Id = @Id;";
 
         #endregion
 
-        #region Helper
+        #region Helper classes
 
         private class TemplateRow
         {
             public int Id { get; set; }
-            public int AccountId { get; set; }
-            public int? ItemId { get; set; }      // 👈 NEW
-            public string? Type { get; set; }
-            public int? CustomerId { get; set; }
-            public int? SupplierId { get; set; }
+            public string? JournalNo { get; set; }
+            public DateTime JournalDate { get; set; }
             public string? Description { get; set; }
-            public decimal Debit { get; set; }
-            public decimal Credit { get; set; }
             public bool IsRecurring { get; set; }
             public string? RecurringFrequency { get; set; }
             public int? RecurringInterval { get; set; }
@@ -446,6 +524,14 @@ WHERE Id = @Id;";
             public int ProcessedCount { get; set; }
             public DateTime? NextRunDate { get; set; }
             public int? CreatedBy { get; set; }
+        }
+
+        private class TemplateLineRow
+        {
+            public int AccountId { get; set; }
+            public string? LineDescription { get; set; }
+            public decimal Debit { get; set; }
+            public decimal Credit { get; set; }
         }
 
         private DateTime? GetNextRunDate(DateTime currentUtc, string? freq, int? interval)
