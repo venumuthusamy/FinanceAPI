@@ -233,6 +233,22 @@ VALUES
                     transaction: tx,
                     commandType: CommandType.StoredProcedure);
 
+                // 5) Update AccountBalance for BANK (if needed)
+                if (dto.PaymentMode == "BANK" && dto.BankId.HasValue && dto.BankId.Value > 0)
+                {
+                    var bankHeadId = await GetBankBudgetLineIdAsync(conn, tx, dto.BankId.Value);
+                    if (bankHeadId.HasValue)
+                    {
+                        // Money is coming INTO bank, so balance increases.
+                        // You can choose AmountReceived or TotalAllocated – I use AmountReceived here.
+                        await UpsertAccountBalanceAsync(
+                            conn,
+                            tx,
+                            headId: bankHeadId.Value,
+                            deltaAmount: dto.AmountReceived);
+                    }
+                }
+
                 tx.Commit();
                 return receiptId;
             }
