@@ -15,5 +15,6 @@ namespace FinanceApi.InterfaceService
         Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync();
 
         Task<IEnumerable<DaybookDTO>> GetDaybookAsync(ReportBaseDTO dto);
+        Task SaveOpeningBalanceAsync(OpeningBalanceEditDto dto, string userName);
     }
 }

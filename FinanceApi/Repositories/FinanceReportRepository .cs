@@ -35,105 +35,7 @@ CashCoa AS (
 ------------------------------------------------------------
 GlLines AS (
 
-    --------------------------------------------------------
-    -- A1) Manual Journal – CUSTOMER: P&L leg (Income)
-    --     Uses mj.BudgetLineId (fallback AccountId)
-    --     CREDIT = income
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-CUST'                             AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        mj.Description                        AS Description,
-        COALESCE(mj.BudgetLineId, mj.AccountId) AS HeadId, -- Income COA
-        CAST(0 AS decimal(18,2))              AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Credit),0) AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Customer c
-        ON c.Id = mj.CustomerId
-       AND c.IsActive = 1
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- A2) Manual Journal – CUSTOMER: CASH leg
-    --     Debit Cash with same CREDIT amount
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-CUST-CASH'                        AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        'MJ Cash - Customer ' + ISNULL(c.CustomerName,'') AS Description,
-        cash.CashHeadId                       AS HeadId,  -- Cash COA
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Credit),0) AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Customer c
-        ON c.Id = mj.CustomerId
-       AND c.IsActive = 1
-    CROSS JOIN CashCoa cash
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- A3) Manual Journal – SUPPLIER: P&L leg (Expense)
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-SUP'                              AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        mj.Description                        AS Description,
-        COALESCE(mj.BudgetLineId, mj.AccountId) AS HeadId, -- Expense COA
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Debit),0) AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Suppliers s
-        ON s.Id = mj.SupplierId
-       AND s.IsActive = 1
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- A4) Manual Journal – SUPPLIER: CASH leg
-    --     Credit Cash with same DEBIT amount
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-SUP-CASH'                         AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        'MJ Cash - Supplier ' + ISNULL(s.Name,'') AS Description,
-        cash.CashHeadId                       AS HeadId,  -- Cash COA
-        CAST(0 AS decimal(18,2))              AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Debit),0) AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Suppliers s
-        ON s.Id = mj.SupplierId
-       AND s.IsActive = 1
-    CROSS JOIN CashCoa cash
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    -- >>> here continue with B) SI, C) CN, D) ARINV, ... exactly as you already have
+    
 
 
 
@@ -445,6 +347,18 @@ WHERE si.IsActive = 1
                         AND ISNULL(@ToDate,'9999-12-31')
 ),
 
+------------------------------------------------------------
+-- 2) OPENING BALANCE TABLE (per COA HeadId)
+------------------------------------------------------------
+OpeningBase AS (
+    SELECT
+        ob.BudgetLineId AS HeadId,
+        OpeningBalanceBase = SUM(ISNULL(ob.OpeningBalanceAmount,0))
+    FROM dbo.OpeningBalance ob
+    WHERE ob.IsActive = 1
+    GROUP BY ob.BudgetLineId
+),
+
 
 ------------------------------------------------------------
 -- 2) MOVEMENTS PER LEAF ACCOUNT
@@ -456,33 +370,40 @@ Movements AS (
         coa.HeadName,
         coa.HeadType,
         coa.ParentHead,
+
         OpeningMov = SUM(
             CASE 
-                WHEN gl.TransDate <  ISNULL(@FromDate, '1900-01-01')
+                WHEN gl.TransDate < ISNULL(@FromDate,'1900-01-01')
                     THEN ISNULL(gl.Debit,0) - ISNULL(gl.Credit,0)
                 ELSE 0
             END
         ),
+
         PeriodMov = SUM(
             CASE 
-                WHEN gl.TransDate >= ISNULL(@FromDate, '1900-01-01')
-                 AND gl.TransDate <= ISNULL(@ToDate,   '9999-12-31')
+                WHEN gl.TransDate >= ISNULL(@FromDate,'1900-01-01')
+                 AND gl.TransDate <= ISNULL(@ToDate,'9999-12-31')
                     THEN ISNULL(gl.Debit,0) - ISNULL(gl.Credit,0)
                 ELSE 0
             END
         ),
-        OpeningBalanceBase = CAST(0 AS decimal(18,2))
+
+        -- ✅ FIXED LINE
+        OpeningBalanceBase = ISNULL(ob.OpeningBalanceBase, 0)
+
     FROM dbo.ChartOfAccount coa
-    LEFT JOIN GlLines gl
-        ON gl.HeadId = coa.Id
+    LEFT JOIN GlLines     gl ON gl.HeadId = coa.Id
+    LEFT JOIN OpeningBase ob ON ob.HeadId = coa.Id
     WHERE coa.IsActive = 1
     GROUP BY
         coa.Id,
         coa.HeadCode,
         coa.HeadName,
         coa.HeadType,
-        coa.ParentHead
+        coa.ParentHead,
+        ob.OpeningBalanceBase
 ),
+
 
 ------------------------------------------------------------
 -- 3) SIGNED OPENING / CLOSING BALANCE (per account)
@@ -502,47 +423,23 @@ SignedRaw AS (
         ClosingSigned_raw  =
             OpeningBalanceBase + OpeningMov + PeriodMov
     FROM Movements
-),
-
-------------------------------------------------------------
--- 4) ROLLUP BY HEADCODE PREFIX (parent = all codes starting with its code)
-------------------------------------------------------------
-Aggregated AS (
-    SELECT
-        p.HeadId,
-        p.HeadCode,
-        p.HeadName,
-        p.HeadType,
-        p.ParentHead,
-        OpeningSigned = SUM(ISNULL(c.OpeningSigned_raw,0)),
-        ClosingSigned = SUM(ISNULL(c.ClosingSigned_raw,0))
-    FROM SignedRaw p
-    JOIN SignedRaw c
-      ON CAST(c.HeadCode AS varchar(50))
-         LIKE CAST(p.HeadCode AS varchar(50)) + '%'
-    GROUP BY
-        p.HeadId,
-        p.HeadCode,
-        p.HeadName,
-        p.HeadType,
-        p.ParentHead
 )
-
+------------------------------------------------------------
+-- 4) FINAL: ONE ROW PER HEAD (no prefix rollup)
+------------------------------------------------------------
 SELECT
     HeadId,
     HeadCode,
     HeadName,
     ParentHead,
-    OpeningDebit  = CASE WHEN OpeningSigned > 0 THEN OpeningSigned ELSE 0 END,
-    OpeningCredit = CASE WHEN OpeningSigned < 0 THEN -OpeningSigned ELSE 0 END,
-    ClosingDebit  = CASE WHEN ClosingSigned > 0 THEN ClosingSigned ELSE 0 END,
-    ClosingCredit = CASE WHEN ClosingSigned < 0 THEN -ClosingSigned ELSE 0 END
-FROM Aggregated
-WHERE
-    (OpeningSigned <> 0 OR ClosingSigned <> 0)
-    OR ParentHead IS NULL
-    OR ParentHead = 0
+    OpeningDebit  = CASE WHEN OpeningSigned_raw > 0 THEN OpeningSigned_raw ELSE 0 END,
+    OpeningCredit = CASE WHEN OpeningSigned_raw < 0 THEN -OpeningSigned_raw ELSE 0 END,
+    ClosingDebit  = CASE WHEN ClosingSigned_raw > 0 THEN ClosingSigned_raw ELSE 0 END,
+    ClosingCredit = CASE WHEN ClosingSigned_raw < 0 THEN -ClosingSigned_raw ELSE 0 END
+FROM SignedRaw
 ORDER BY HeadCode;
+
+
 ";
 
             return await Connection.QueryAsync<TrialBalanceDTO>(
@@ -2154,8 +2051,36 @@ ORDER BY TransDate, VoucherType, VoucherNo;
                 });
         }
 
+        public async Task SaveOpeningBalanceAsync(OpeningBalanceEditDto dto, string userName)
+        {
+            // signed amount: +ve = net debit, -ve = net credit
+            var signedAmount = dto.OpeningDebit - dto.OpeningCredit;
 
+            const string sql = @"
+MERGE dbo.OpeningBalance AS target
+USING (SELECT @HeadId AS BudgetLineId) AS src
+   ON target.BudgetLineId = src.BudgetLineId
+WHEN MATCHED THEN
+    UPDATE SET
+        OpeningBalanceAmount = @OpeningBalanceAmount,
+        UpdatedBy            = @UserName,
+        UpdatedDate          = SYSDATETIME(),
+        IsActive             = 1
+WHEN NOT MATCHED THEN
+    INSERT (BudgetLineId, OpeningBalanceAmount, CreatedBy, CreatedDate, IsActive)
+    VALUES (@HeadId, @OpeningBalanceAmount, @UserName, SYSDATETIME(), 1);
+";
+
+            using var conn = Connection; // from DynamicRepository base
+
+            await conn.ExecuteAsync(sql, new
+            {
+                HeadId = dto.HeadId,
+                OpeningBalanceAmount = signedAmount,
+                UserName = userName
+            });
+        }
     }
-
-
 }
+
+
