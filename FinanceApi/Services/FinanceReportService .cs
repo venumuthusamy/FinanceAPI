@@ -39,5 +39,10 @@ namespace FinanceApi.Services
         {
             return _repo.GetDaybookAsync(dto);
         }
+
+        public Task SaveOpeningBalanceAsync(OpeningBalanceEditDto dto, string userName)
+        {
+            return _repo.SaveOpeningBalanceAsync(dto, userName);
+        }
     }
 }

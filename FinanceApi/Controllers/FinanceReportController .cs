@@ -59,5 +59,12 @@ namespace FinanceApi.Controllers
             var result = new ResponseResult(true, "Success", list);
             return Ok(result);
         }
+
+        [HttpPost("trial-balance/opening-balance")]
+        public async Task<IActionResult> SaveOpeningBalance([FromBody] OpeningBalanceEditDto dto)
+        {
+            await _service.SaveOpeningBalanceAsync(dto, dto.UserName);
+            return Ok(new { success = true });
+        }
     }
 }
