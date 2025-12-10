@@ -34,26 +34,47 @@ namespace FinanceApi.Controllers
         [HttpPost("create")]
         public async Task<IActionResult> Create([FromBody] ManualJournalCreateDto dto)
         {
-            if (dto.AccountId == null)
-                return BadRequest(new { success = false, message = "Account is required." });
+            // ===== Basic validations =====
+
+            if (dto == null)
+                return BadRequest(new { success = false, message = "Payload is required." });
 
             if (string.IsNullOrWhiteSpace(dto.JournalDate))
                 return BadRequest(new { success = false, message = "Journal Date is required." });
 
-            if (dto.Debit <= 0 && dto.Credit <= 0)
-                return BadRequest(new { success = false, message = "Enter either debit or credit amount." });
+            if (dto.Lines == null || dto.Lines.Count == 0)
+                return BadRequest(new { success = false, message = "Enter at least one journal line." });
+
+            // at least one line with account + non-zero amount
+            if (!dto.Lines.Any(l =>
+                    l.AccountId > 0 &&
+                    ((l.Debit > 0) || (l.Credit > 0))))
+            {
+                return BadRequest(new { success = false, message = "Enter at least one valid journal line." });
+            }
+
+            // total debit = total credit check (extra safety – UI already does)
+            var totalDebit = dto.Lines.Sum(l => l.Debit);
+            var totalCredit = dto.Lines.Sum(l => l.Credit);
+
+            if (totalDebit <= 0 || totalCredit <= 0 || totalDebit != totalCredit)
+            {
+                return BadRequest(new { success = false, message = "Total debit and credit must be equal and greater than zero." });
+            }
 
             if (string.IsNullOrWhiteSpace(dto.Timezone))
                 dto.Timezone = "Asia/Kolkata";
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById(dto.Timezone);
 
+            // Journal date -> UTC
             var localJournalDate = DateTime.SpecifyKind(
                 DateTime.Parse(dto.JournalDate, CultureInfo.InvariantCulture),
                 DateTimeKind.Unspecified);
 
             dto.JournalDateUtc = TimeZoneInfo.ConvertTimeToUtc(localJournalDate, tz);
 
+            // Recurring start date -> UTC
             if (!string.IsNullOrEmpty(dto.RecurringStartDate))
             {
                 var localStart = DateTime.SpecifyKind(
@@ -63,6 +84,7 @@ namespace FinanceApi.Controllers
                 dto.RecurringStartDateUtc = TimeZoneInfo.ConvertTimeToUtc(localStart, tz);
             }
 
+            // Recurring end date -> UTC
             if (!string.IsNullOrEmpty(dto.RecurringEndDate))
             {
                 var localEnd = DateTime.SpecifyKind(
