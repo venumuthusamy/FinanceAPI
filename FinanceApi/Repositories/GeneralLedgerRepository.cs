@@ -101,56 +101,21 @@ GlLines AS (
     --------------------------------------------------------
     -- 2 ► Manual Journal (original side – BudgetLineId)
     --------------------------------------------------------
-    SELECT
-        mj.BudgetLineId AS HeadId,
+   SELECT
+        mjl.AccountId      AS HeadId,         -- = ChartOfAccount.Id
         OpeningBalance = 0,
-        Debit  = ISNULL(mj.Debit,  0),
-        Credit = ISNULL(mj.Credit, 0)
-    FROM dbo.ManualJournal mj
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
+        Debit          = ISNULL(mjl.Debit,  0),
+        Credit         = ISNULL(mjl.Credit, 0)
+    FROM dbo.ManualJournal      mj
+    INNER JOIN dbo.ManualJournalLine mjl
+        ON mjl.JournalId = mj.Id
+    WHERE mj.IsActive  = 1
+      AND mj.IsPosted  = 1
+      AND mjl.IsActive = 1
 
     UNION ALL
 
-    --------------------------------------------------------
-    -- 2b ► Manual Journal – CASH side for Type = 'SUPPLIER'
-    --      Supplier type: DR Expense/Supplier, CR Cash
-    --------------------------------------------------------
-    SELECT
-        cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = 0,
-        Credit = ISNULL(mj.Debit, 0)
-    FROM dbo.ManualJournal mj
-    CROSS JOIN dbo.ChartOfAccount cashCoa
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-      AND UPPER(mj.[Type]) = 'SUPPLIER'      -- adjust value if needed
-      AND ISNULL(mj.Debit, 0) <> 0
-      AND cashCoa.IsActive = 1
-      AND cashCoa.HeadName = 'Cash'
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- 2c ► Manual Journal – CASH side for Type = 'CUSTOMER'
-    --      Customer type: DR Cash, CR Income/Customer
-    --------------------------------------------------------
-    SELECT
-        cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = ISNULL(mj.Credit, 0),
-        Credit = 0
-    FROM dbo.ManualJournal mj
-    CROSS JOIN dbo.ChartOfAccount cashCoa
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-      AND UPPER(mj.[Type]) = 'CUSTOMER'      -- adjust value if needed
-      AND ISNULL(mj.Credit, 0) <> 0
-      AND cashCoa.IsActive = 1
-      AND cashCoa.HeadName = 'Cash'
-
-    UNION ALL
+   
 
     --------------------------------------------------------
     -- 3 ► Sales Invoice – DR Customer, CR Income/Asset
