@@ -400,7 +400,147 @@ ORDER BY sp.PaymentDate DESC, sp.Id DESC;";
                 NewBalance = newBalance
             });
         }
+        public async Task<IEnumerable<ApSupplierAdvanceDto>> GetSupplierAdvancesAsync()
+        {
+            const string sql = @"
+SELECT
+    a.Id                             AS Id,
+    a.AdvanceNo                      AS AdvanceNo,
+    a.SupplierId                     AS SupplierId,
+    s.SupplierName                   AS SupplierName,
+    a.AdvanceDate                    AS AdvanceDate,
+    a.Amount                         AS OriginalAmount,
+    ISNULL(SUM(adj.AdjustAmount),0)  AS UtilisedAmount,
+    a.Amount - ISNULL(SUM(adj.AdjustAmount),0) AS BalanceAmount
+FROM dbo.SupplierAdvance a
+INNER JOIN dbo.Suppliers s
+    ON s.Id = a.SupplierId
+LEFT JOIN dbo.SupplierAdvanceAdjust adj
+    ON adj.AdvanceId = a.Id
+WHERE a.IsActive = 1
+GROUP BY
+    a.Id,
+    a.AdvanceNo,
+    a.SupplierId,
+    s.SupplierName,
+    a.AdvanceDate,
+    a.Amount
+ORDER BY a.AdvanceDate DESC;";
 
+            return await Connection.QueryAsync<ApSupplierAdvanceDto>(
+                sql,
+                commandType: CommandType.Text
+            );
+        }
+        public async Task<int> CreateSupplierAdvanceAsync(int userId, ApSupplierAdvanceCreateRequest req)
+        {
+            // 1) Insert header WITHOUT AdvanceNo
+            const string insertSql = @"
+INSERT INTO dbo.ApSupplierAdvance
+(
+    SupplierId,
+    AdvanceDate,
+    Amount,
+    MethodId,
+    BankHeadId,
+    ReferenceNo,
+    Notes,
+    CreatedBy,
+    CreatedDate,
+    UpdatedBy,
+    UpdatedDate,
+    IsActive
+)
+OUTPUT INSERTED.Id
+VALUES
+(
+    @SupplierId,
+    @AdvanceDate,
+    @Amount,
+    @MethodId,
+    @BankHeadId,
+    @ReferenceNo,
+    @Notes,
+    @UserId,
+    SYSUTCDATETIME(),
+    @UserId,
+    SYSUTCDATETIME(),
+    1
+);";
 
+            var newId = await Connection.ExecuteScalarAsync<int>(
+                insertSql,
+                new
+                {
+                    req.SupplierId,
+                    req.AdvanceDate,
+                    req.Amount,
+                    req.MethodId,
+                    req.BankHeadId,
+                    req.ReferenceNo,
+                    req.Notes,
+                    UserId = userId
+                }
+            );
+
+            // 2) Generate AdvanceNo like ADV-000001
+            const string updateNoSql = @"
+UPDATE dbo.ApSupplierAdvance
+SET AdvanceNo = CONCAT('SUPADV-', RIGHT(CONVERT(VARCHAR(8), @Id + 100000), 6))
+WHERE Id = @Id;";
+
+            await Connection.ExecuteAsync(updateNoSql, new { Id = newId });
+
+            // OPTIONAL: 3) Post to GlTransaction (DR advance, CR bank/cash)
+            // You can uncomment & adjust if you are ready to post GL here.
+            /*
+            const string glSql = @"
+INSERT INTO dbo.GlTransaction
+(
+    AccountId,
+    TxnDate,
+    CurrencyId,
+    AmountFC,
+    AmountBase
+)
+SELECT
+    -- TODO: replace with correct COA for 'Advance to Supplier'
+    s.BudgetLineId AS AccountId,
+    @AdvanceDate   AS TxnDate,
+    1              AS CurrencyId,
+    @Amount        AS AmountFC,
+    @Amount        AS AmountBase     -- DR Advance
+FROM dbo.Suppliers s
+WHERE s.Id = @SupplierId
+  AND s.BudgetLineId IS NOT NULL
+
+UNION ALL
+
+SELECT
+    @BankHeadId    AS AccountId,
+    @AdvanceDate   AS TxnDate,
+    1              AS CurrencyId,
+    @Amount        AS AmountFC,
+    -@Amount       AS AmountBase     -- CR Bank/Cash
+WHERE @BankHeadId IS NOT NULL;
+";
+
+            await Connection.ExecuteAsync(
+                glSql,
+                new
+                {
+                    req.SupplierId,
+                    req.AdvanceDate,
+                    req.Amount,
+                    req.BankHeadId
+                }
+            );
+            */
+
+            return newId;
+        }
     }
 }
+
+
+

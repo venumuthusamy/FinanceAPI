@@ -4,6 +4,7 @@ using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Linq;
@@ -1336,6 +1337,17 @@ WHERE SalesOrderId IN @Ids
                     parent.LineItems.Add(ln);
 
             return headers;
+        }
+        public async Task<IEnumerable<SalesOrderListDto>> GetOpenByCustomerAsync(int customerId)
+        {
+            const string sql = "sp_SalesOrder_GetOpenByCustomer";
+
+          
+            return await Connection.QueryAsync<SalesOrderListDto>(
+                sql,
+                new { CustomerId = customerId },
+                commandType: CommandType.StoredProcedure
+            );
         }
     }
 }

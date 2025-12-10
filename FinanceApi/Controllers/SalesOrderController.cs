@@ -113,5 +113,20 @@ namespace FinanceApi.Controllers
             var data = new ResponseResult(true, "Success", obj);
             return Ok(data);
         }
+        [HttpGet("customer-open/{customerId:int}")]
+        public async Task<IActionResult> GetOpenByCustomer(int customerId)
+        {
+            if (customerId <= 0)
+                return BadRequest("Invalid customerId");
+
+            var list = await _service.GetOpenByCustomerAsync(customerId);
+
+            return Ok(new
+            {
+                isSuccess = true,
+                message = "",
+                data = list
+            });
+        }
     }
 }

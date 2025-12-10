@@ -15,5 +15,7 @@ namespace FinanceApi.InterfaceService
         Task<IEnumerable<BankAccountDTO>> GetAllAsync();
         Task<BankAccountDTO?> GetByIdAsync(int bankId);
         Task<int> UpdateBankBalance(int bankId, decimal newBal);
+        Task<IEnumerable<ApSupplierAdvanceDto>> GetSupplierAdvancesAsync();
+        Task<int> CreateSupplierAdvanceAsync(int userId, ApSupplierAdvanceCreateRequest req);
     }
 }

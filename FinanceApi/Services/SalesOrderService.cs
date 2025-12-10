@@ -71,5 +71,10 @@ namespace FinanceApi.Services
         {
             return _repository.GetAllByStatusAsync(status);
         }
+
+        public Task<IEnumerable<SalesOrderListDto>> GetOpenByCustomerAsync(int customerId)
+        {
+            return _repository.GetOpenByCustomerAsync(customerId);
+        }
     }
 }

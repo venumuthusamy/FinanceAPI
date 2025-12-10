@@ -1,9 +1,10 @@
 ﻿// Controllers/AccountsPayableController.cs
-using System;
-using System.Threading.Tasks;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace FinanceApi.Controllers
 {
@@ -104,7 +105,47 @@ namespace FinanceApi.Controllers
 
             return Ok(new { isSuccess = true, message = "Bank balance updated" });
         }
+        [HttpGet("supplier-advances")]
+        public async Task<IActionResult> GetSupplierAdvances()
+        {
+            var data = await _service.GetSupplierAdvancesAsync();
 
+            // If you usually wrap: return Ok(new { data });
+            return Ok(new { data });
+        }
+        [HttpPost("createsupplier-advance")]
+        // [Authorize] // uncomment if you use auth
+        public async Task<IActionResult> CreateSupplierAdvance([FromBody] ApSupplierAdvanceCreateRequest req)
+        {
+            if (req == null)
+                return BadRequest(new { isSuccess = false, message = "Invalid request" });
 
+            try
+            {
+                // Get current userId from token if you have JWT
+                int userId = 1;
+                var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!string.IsNullOrEmpty(userIdStr))
+                {
+                    int.TryParse(userIdStr, out userId);
+                }
+
+                var newId = await _service.CreateSupplierAdvanceAsync(userId, req);
+
+                return Ok(new
+                {
+                    isSuccess = true,
+                    id = newId
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    isSuccess = false,
+                    message = ex.Message
+                });
+            }
+        }
     }
 }

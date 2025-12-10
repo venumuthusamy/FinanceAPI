@@ -76,6 +76,9 @@ namespace FinanceApi.ModelDTO
             public decimal Subtotal { get; set; }
             public decimal ShippingCost { get; set; }
             public string Remarks { get; set; }
+            public int? AdvanceId { get; set; }
+            public decimal? AdvanceApplyAmount { get; set; }
+
             public List<SiCreateLine> Lines { get; set; } = new();
 
         }

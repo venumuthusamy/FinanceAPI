@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using FinanceApi.ModelDTO;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace UnityWorksERP.Finance.AR
@@ -12,7 +13,17 @@ namespace UnityWorksERP.Finance.AR
             _repo = repo;
         }
 
+        public Task<int> CreateAdvanceAsync(ArAdvanceDto dto)
+        {
+           return _repo.CreateAdvanceAsync(dto);
+        }
+
         public Task<IEnumerable<ArInvoiceListDto>> GetAllAsync()
             => _repo.GetAllAsync();
+
+        public Task<IEnumerable<ArOpenAdvanceDto>> GetOpenAdvancesAsync(int customerId, int? salesOrderId)
+        {
+           return _repo.GetOpenAdvancesAsync(customerId, salesOrderId);
+        }
     }
 }

@@ -28,4 +28,14 @@
         public string? SupplierName { get; set; }
 
     }
+    public class SalesOrderListDto
+    {
+        public int Id { get; set; }
+        public string SalesOrderNo { get; set; } = "";
+        public DateTime DeliveryDate { get; set; }
+        public int CustomerId { get; set; }
+        public decimal GrandTotal { get; set; }
+        public int Status { get; set; }
+    }
+
 }
