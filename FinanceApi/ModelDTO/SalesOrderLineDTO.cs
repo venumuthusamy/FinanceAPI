@@ -27,6 +27,8 @@
 
         public string? SupplierName { get; set; }
 
+        public decimal TaxAmount { get; set; }
+
     }
     public class SalesOrderListDto
     {

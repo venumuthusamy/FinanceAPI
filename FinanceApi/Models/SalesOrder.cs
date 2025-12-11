@@ -15,6 +15,8 @@
         public decimal GstPct { get; set; }
         public decimal SubTotal {  get; set; }  
         public decimal GrandTotal {  get; set; }
+
+        public decimal TaxAmount { get; set; }
         public int? CreatedBy { get; set; }
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
         public int? UpdatedBy { get; set; }

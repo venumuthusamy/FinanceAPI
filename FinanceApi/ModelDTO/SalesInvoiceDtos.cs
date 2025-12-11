@@ -10,6 +10,7 @@ namespace FinanceApi.ModelDTO
             public DateTime InvoiceDate { get; set; }
             public byte SourceType { get; set; }
             public int? SoId { get; set; }
+            public decimal TaxAmount { get; set; }
             public int? DoId { get; set; }
             public decimal Total { get; set; }
             public byte Status { get; set; }
@@ -26,6 +27,7 @@ namespace FinanceApi.ModelDTO
             public int? ItemId { get; set; }
             public string? ItemName { get; set; }
             public string? Uom { get; set; }
+            public decimal TaxAmount { get; set; }
             public decimal Qty { get; set; }
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
@@ -57,6 +59,7 @@ namespace FinanceApi.ModelDTO
             public decimal UnitPrice { get; set; }
             public decimal DiscountPct { get; set; }
             public decimal GstPct { get; set; }
+            public decimal TaxAmount { get; set; }
             public string? Tax { get; set; }
             public int? TaxCodeId { get; set; }
             
@@ -77,6 +80,7 @@ namespace FinanceApi.ModelDTO
             public decimal ShippingCost { get; set; }
             public string Remarks { get; set; }
             public int? AdvanceId { get; set; }
+            public decimal TaxAmount { get; set; }
             public decimal? AdvanceApplyAmount { get; set; }
 
             public List<SiCreateLine> Lines { get; set; } = new();

@@ -1,5 +1,4 @@
-﻿// Repositories/SalesInvoiceRepository.cs
-using Dapper;
+﻿using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using static FinanceApi.ModelDTO.SalesInvoiceDtos;
@@ -39,6 +38,7 @@ INSERT INTO dbo.SalesInvoice
     DoId,
     Subtotal, 
     ShippingCost, 
+    TaxAmount,
     Total,
     Status, 
     CreatedBy, 
@@ -57,6 +57,7 @@ VALUES
     @DoId,
     @Subtotal, 
     @ShippingCost, 
+    @TaxAmount,
     @Total,
     0, 
     @UserId, 
@@ -77,6 +78,7 @@ VALUES
                     DoId = req.DoId,
                     Subtotal = req.Subtotal,
                     ShippingCost = req.ShippingCost,
+                    TaxAmount = req.TaxAmount,   // 🔹 NEW
                     Total = req.Total,
                     Remarks = req.Remarks,
                     UserId = userId
@@ -98,8 +100,9 @@ INSERT INTO dbo.SalesInvoiceLine
     DiscountPct, 
     GstPct, 
     Tax,
-    TaxCodeId, 
-    LineAmount, 
+    TaxCodeId,
+    LineAmount,
+    TaxAmount,
     Description,
     BudgetLineId
 )
@@ -116,8 +119,9 @@ VALUES
     @DiscountPct, 
     @GstPct, 
     @Tax,
-    @TaxCodeId, 
-    @LineAmount, 
+    @TaxCodeId,
+    @LineAmount,
+    @TaxAmount,
     @Description,
     @BudgetLineId
 );";
@@ -141,6 +145,7 @@ VALUES
                         l.Tax,
                         l.TaxCodeId,
                         l.LineAmount,
+                        TaxAmount = l.TaxAmount,   // 🔹 NEW
                         Description = string.IsNullOrWhiteSpace(l.Description)
                             ? l.ItemName
                             : l.Description,
@@ -155,12 +160,12 @@ VALUES
             // 4) Set InvoiceNo (SI-000001 style)
             await Connection.ExecuteAsync(
                 @"UPDATE dbo.SalesInvoice
-          SET InvoiceNo = CONCAT('SI-', RIGHT(CONVERT(VARCHAR(8), Id + 100000), 6))
-          WHERE Id = @Id;",
+                  SET InvoiceNo = CONCAT('SI-', RIGHT(CONVERT(VARCHAR(8), Id + 100000), 6))
+                  WHERE Id = @Id;",
                 new { Id = siId }
             );
 
-            // 5️⃣ If advance is applied – reduce ArCustomerAdvance.BalanceAmount
+            // 5️⃣ Advance logic (unchanged)
             if (req.AdvanceId.HasValue &&
                 req.AdvanceApplyAmount.HasValue &&
                 req.AdvanceApplyAmount.Value > 0)
@@ -173,7 +178,6 @@ IF EXISTS (
       AND BalanceAmount >= @ApplyAmount
 )
 BEGIN
-    -- 🔹 Log adjustment row
     INSERT INTO dbo.ArCustomerAdvanceAdjust
     (
         AdvanceId,
@@ -191,7 +195,6 @@ BEGIN
         SYSUTCDATETIME()
     );
 
-    -- 🔹 Reduce remaining balance
     UPDATE dbo.ArCustomerAdvance
     SET BalanceAmount = BalanceAmount - @ApplyAmount
     WHERE Id = @AdvanceId;
@@ -213,8 +216,7 @@ END;";
                 );
             }
 
-
-            // 6) POST TO GlTransaction (your existing logic)
+            // 6) POST TO GlTransaction (unchanged logic except small fix: no + GstPct)
             const string glInsertSql = @"
 INSERT INTO dbo.GlTransaction
 (
@@ -228,7 +230,7 @@ INSERT INTO dbo.GlTransaction
 SELECT
     c.BudgetLineId              AS AccountId,
     si.InvoiceDate              AS TxnDate,
-    1                           AS CurrencyId,      -- TODO: Currency
+    1                           AS CurrencyId,
     si.Total                    AS AmountFC,
     si.Total                    AS AmountBase       -- DR AR
 FROM dbo.SalesInvoice si
@@ -244,8 +246,8 @@ SELECT
     i.BudgetLineId              AS AccountId,
     si.InvoiceDate              AS TxnDate,
     1                           AS CurrencyId,
-    (sil.LineAmount + sil.GstPct)  AS AmountFC,
-    - (sil.LineAmount + sil.GstPct)AS AmountBase       -- CR Income
+    sil.LineAmount              AS AmountFC,
+    -sil.LineAmount             AS AmountBase       -- CR Income
 FROM dbo.SalesInvoiceLine sil
 INNER JOIN dbo.SalesInvoice si ON si.Id = sil.SiId
 INNER JOIN dbo.Item         i   ON i.Id = sil.ItemId
@@ -256,8 +258,6 @@ WHERE sil.SiId = @SiId
 
             return siId;
         }
-
-
 
         public async Task<SiHeaderDto?> GetAsync(int id)
         {
@@ -271,6 +271,7 @@ SELECT
     DoId,
     Subtotal,
     ShippingCost,
+    TaxAmount,
     Total,
     Status,
     IsActive,
@@ -288,7 +289,11 @@ SELECT
     Id, SiId, SourceType, SourceLineId,
     ItemId, ItemName, Uom,
     Qty, UnitPrice, DiscountPct, GstPct, Tax,
-    TaxCodeId, LineAmount, Description,BudgetLineId
+    TaxCodeId,
+    LineAmount,
+    TaxAmount,
+    Description,
+    BudgetLineId
 FROM dbo.SalesInvoiceLine
 WHERE SiId=@Id;";
 
@@ -343,16 +348,28 @@ WHERE Id=@Id;";
         {
             const string sql = @"
 INSERT INTO dbo.SalesInvoiceLine
-(SiId, SourceType, SourceLineId,
- ItemId, ItemName, Uom,
- Qty, UnitPrice, DiscountPct, GstPct, Tax,
- TaxCodeId, LineAmount, Description,BudgetLineId)
+(
+    SiId, SourceType, SourceLineId,
+    ItemId, ItemName, Uom,
+    Qty, UnitPrice, DiscountPct, GstPct, Tax,
+    TaxCodeId,
+    LineAmount,
+    TaxAmount,
+    Description,
+    BudgetLineId
+)
 OUTPUT INSERTED.Id
 VALUES
-(@SiId, @SourceType, @SourceLineId,
- @ItemId, @ItemName, @Uom,
- @Qty, @UnitPrice, @DiscountPct, @GstPct, @Tax,
- @TaxCodeId, @LineAmount, @Description,@BudgetLineId);";
+(
+    @SiId, @SourceType, @SourceLineId,
+    @ItemId, @ItemName, @Uom,
+    @Qty, @UnitPrice, @DiscountPct, @GstPct, @Tax,
+    @TaxCodeId,
+    @LineAmount,
+    @TaxAmount,
+    @Description,
+    @BudgetLineId
+);";
 
             var lineId = await Connection.ExecuteScalarAsync<int>(
                 sql,
@@ -371,10 +388,11 @@ VALUES
                     l.Tax,
                     l.TaxCodeId,
                     l.LineAmount,
+                    TaxAmount = l.TaxAmount,
                     Description = string.IsNullOrWhiteSpace(l.Description)
                         ? l.ItemName
                         : l.Description,
-                   l.BudgetLineId
+                    l.BudgetLineId
                 });
 
             await RecalculateTotalAsync(siId);
@@ -390,21 +408,23 @@ VALUES
             string tax,
             int? taxCodeId,
             decimal? lineAmount,
+            decimal? taxAmount,
             string? description,
             int? budgetLineId,
             int userId)
         {
             const string updateSql = @"
 UPDATE dbo.SalesInvoiceLine
-SET Qty        = @Qty,
-    UnitPrice  = @UnitPrice,
-    DiscountPct= @DiscountPct,
-    GstPct     = @GstPct,
-    Tax        = @Tax,
-    TaxCodeId  = @TaxCodeId,
-    LineAmount = @LineAmount,
-    Description= @Description,
-    BudgetLineId = @BudgetLineId
+SET Qty         = @Qty,
+    UnitPrice   = @UnitPrice,
+    DiscountPct = @DiscountPct,
+    GstPct      = @GstPct,
+    Tax         = @Tax,
+    TaxCodeId   = @TaxCodeId,
+    LineAmount  = @LineAmount,
+    TaxAmount   = @TaxAmount,
+    Description = @Description,
+    BudgetLineId= @BudgetLineId
 WHERE Id = @Id;";
 
             await Connection.ExecuteAsync(updateSql, new
@@ -417,6 +437,7 @@ WHERE Id = @Id;";
                 Tax = tax,
                 TaxCodeId = taxCodeId,
                 LineAmount = lineAmount,
+                TaxAmount = taxAmount,
                 Description = description,
                 BudgetLineId = budgetLineId
             });
@@ -446,18 +467,19 @@ WHERE Id = @Id;";
             const string sql = @"
 UPDATE si
 SET
-    si.Subtotal = x.Subtotal,
-    si.Total    = x.LinesTotal + si.ShippingCost
+    si.Subtotal  = x.Subtotal,
+    si.TaxAmount = x.TaxAmount,
+    si.Total     = x.LinesTotal + si.ShippingCost
 FROM dbo.SalesInvoice si
 CROSS APPLY (
     SELECT
-        Subtotal = ISNULL(SUM(
-            CAST(sil.Qty * sil.UnitPrice AS DECIMAL(18,2))
-        ), 0),
+        Subtotal  = ISNULL(SUM(CAST(sil.Qty * sil.UnitPrice AS DECIMAL(18,2))), 0),
+        TaxAmount = ISNULL(SUM(ISNULL(sil.TaxAmount,0)), 0),
         LinesTotal = ISNULL(SUM(
             CASE 
                 WHEN sil.LineAmount IS NOT NULL THEN sil.LineAmount
                 ELSE
+                    -- fallback calc if LineAmount missing
                     CASE 
                         WHEN ISNULL(sil.GstPct,0) = 0 
                              OR UPPER(ISNULL(sil.Tax,'EXEMPT')) = 'EXEMPT' THEN
