@@ -101,7 +101,7 @@ GlLines AS (
     --------------------------------------------------------
     -- 2 ► Manual Journal (original side – BudgetLineId)
     --------------------------------------------------------
-   SELECT
+    SELECT
         mjl.AccountId      AS HeadId,         -- = ChartOfAccount.Id
         OpeningBalance = 0,
         Debit          = ISNULL(mjl.Debit,  0),
@@ -114,8 +114,6 @@ GlLines AS (
       AND mjl.IsActive = 1
 
     UNION ALL
-
-   
 
     --------------------------------------------------------
     -- 3 ► Sales Invoice – DR Customer, CR Income/Asset
@@ -249,12 +247,13 @@ GlLines AS (
 
     UNION ALL
 
-    -- 5c) CR Customer (AR −)
+    -- 5c) Customer – AR Receipt as negative Debit
+    --     (Invoice = +Debit, Receipt = -Debit → net Debit shows AR)
     SELECT
         coaCust.Id AS HeadId,
         0,
-        0,
-        Credit = ISNULL(ra.AllocatedAmount, 0)
+        Debit  = -ISNULL(ra.AllocatedAmount, 0),  -- 🔁 sign flip
+        0
     FROM dbo.ArReceiptAllocation ra
     INNER JOIN dbo.ArReceipt    ar ON ar.Id = ra.ReceiptId
     INNER JOIN dbo.SalesInvoice si ON si.Id = ra.InvoiceId
@@ -270,12 +269,13 @@ GlLines AS (
     --------------------------------------------------------
     -- 6 ► Supplier Payment – DR Supplier, CR Bank
     --------------------------------------------------------
--- 6a) DR Supplier (AP −)
+    -- 6a) Supplier – Payment as negative Credit
+    --     PIN = +Credit, Payment = -Credit → net Credit shows AP
     SELECT
         sps.BudgetLineId AS HeadId,
-        OpeningBalance = 0,
-        Debit  = ISNULL(sp.Amount, 0),
-        Credit = 0
+        0,
+        0,
+        Credit = -ISNULL(sp.Amount, 0)          -- 🔁 sign flip
     FROM dbo.SupplierPayment sp
     INNER JOIN dbo.Suppliers sps ON sps.Id = sp.SupplierId
     WHERE sp.IsActive = 1
@@ -286,8 +286,8 @@ GlLines AS (
     --     PaymentMethodId <> 1 → post to Bank account
     SELECT
         bk.BudgetLineId AS HeadId,
-        OpeningBalance = 0,
-        Debit  = 0,
+        0,
+        0,
         Credit = ISNULL(sp.Amount, 0)
     FROM dbo.SupplierPayment sp
     INNER JOIN dbo.Bank bk ON bk.Id = sp.BankId
@@ -300,8 +300,8 @@ GlLines AS (
     --     PaymentMethodId = 1 → post to child 'Cash' under Cash-in-hand
     SELECT
         cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = 0,
+        0,
+        0,
         Credit = ISNULL(sp.Amount, 0)
     FROM dbo.SupplierPayment sp
     CROSS JOIN dbo.ChartOfAccount cashCoa
@@ -373,6 +373,48 @@ GlLines AS (
         ON coaCust.Id = cs.BudgetLineId
         -- or: ON coaCust.HeadCode = cs.BudgetLineId
     WHERE cn.IsActive = 1
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 9 ► CUSTOMER ADVANCE – CR Advance Payment
+    --     (ArCustomerAdvance.BalanceAmount → Credit)
+    --------------------------------------------------------
+    SELECT
+        advCoa.Id AS HeadId,              -- ADVANCE PAYMENT COA
+        0,
+        0,
+        Credit = ISNULL(ca.BalanceAmount, 0)
+    FROM dbo.ArCustomerAdvance ca
+    CROSS JOIN dbo.ChartOfAccount advCoa
+    WHERE ca.IsActive = 1
+      AND ISNULL(ca.BalanceAmount, 0) <> 0
+      AND advCoa.IsActive = 1
+      AND (
+            advCoa.HeadName = 'ADVANCE PAYMENT'
+         OR advCoa.HeadCode = 1010402      -- your Advance Payment HeadCode
+      )
+
+    UNION ALL
+
+    --------------------------------------------------------
+    -- 10 ► SUPPLIER ADVANCE – DR Advance Payment
+    --      (SupplierAdvance.BalanceAmount → Debit)
+    --------------------------------------------------------
+    SELECT
+        advCoa.Id AS HeadId,              -- same ADVANCE PAYMENT COA
+        0,
+        Debit          = ISNULL(sa.BalanceAmount, 0),
+        Credit         = 0
+    FROM dbo.SupplierAdvance sa
+    CROSS JOIN dbo.ChartOfAccount advCoa
+    WHERE sa.IsActive = 1
+      AND ISNULL(sa.BalanceAmount, 0) <> 0
+      AND advCoa.IsActive = 1
+      AND (
+            advCoa.HeadName = 'ADVANCE PAYMENT'
+         OR advCoa.HeadCode = 1010402
+      )
 ),
 
 ------------------------------------------------------------
@@ -453,6 +495,7 @@ SELECT
     IsControl
 FROM FinalRows
 ORDER BY HeadCode;
+
 ";
 
             return await Connection.QueryAsync<GeneralLedgerDTO>(query);
