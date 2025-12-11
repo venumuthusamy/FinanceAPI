@@ -35,11 +35,30 @@ CashCoa AS (
 ------------------------------------------------------------
 GlLines AS (
 
-    
+     --------------------------------------------------------
+    -- A) Manual Journal – single leg per line (all accounts)
+    --------------------------------------------------------
+    SELECT
+        mj.JournalDate                          AS TransDate,
+        'MJ'                                    AS SourceType,
+        mj.JournalNo                            AS SourceNo,
+        ISNULL(mjl.LineDescription, mj.Description) AS Description,
+        mjl.AccountId                           AS HeadId,
+        ISNULL(TRY_CONVERT(decimal(18,2), mjl.Debit), 0)  AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), mjl.Credit), 0) AS Credit
+    FROM dbo.ManualJournal mj
+    INNER JOIN dbo.ManualJournalLine mjl
+        ON mjl.JournalId = mj.Id
+       AND mjl.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = mjl.AccountId
+       AND coa.IsActive = 1
+    WHERE mj.IsActive = 1
+      AND mj.IsPosted = 1
+      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
+                             AND ISNULL(@ToDate,'9999-12-31')
 
-
-
-
+    UNION ALL
 
     --------------------------------------------------------
     -- B) Sales Invoice lines  (P&L / revenue / expense)
@@ -478,108 +497,30 @@ CashCoa AS (
 ------------------------------------------------------------
 GlLines AS (
 
-    --------------------------------------------------------
-    -- A1) Manual Journal – CUSTOMER: P&L leg (Income)
-    --     Uses mj.BudgetLineId (fallback AccountId)
-    --     CREDIT = income
+     --------------------------------------------------------
+    -- A) Manual Journal – single leg per line (all accounts)
     --------------------------------------------------------
     SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-CUST'                             AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        mj.Description                        AS Description,
-        COALESCE(mj.BudgetLineId, mj.AccountId) AS HeadId, -- Income COA
-        CAST(0 AS decimal(18,2))              AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Credit),0) AS Credit
+        mj.JournalDate                          AS TransDate,
+        'MJ'                                    AS SourceType,
+        mj.JournalNo                            AS SourceNo,
+        ISNULL(mjl.LineDescription, mj.Description) AS Description,
+        mjl.AccountId                           AS HeadId,
+        ISNULL(TRY_CONVERT(decimal(18,2), mjl.Debit), 0)  AS Debit,
+        ISNULL(TRY_CONVERT(decimal(18,2), mjl.Credit), 0) AS Credit
     FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Customer c
-        ON c.Id = mj.CustomerId
-       AND c.IsActive = 1
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
+    INNER JOIN dbo.ManualJournalLine mjl
+        ON mjl.JournalId = mj.Id
+       AND mjl.IsActive = 1
+    INNER JOIN dbo.ChartOfAccount coa
+        ON coa.Id = mjl.AccountId
+       AND coa.IsActive = 1
+    WHERE mj.IsActive = 1
+      AND mj.IsPosted = 1
       AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
                              AND ISNULL(@ToDate,'9999-12-31')
 
     UNION ALL
-
-    --------------------------------------------------------
-    -- A2) Manual Journal – CUSTOMER: CASH leg
-    --     Debit Cash with same CREDIT amount
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-CUST-CASH'                        AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        'MJ Cash - Customer ' + ISNULL(c.CustomerName,'') AS Description,
-        cash.CashHeadId                       AS HeadId,  -- Cash COA
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Credit),0) AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Customer c
-        ON c.Id = mj.CustomerId
-       AND c.IsActive = 1
-    CROSS JOIN CashCoa cash
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- A3) Manual Journal – SUPPLIER: P&L leg (Expense)
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-SUP'                              AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        mj.Description                        AS Description,
-        COALESCE(mj.BudgetLineId, mj.AccountId) AS HeadId, -- Expense COA
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Debit),0) AS Debit,
-        CAST(0 AS decimal(18,2))              AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Suppliers s
-        ON s.Id = mj.SupplierId
-       AND s.IsActive = 1
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- A4) Manual Journal – SUPPLIER: CASH leg
-    --     Credit Cash with same DEBIT amount
-    --------------------------------------------------------
-    SELECT
-        mj.JournalDate                        AS TransDate,
-        'MJ-SUP-CASH'                         AS SourceType,
-        mj.JournalNo                          AS SourceNo,
-        'MJ Cash - Supplier ' + ISNULL(s.Name,'') AS Description,
-        cash.CashHeadId                       AS HeadId,  -- Cash COA
-        CAST(0 AS decimal(18,2))              AS Debit,
-        ISNULL(TRY_CONVERT(decimal(18,2), mj.Debit),0) AS Credit
-    FROM dbo.ManualJournal mj
-    INNER JOIN dbo.Suppliers s
-        ON s.Id = mj.SupplierId
-       AND s.IsActive = 1
-    CROSS JOIN CashCoa cash
-    WHERE mj.IsActive   = 1
-      AND mj.isPosted   = 1
-      AND COALESCE(mj.BudgetLineId, mj.AccountId) IS NOT NULL
-      AND mj.JournalDate BETWEEN ISNULL(@FromDate,'1900-01-01')
-                             AND ISNULL(@ToDate,'9999-12-31')
-
-    UNION ALL
-
-    -- >>> here continue with B) SI, C) CN, D) ARINV, ... exactly as you already have
-
-
-
 
 
     --------------------------------------------------------
