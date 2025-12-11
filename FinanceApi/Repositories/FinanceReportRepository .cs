@@ -937,54 +937,20 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- 2 ► Manual Journal (original side – BudgetLineId)
+    -- 2 ► Manual Journal (header + lines)
+    --    New structure: header has IsPosted/IsActive, lines have AccountId/Debit/Credit
     --------------------------------------------------------
     SELECT
-        mj.BudgetLineId AS HeadId,
+        mjl.AccountId AS HeadId,         -- assumes AccountId = ChartOfAccount.Id
         OpeningBalance = 0,
-        Debit  = ISNULL(mj.Debit,  0),
-        Credit = ISNULL(mj.Credit, 0)
-    FROM dbo.ManualJournal mj
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- 2b ► Manual Journal – CASH side for Type = 'SUPPLIER'
-    --------------------------------------------------------
-    SELECT
-        cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = 0,
-        Credit = ISNULL(mj.Debit, 0)
-    FROM dbo.ManualJournal mj
-    CROSS JOIN dbo.ChartOfAccount cashCoa
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-      AND UPPER(mj.[Type]) = 'SUPPLIER'
-      AND ISNULL(mj.Debit, 0) <> 0
-      AND cashCoa.IsActive = 1
-      AND cashCoa.HeadName = 'Cash'
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- 2c ► Manual Journal – CASH side for Type = 'CUSTOMER'
-    --------------------------------------------------------
-    SELECT
-        cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = ISNULL(mj.Credit, 0),
-        Credit = 0
-    FROM dbo.ManualJournal mj
-    CROSS JOIN dbo.ChartOfAccount cashCoa
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-      AND UPPER(mj.[Type]) = 'CUSTOMER'
-      AND ISNULL(mj.Credit, 0) <> 0
-      AND cashCoa.IsActive = 1
-      AND cashCoa.HeadName = 'Cash'
+        Debit  = ISNULL(mjl.Debit,  0),
+        Credit = ISNULL(mjl.Credit, 0)
+    FROM dbo.ManualJournalLine mjl
+    INNER JOIN dbo.ManualJournal mj
+        ON mj.Id = mjl.JournalId
+    WHERE mj.IsActive   = 1
+      AND mj.IsPosted   = 1
+      AND mjl.IsActive  = 1
 
     UNION ALL
 
@@ -1301,12 +1267,13 @@ SELECT
                 )
 FROM PlRows
 ORDER BY HeadCode;
+
 ";
 
             return await Connection.QueryAsync<ProfitLossViewInfo>(sql);
         }
-    
-       public async Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync()
+
+        public async Task<IEnumerable<BalanceSheetViewInfo>> GetBalanceSheetAsync()
         {
             const string sql = @"
 WITH
@@ -1391,54 +1358,19 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- 2 ► Manual Journal (original side – BudgetLineId)
+    -- 2 ► Manual Journal (header + lines, NEW structure)
     --------------------------------------------------------
     SELECT
-        mj.BudgetLineId AS HeadId,
+        mjl.AccountId AS HeadId,         -- assumes AccountId = ChartOfAccount.Id
         OpeningBalance = 0,
-        Debit  = ISNULL(mj.Debit,  0),
-        Credit = ISNULL(mj.Credit, 0)
-    FROM dbo.ManualJournal mj
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- 2b ► Manual Journal – CASH side for Type = 'SUPPLIER'
-    --------------------------------------------------------
-    SELECT
-        cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = 0,
-        Credit = ISNULL(mj.Debit, 0)
-    FROM dbo.ManualJournal mj
-    CROSS JOIN dbo.ChartOfAccount cashCoa
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-      AND UPPER(mj.[Type]) = 'SUPPLIER'
-      AND ISNULL(mj.Debit, 0) <> 0
-      AND cashCoa.IsActive = 1
-      AND cashCoa.HeadName = 'Cash'
-
-    UNION ALL
-
-    --------------------------------------------------------
-    -- 2c ► Manual Journal – CASH side for Type = 'CUSTOMER'
-    --------------------------------------------------------
-    SELECT
-        cashCoa.Id AS HeadId,
-        OpeningBalance = 0,
-        Debit  = ISNULL(mj.Credit, 0),
-        Credit = 0
-    FROM dbo.ManualJournal mj
-    CROSS JOIN dbo.ChartOfAccount cashCoa
-    WHERE mj.IsActive = 1
-      AND mj.isPosted = 1
-      AND UPPER(mj.[Type]) = 'CUSTOMER'
-      AND ISNULL(mj.Credit, 0) <> 0
-      AND cashCoa.IsActive = 1
-      AND cashCoa.HeadName = 'Cash'
+        Debit  = ISNULL(mjl.Debit,  0),
+        Credit = ISNULL(mjl.Credit, 0)
+    FROM dbo.ManualJournalLine mjl
+    INNER JOIN dbo.ManualJournal mj
+        ON mj.Id = mjl.JournalId
+    WHERE mj.IsActive   = 1
+      AND mj.IsPosted   = 1
+      AND mjl.IsActive  = 1
 
     UNION ALL
 
@@ -1581,7 +1513,7 @@ GlLines AS (
     UNION ALL
 
     --------------------------------------------------------
-    -- 6 ► Supplier Payment – DR Supplier, CR Bank
+    -- 6 ► Supplier Payment – DR Supplier, CR Bank/Cash
     --------------------------------------------------------
     -- 6a) DR Supplier
     SELECT
@@ -1744,8 +1676,6 @@ BsRows AS (
     WHERE c.IsActive = 1
       -- *** only these 3 roots → Expenses & Income excluded ***
       AND root.HeadName IN ('Assets','Liabilities','Equity')
-      -- optional: only show non-zero accounts
-      -- AND ISNULL(ga.Balance,0) <> 0
 )
 
 ------------------------------------------------------------
@@ -1771,6 +1701,7 @@ ORDER BY
 
             return await Connection.QueryAsync<BalanceSheetViewInfo>(sql);
         }
+
         public async Task<IEnumerable<DaybookDTO>> GetDaybookAsync(ReportBaseDTO dto)
         {
             const string sql = @"
@@ -1941,7 +1872,7 @@ ORDER BY
     UNION ALL
 
     ------------------------------------------------------------
-    -- 6) MANUAL JOURNAL  (group by JournalNo)
+    -- 6) MANUAL JOURNAL  (header + lines, new structure)
     ------------------------------------------------------------
     SELECT
         mj.JournalDate        AS TransDate,
@@ -1950,13 +1881,17 @@ ORDER BY
         'Manual Journal'      AS VoucherName,
         coa.HeadName          AS AccountHeadName,
         mj.Description        AS Description,
-        CAST(SUM(ISNULL(mj.Debit,  0.00)) AS DECIMAL(18,2)) AS Debit,
-        CAST(SUM(ISNULL(mj.Credit, 0.00)) AS DECIMAL(18,2)) AS Credit
+        CAST(SUM(ISNULL(mjl.Debit,  0.00)) AS DECIMAL(18,2)) AS Debit,
+        CAST(SUM(ISNULL(mjl.Credit, 0.00)) AS DECIMAL(18,2)) AS Credit
     FROM Finance.dbo.ManualJournal mj
+    INNER JOIN Finance.dbo.ManualJournalLine mjl
+        ON mjl.JournalId = mj.Id
     INNER JOIN Finance.dbo.ChartOfAccount coa
-        ON coa.Id = mj.AccountId
+        ON coa.Id = mjl.AccountId
        AND coa.IsActive = 1
-    WHERE mj.IsActive = 1
+    WHERE mj.IsActive   = 1
+      AND mj.IsPosted   = 1           -- only posted journals
+      AND mjl.IsActive  = 1
       AND mj.JournalDate BETWEEN @FromDate AND @ToDate
     GROUP BY
         mj.JournalDate,
@@ -1991,6 +1926,7 @@ ORDER BY TransDate, VoucherType, VoucherNo;
                     dto.ToDate,
                 });
         }
+
 
         public async Task SaveOpeningBalanceAsync(OpeningBalanceEditDto dto, string userName)
         {
