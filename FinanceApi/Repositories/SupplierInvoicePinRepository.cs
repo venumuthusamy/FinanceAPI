@@ -37,7 +37,6 @@ WHERE si.Id = @Id;";
             return await Connection.QuerySingleAsync<SupplierInvoicePinDTO>(sql, new { Id = id });
         }
 
-        // ---------- CREATE ----------
         public async Task<int> CreateAsync(SupplierInvoicePin pin)
         {
             var conn = Connection;
@@ -48,7 +47,7 @@ WHERE si.Id = @Id;";
 
             try
             {
-                // ===== 1) Generate next PIN number =====
+                // 1) Next PIN no
                 const string getLastNo = @"
 SELECT TOP 1 InvoiceNo
 FROM dbo.SupplierInvoicePin
@@ -70,7 +69,7 @@ ORDER BY Id DESC;";
                 pin.InvoiceNo = $"PIN-{next:D4}";
                 pin.CreatedDate = pin.UpdatedDate = DateTime.UtcNow;
 
-                // ===== 2) Insert PIN =====
+                // 2) Insert PIN
                 const string insert = @"
 INSERT INTO dbo.SupplierInvoicePin
 (
@@ -113,12 +112,61 @@ VALUES
                     pin,
                     transaction: tx);
 
-                // ===== 3) Post to GL =====
+                // 3) GL posting
                 await conn.ExecuteAsync(
                     "dbo.sp_PostSupplierInvoicePinToGl",
                     new { PinId = pinId, UserId = pin.CreatedBy },
                     transaction: tx,
                     commandType: CommandType.StoredProcedure);
+
+                // 4) Advance apply → only SupplierAdvance tables
+                if (pin.AdvanceId.HasValue && pin.AdvanceApplyAmount.GetValueOrDefault() > 0)
+                {
+                    const string insertAdjust = @"
+INSERT INTO dbo.SupplierAdvanceAdjust
+(
+    AdvanceId,
+    SupplierInvoiceId,
+    AdjustAmount,
+    AdjustDate,
+    CreatedBy,
+    CreatedDate
+)
+VALUES
+(
+    @AdvanceId,
+    @SupplierInvoiceId,
+    @AdjustAmount,
+    @AdjustDate,
+    @CreatedBy,
+    SYSUTCDATETIME()
+);";
+
+                    var p = new
+                    {
+                        AdvanceId = pin.AdvanceId.Value,
+                        SupplierInvoiceId = pinId,
+                        AdjustAmount = pin.AdvanceApplyAmount.Value,
+                        AdjustDate = pin.InvoiceDate,
+                        CreatedBy = pin.CreatedBy
+                    };
+
+                    await conn.ExecuteAsync(
+                        insertAdjust,
+                        p,
+                        transaction: tx);
+
+                    // ❗ Only SupplierAdvance.BalanceAmount – update here
+                    const string updateBalance = @"
+UPDATE dbo.SupplierAdvance
+SET BalanceAmount = BalanceAmount - @AdjustAmount
+WHERE Id = @AdvanceId;";
+
+                    await conn.ExecuteAsync(
+                        updateBalance,
+                        p,
+                        transaction: tx);
+                }
 
                 tx.Commit();
                 return pinId;
@@ -129,7 +177,6 @@ VALUES
                 throw;
             }
         }
-
 
 
         // ---------- UPDATE ----------
@@ -288,6 +335,52 @@ END;";
             });
         }
 
+        private async Task UpsertAccountBalanceAsync(
+    IDbConnection conn,
+    IDbTransaction? tx,
+    int headId,
+    decimal deltaAmount)
+        {
+            if (deltaAmount == 0) return;
+
+            const string sql = @"
+IF EXISTS (SELECT 1 FROM dbo.AccountBalance WHERE HeadId = @HeadId)
+BEGIN
+    UPDATE dbo.AccountBalance
+    SET
+        AvailableBalance = ISNULL(AvailableBalance, 0) + @DeltaAmount,
+        LastUpdated      = SYSUTCDATETIME(),
+        UpdatedDate      = SYSUTCDATETIME()
+    WHERE HeadId = @HeadId;
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AccountBalance
+    (
+        HeadId,
+        PeriodDebit,
+        PeriodCredit,
+        LastUpdated,
+        AvailableBalance,
+        UpdatedDate
+    )
+    VALUES
+    (
+        @HeadId,
+        0,
+        0,
+        SYSUTCDATETIME(),
+        @DeltaAmount,
+        SYSUTCDATETIME()
+    );
+END";
+
+            await conn.ExecuteAsync(
+                sql,
+                new { HeadId = headId, DeltaAmount = deltaAmount },
+                tx
+            );
+        }
 
     }
 }

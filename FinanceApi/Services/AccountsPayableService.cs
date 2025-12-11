@@ -63,5 +63,19 @@ namespace FinanceApi.Services
         {
             return await _repo.CreateSupplierAdvanceAsync(userId, req);
         }
+
+        public async Task<IEnumerable<object>> GetSupplierAdvancesAsync(int supplierId)
+        {
+            return await _repo.GetSupplierAdvancesAsync(supplierId);  
+        }
+
+        public async Task<IEnumerable<SupplierAdvanceListRowDto>> GetSupplierAdvancesListAsync()
+        {
+            return await _repo.GetSupplierAdvancesListAsync();
+        }
+        public Task<IEnumerable<ArAdvanceListDto>> GetAdvanceListAsync()
+        {
+            return _repo.GetAdvanceListAsync();
+        }
     }
 }

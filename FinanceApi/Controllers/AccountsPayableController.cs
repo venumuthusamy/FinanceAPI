@@ -114,7 +114,7 @@ namespace FinanceApi.Controllers
             return Ok(new { data });
         }
         [HttpPost("createsupplier-advance")]
-        // [Authorize] // uncomment if you use auth
+       
         public async Task<IActionResult> CreateSupplierAdvance([FromBody] ApSupplierAdvanceCreateRequest req)
         {
             if (req == null)
@@ -122,20 +122,17 @@ namespace FinanceApi.Controllers
 
             try
             {
-                // Get current userId from token if you have JWT
                 int userId = 1;
                 var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
                 if (!string.IsNullOrEmpty(userIdStr))
-                {
                     int.TryParse(userIdStr, out userId);
-                }
 
-                var newId = await _service.CreateSupplierAdvanceAsync(userId, req);
+                var id = await _service.CreateSupplierAdvanceAsync(userId, req);
 
                 return Ok(new
                 {
                     isSuccess = true,
-                    id = newId
+                    id
                 });
             }
             catch (Exception ex)
@@ -146,6 +143,41 @@ namespace FinanceApi.Controllers
                     message = ex.Message
                 });
             }
+        }
+
+        // ============= GET SUPPLIER ADVANCES (BALANCE) =============
+        [HttpGet("supplier-advances/{supplierId:int}")]
+        public async Task<IActionResult> GetSupplierAdvances(int supplierId)
+        {
+            if (supplierId <= 0)
+                return BadRequest(new { isSuccess = false, message = "Invalid supplier" });
+
+            var rows = await _service.GetSupplierAdvancesAsync(supplierId);
+
+            return Ok(new
+            {
+                isSuccess = true,
+                data = rows
+            });
+        }
+        // Controllers/AccountsPayableController.cs
+
+        [HttpGet("getsupplier-advances")]
+        public async Task<IActionResult> GetSupplierAdvancesList()
+        {
+            var rows = await _service.GetSupplierAdvancesListAsync();
+
+            return Ok(new
+            {
+                isSuccess = true,
+                data = rows
+            });
+        }
+        [HttpGet("list")]
+        public async Task<IActionResult> GetList()
+        {
+            var result = await _service.GetAdvanceListAsync();
+            return Ok(new { data = result });
         }
     }
 }
