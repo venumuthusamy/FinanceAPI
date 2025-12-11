@@ -26,8 +26,8 @@ namespace FinanceApi.Services
         public Task<int> AddLineAsync(int siId, SiCreateLine l, byte sourceType)
             => _repo.AddLineAsync(siId, l, sourceType);
 
-        public Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, decimal gstPct, string tax, int? taxCodeId,decimal? lineAmount, string? description,int?budgetLineId,int userId)
-            => _repo.UpdateLineAsync(lineId, qty, unitPrice, discountPct, gstPct, tax, taxCodeId,lineAmount, description, budgetLineId, userId);
+        public Task UpdateLineAsync(int lineId, decimal qty, decimal unitPrice, decimal discountPct, decimal gstPct, string tax, int? taxCodeId,decimal? lineAmount, decimal? taxAmount, string? description,int?budgetLineId,int userId)
+            => _repo.UpdateLineAsync(lineId, qty, unitPrice, discountPct, gstPct, tax, taxCodeId,lineAmount, taxAmount,description, budgetLineId, userId);
 
         public Task RemoveLineAsync(int lineId) => _repo.RemoveLineAsync(lineId);
     }
