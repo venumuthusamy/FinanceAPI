@@ -17,5 +17,10 @@ namespace FinanceApi.Interfaces
         Task<int> UpdateBankBalance(int bankId, decimal newBalance);
         Task<IEnumerable<ApSupplierAdvanceDto>> GetSupplierAdvancesAsync();
         Task<int> CreateSupplierAdvanceAsync(int userId, ApSupplierAdvanceCreateRequest req);
+
+        // for dropdown in SI / AP payment screens
+        Task<IEnumerable<object>> GetSupplierAdvancesAsync(int supplierId);
+        Task<IEnumerable<SupplierAdvanceListRowDto>> GetSupplierAdvancesListAsync();
+        Task<IEnumerable<ArAdvanceListDto>> GetAdvanceListAsync();
     }
 }

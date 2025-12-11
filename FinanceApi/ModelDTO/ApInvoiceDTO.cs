@@ -26,6 +26,7 @@
         public string ReferenceNo { get; set; } = "";
         public decimal Amount { get; set; }
         public string Notes { get; set; } = "";
+        public int? BankId { get; set; }
     }
     public class AccountingPeriodRow
     {
