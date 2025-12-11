@@ -288,7 +288,7 @@ SELECT CONCAT('CN-', RIGHT(CONCAT(REPLICATE('0', 6), @n), 6));";
                         gstAmount = 0m;
                         lineNet = baseAmount;
                     }
-                    else if (taxFlag == "EXCLUSIVE")
+                    else if (taxFlag == "STANDARD-RATED")
                     {
                         // net price, GST on top
                         gstAmount = decimal.Round(baseAmount * (gstPct / 100m),
@@ -516,7 +516,7 @@ WHERE CreditNoteId=@CreditNoteId AND IsActive=1
                     gstAmount = 0m;
                     lineNet = baseAmount;
                 }
-                else if (taxFlag == "EXCLUSIVE")
+                else if (taxFlag == "STANDARD-RATED")
                 {
                     gstAmount = decimal.Round(baseAmount * (gstPct / 100m),
                                               2, MidpointRounding.AwayFromZero);

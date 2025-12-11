@@ -62,7 +62,7 @@ namespace FinanceApi.Services
             var countryYear = $"{req.Country}{yy}";                         // SG25
             var barText = $"{req.Prefix}-{countryYear}-{mmdd}-{serial4}-{req.SoId}";   // PKL-SG25-1108-0012
 
-            var apiBase = _config["PublicApiBaseUrl"] ?? "http://192.168.6.218:7182";
+            var apiBase = _config["PublicApiBaseUrl"] ?? "http://192.168.6.104:7182";
             //var barPayload = $"{_frontend.BaseUrl}/Sales/Scan/So/{req.SoId}?code={Uri.EscapeDataString(barText)}";
             var barPayload =  $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}";
 
