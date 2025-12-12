@@ -51,7 +51,8 @@ namespace FinanceApi.Data
         public DbSet<Currency> Currencies { get; set; }
 
         public DbSet<Suppliers> suppliers { get; set; }
-
+        public DbSet<ApprovalLevel> ApprovalLevel { get; set; }
+        public DbSet<UserApprovalLevel> UserApprovalLevel { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -66,22 +67,31 @@ namespace FinanceApi.Data
 
             // Configure Purchase-PurchaseLineItem relationship
             modelBuilder.Entity<Purchases>()
-               .HasMany(p => p.LineItems)
-               .WithOne()
-               .OnDelete(DeleteBehavior.Cascade);
+                .HasMany(p => p.LineItems)
+                .WithOne()
+                .OnDelete(DeleteBehavior.Cascade);
 
+            // ✅ USER ↔ APPROVALLEVEL (Many-to-Many via UserApprovalLevel)
+            modelBuilder.Entity<UserApprovalLevel>(entity =>
+            {
+                entity.ToTable("UserApprovalLevel"); // ✅ table name must match DB
 
-            // Configure User - PasswordResetToken relationship
-     //       modelBuilder.Entity<PasswordResetToken>()
-     //           .HasOne(t => t.User)
-     //           .WithMany(u => u.PasswordResetTokens)
-     //           .HasForeignKey(t => t.UserId)
-     //           .OnDelete(DeleteBehavior.Cascade);
-     //       modelBuilder.Entity<OpeningBalance>()
-     //.Property(e => e.Date)
-     //.HasColumnType("datetime2");
+                entity.HasKey(x => new { x.UserId, x.ApprovalLevelId }); // ✅ composite PK
 
+                entity.HasOne(x => x.User)
+                      .WithMany() // if you DID NOT add navigation in User
+                      .HasForeignKey(x => x.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(x => x.ApprovalLevel)
+                      .WithMany() // if you DID NOT add navigation in ApprovalLevel
+                      .HasForeignKey(x => x.ApprovalLevelId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // (optional) if you want PasswordResetToken relationship back, uncomment your block
         }
+
 
     }
 }

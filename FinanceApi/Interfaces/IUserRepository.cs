@@ -18,6 +18,9 @@ namespace FinanceApi.Interfaces
         Task SavePasswordHistoryAsync(int userId, string passwordHash);
         Task<bool> UpdatePasswordAsync(int userId, string hashedPassword);
         Task DeleteTokenAsync(PasswordResetToken token);
+        Task<List<UserViewDto>> GetAllViewAsync();
+        Task<UserViewDto?> GetViewByIdAsync(int id);
+
 
     }
 }

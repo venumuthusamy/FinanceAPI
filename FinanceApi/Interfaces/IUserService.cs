@@ -13,5 +13,7 @@ namespace FinanceApi.Interfaces
         Task<bool> ChangePasswordAsync(int userId, ChangePasswordDto changePasswordDto);
         Task<string> ForgotPasswordAsync(ForgotPasswordRequestDto request);
         Task<(bool IsSuccess, string Message)> ResetPasswordAsync(ResetPasswordDto request);
+        Task<List<UserViewDto>> GetAllViewAsync();
+        Task<UserViewDto?> GetViewByIdAsync(int id);
     }
 }
