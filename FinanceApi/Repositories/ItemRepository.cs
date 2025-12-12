@@ -51,11 +51,15 @@ SELECT  i.Id,
         i.CreatedDate,
         i.UpdatedBy,
         i.UpdatedDate,
-        i.IsActive
+        i.IsActive,
+		i.CategoryId,
+		COALESCE(ca.CatagoryName,'')           AS CatagoryName
+
 FROM    Item i
 LEFT JOIN Uom u            ON u.Id  = i.UomId
 LEFT JOIN ChartOfAccount coa ON coa.Id = i.BudgetLineId
-WHERE   i.Id = @Id AND i.IsActive = 1;";
+Left Join Catagory ca on ca.ID = i.CategoryId
+WHERE   i.Id = 1 AND i.IsActive = 1;";
             return await Connection.QueryFirstOrDefaultAsync<ItemDto>(sql, new { Id = id });
         }
 
