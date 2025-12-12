@@ -27,73 +27,76 @@ namespace FinanceApi.Repositories
 
         public async Task<User> CreateAsync(UserDto userDto)
         {
+            using var tx = await _context.Database.BeginTransactionAsync();
 
-            try
+            var user = new User
             {
-                var user = new User
+                Username = userDto.Username,
+                Email = userDto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(userDto.Password ?? ""),
+                CreatedBy = "System",
+                CreatedDate = DateTime.UtcNow,
+                IsActive = true
+            };
+
+            _context.User.Add(user);
+            await _context.SaveChangesAsync();
+
+            foreach (var levelId in (userDto.ApprovalLevelIds ?? new()).Distinct())
+            {
+                _context.UserApprovalLevel.Add(new UserApprovalLevel
                 {
-                    Username = userDto.Username,
-                    Email = userDto.Email,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword(userDto.Password),
+                    UserId = user.Id,
+                    ApprovalLevelId = levelId,
                     CreatedBy = "System",
-                    CreatedDate = DateTime.UtcNow,
-                    IsActive = true
-                };
-
-                _context.User.Add(user);
-                await _context.SaveChangesAsync();
-
-                return user;
+                    CreatedDate = DateTime.UtcNow
+                });
             }
-            catch (DbUpdateException dbEx)
-            {
 
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
 
-                throw new Exception($"Error saving supplier: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-
-                Console.WriteLine($"General error: {ex.Message}");
-                throw;
-            }
+            return user;
         }
+
 
         public async Task<User?> UpdateAsync(int id, UserDto updatedUser)
         {
-            try
-            {
-                var existingUser = await _context.User.FirstOrDefaultAsync(s => s.Id == id);
-                if (existingUser == null) return null;
+            using var tx = await _context.Database.BeginTransactionAsync();
 
-                // Manually update only scalar properties (excluding Id)
-                existingUser.Username = updatedUser.Username;
-                existingUser.Email = updatedUser.Email;
-                if (!string.IsNullOrWhiteSpace(updatedUser.Password))
+            var existingUser = await _context.User.FirstOrDefaultAsync(s => s.Id == id);
+            if (existingUser == null) return null;
+
+            existingUser.Username = updatedUser.Username;
+            existingUser.Email = updatedUser.Email;
+
+            if (!string.IsNullOrWhiteSpace(updatedUser.Password))
+                existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(updatedUser.Password);
+
+            existingUser.UpdatedBy = "System";
+            existingUser.UpdatedDate = DateTime.UtcNow;
+
+            // 🔥 replace mapping rows
+            var old = await _context.UserApprovalLevel.Where(x => x.UserId == id).ToListAsync();
+            _context.UserApprovalLevel.RemoveRange(old);
+
+            foreach (var levelId in (updatedUser.ApprovalLevelIds ?? new()).Distinct())
+            {
+                _context.UserApprovalLevel.Add(new UserApprovalLevel
                 {
-                    existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(updatedUser.Password);
-                }
-                existingUser.UpdatedBy = "System";
-                existingUser.UpdatedDate = DateTime.UtcNow;
-
-                await _context.SaveChangesAsync();
-                return existingUser;
+                    UserId = id,
+                    ApprovalLevelId = levelId,
+                    CreatedBy = "System",
+                    CreatedDate = DateTime.UtcNow
+                });
             }
-            catch (DbUpdateException dbEx)
-            {
 
-                var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
+            await _context.SaveChangesAsync();
+            await tx.CommitAsync();
 
-                throw new Exception($"Error saving supplier: {innerMessage}", dbEx);
-            }
-            catch (Exception ex)
-            {
-
-                Console.WriteLine($"General error: {ex.Message}");
-                throw;
-            }
+            return existingUser;
         }
+
 
 
         public async Task<bool> DeleteAsync(int id)
@@ -173,5 +176,58 @@ namespace FinanceApi.Repositories
             _context.PasswordResetToken.Remove(token);
             await _context.SaveChangesAsync();
         }
+        public async Task<List<UserViewDto>> GetAllViewAsync()
+        {
+            return await _context.User
+                .Where(u => u.IsActive)   // ✅ bool
+                .OrderBy(u => u.Id)
+                .Select(u => new UserViewDto
+                {
+                    Id = u.Id,
+                    Username = u.Username,
+                    Email = u.Email ?? "",
+                    IsActive = u.IsActive,  // ✅ bool
+
+                    ApprovalLevelIds = _context.UserApprovalLevel
+                        .Where(x => x.UserId == u.Id)
+                        .Select(x => x.ApprovalLevelId)
+                        .ToList(),
+
+                    ApprovalLevelNames =
+                        (from ual in _context.UserApprovalLevel
+                         join al in _context.ApprovalLevel on ual.ApprovalLevelId equals al.Id
+                         where ual.UserId == u.Id && al.IsActive == true
+                         select al.Name).ToList()
+                })
+                .ToListAsync();
+        }
+
+        public async Task<UserViewDto?> GetViewByIdAsync(int id)
+        {
+            return await _context.User
+                .Where(u => u.Id == id && u.IsActive)  // ✅ bool
+                .Select(u => new UserViewDto
+                {
+                    Id = u.Id,
+                    Username = u.Username,
+                    Email = u.Email ?? "",
+                    IsActive = u.IsActive,
+
+                    ApprovalLevelIds = _context.UserApprovalLevel
+                        .Where(x => x.UserId == u.Id)
+                        .Select(x => x.ApprovalLevelId)
+                        .ToList(),
+
+                    ApprovalLevelNames =
+                        (from ual in _context.UserApprovalLevel
+                         join al in _context.ApprovalLevel on ual.ApprovalLevelId equals al.Id
+                         where ual.UserId == u.Id && al.IsActive == true
+                         select al.Name).ToList()
+                })
+                .FirstOrDefaultAsync();
+        }
+
+
+
     }
 }

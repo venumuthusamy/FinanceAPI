@@ -145,6 +145,19 @@ namespace FinanceApi.Controllers
 
             return Ok(new { message = result.Message });
         }
+        [HttpGet("getAllView")]
+        public async Task<ActionResult<List<UserViewDto>>> GetAllView()
+        {
+            return Ok(await _service.GetAllViewAsync());
+        }
+
+        [HttpGet("view/{id}")]
+        public async Task<ActionResult<UserViewDto>> View(int id)
+        {
+            var user = await _service.GetViewByIdAsync(id);
+            if (user == null) return NotFound();
+            return Ok(user);
+        }
 
 
     }

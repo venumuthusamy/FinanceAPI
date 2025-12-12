@@ -183,6 +183,14 @@ namespace FinanceApi.Services
             return (true, "Password reset successful.");
         }
 
+        public async Task<List<UserViewDto>> GetAllViewAsync()
+        {
+           return await _repository.GetAllViewAsync();
+        }
 
+        public async Task<UserViewDto?> GetViewByIdAsync(int id)
+        {
+            return await _repository.GetViewByIdAsync(id);
+        }
     }
 }
