@@ -1719,14 +1719,14 @@ ORDER BY
         si.Remarks            AS Description,
         CAST(ISNULL(si.Total, 0.00) AS DECIMAL(18,2)) AS Debit,
         CAST(0.00 AS DECIMAL(18,2))                   AS Credit
-    FROM Finance.dbo.SalesInvoice si
+    FROM dbo.SalesInvoice si
     OUTER APPLY
     (
         SELECT TOP (1) coa.HeadName
-        FROM Finance.dbo.SalesInvoiceLine sil
+        FROM dbo.SalesInvoiceLine sil
         INNER JOIN dbo.Item itm
             ON itm.Id = sil.ItemId
-        INNER JOIN Finance.dbo.ChartOfAccount coa
+        INNER JOIN dbo.ChartOfAccount coa
             ON coa.Id = itm.BudgetLineId
            AND coa.IsActive = 1
         WHERE sil.SiId = si.Id
@@ -1756,14 +1756,14 @@ ORDER BY
         )                    AS Description,
         CAST(0.00 AS DECIMAL(18,2))                    AS Debit,
         CAST(ISNULL(cn.Subtotal, 0.00) AS DECIMAL(18,2)) AS Credit
-    FROM Finance.dbo.CreditNote cn
+    FROM dbo.CreditNote cn
     OUTER APPLY
     (
         SELECT TOP (1) coa.HeadName
-        FROM Finance.dbo.CreditNoteLine cnl
+        FROM dbo.CreditNoteLine cnl
         INNER JOIN dbo.Item itm
             ON itm.Id = cnl.ItemId
-        INNER JOIN Finance.dbo.ChartOfAccount coa
+        INNER JOIN dbo.ChartOfAccount coa
             ON coa.Id = itm.BudgetLineId
            AND coa.IsActive = 1
         WHERE cnl.CreditNoteId = cn.Id
@@ -1787,11 +1787,11 @@ ORDER BY
         r.Remarks             AS Description,
         CAST(0.00 AS DECIMAL(18,2))                        AS Debit,
         CAST(ISNULL(r.AmountReceived, 0.00) AS DECIMAL(18,2)) AS Credit
-    FROM Finance.dbo.ArReceipt r
-    INNER JOIN Finance.dbo.Customer c
+    FROM dbo.ArReceipt r
+    INNER JOIN dbo.Customer c
         ON c.Id = r.CustomerId
        AND c.IsActive = 1
-    INNER JOIN Finance.dbo.ChartOfAccount coa
+    INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = c.BudgetLineId
        AND coa.IsActive = 1
     WHERE r.IsActive = 1
@@ -1811,11 +1811,11 @@ ORDER BY
         NULL                  AS Description,
         CAST(0.00 AS DECIMAL(18,2)) AS Debit,
         CAST(ISNULL(pin.Amount, 0.00) + ISNULL(pin.Tax, 0.00) AS DECIMAL(18,2)) AS Credit
-    FROM Finance.dbo.SupplierInvoicePin pin
-    INNER JOIN Finance.dbo.Suppliers s
+    FROM dbo.SupplierInvoicePin pin
+    INNER JOIN dbo.Suppliers s
         ON s.Id = pin.SupplierId
        AND s.IsActive = 1
-    INNER JOIN Finance.dbo.ChartOfAccount coa
+    INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = s.BudgetLineId
        AND coa.IsActive = 1
     WHERE pin.IsActive = 1
@@ -1835,11 +1835,11 @@ ORDER BY
         sp.Notes              AS Description,
         CAST(ISNULL(sp.Amount, 0.00) AS DECIMAL(18,2)) AS Debit,
         CAST(0.00 AS DECIMAL(18,2))                     AS Credit
-    FROM Finance.dbo.SupplierPayment sp
-    INNER JOIN Finance.dbo.Suppliers s
+    FROM dbo.SupplierPayment sp
+    INNER JOIN dbo.Suppliers s
         ON s.Id = sp.SupplierId
        AND s.IsActive = 1
-    INNER JOIN Finance.dbo.ChartOfAccount coa
+    INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = s.BudgetLineId
        AND coa.IsActive = 1
     WHERE sp.IsActive = 1
@@ -1859,11 +1859,11 @@ ORDER BY
         dn.Reason             AS Description,
         CAST(ISNULL(dn.Amount, 0.00) AS DECIMAL(18,2)) AS Debit,
         CAST(0.00 AS DECIMAL(18,2))                    AS Credit
-    FROM Finance.dbo.SupplierDebitNote dn
-    INNER JOIN Finance.dbo.Suppliers s
+    FROM dbo.SupplierDebitNote dn
+    INNER JOIN dbo.Suppliers s
         ON s.Id = dn.SupplierId
        AND s.IsActive = 1
-    INNER JOIN Finance.dbo.ChartOfAccount coa
+    INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = s.BudgetLineId
        AND coa.IsActive = 1
     WHERE dn.IsActive = 1
@@ -1883,10 +1883,10 @@ ORDER BY
         mj.Description        AS Description,
         CAST(SUM(ISNULL(mjl.Debit,  0.00)) AS DECIMAL(18,2)) AS Debit,
         CAST(SUM(ISNULL(mjl.Credit, 0.00)) AS DECIMAL(18,2)) AS Credit
-    FROM Finance.dbo.ManualJournal mj
-    INNER JOIN Finance.dbo.ManualJournalLine mjl
+    FROM dbo.ManualJournal mj
+    INNER JOIN dbo.ManualJournalLine mjl
         ON mjl.JournalId = mj.Id
-    INNER JOIN Finance.dbo.ChartOfAccount coa
+    INNER JOIN dbo.ChartOfAccount coa
         ON coa.Id = mjl.AccountId
        AND coa.IsActive = 1
     WHERE mj.IsActive   = 1
