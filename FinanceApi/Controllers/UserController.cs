@@ -1,4 +1,5 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,10 +13,12 @@ namespace FinanceApi.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _service;
+        private readonly ApplicationDbContext _context;
 
-        public UserController(IUserService service)
+        public UserController(IUserService service,ApplicationDbContext applicationDbContext)
         {
             _service = service;
+            _context = applicationDbContext;
         }
 
         [HttpGet("getAll")]
@@ -158,6 +161,17 @@ namespace FinanceApi.Controllers
             if (user == null) return NotFound();
             return Ok(user);
         }
+        [HttpGet("departments")]
+        public IActionResult GetDepartments()
+        {
+            var list = _context.Department
+                .Where(x => x.IsActive)
+                .Select(x => new { id = x.Id, name = x.DepartmentName })
+                .ToList();
+
+            return Ok(new { data = list });
+        }
+
 
 
     }
