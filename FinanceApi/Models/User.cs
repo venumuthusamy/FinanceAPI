@@ -52,6 +52,7 @@
         public int DepartmentId { get; set; }
         public List<int> ApprovalLevelIds { get; set; } = new();
         public List<string> ApprovalLevelNames { get; set; } = new();
+        public List<string> Teams { get; set; } = new();
     }
 
 }
