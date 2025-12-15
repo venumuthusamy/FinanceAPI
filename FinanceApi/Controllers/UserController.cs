@@ -100,7 +100,6 @@ namespace FinanceApi.Controllers
 
         }
 
-        [Authorize]
         [HttpPost("changePassword")]
         public async Task<ActionResult<LoginResponseDto>> ChangePassword(ChangePasswordDto changePasswordDto)
         {
