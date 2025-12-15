@@ -49,22 +49,35 @@ namespace FinanceApi.Services
             return await _repository.DeleteAsync(id);
         }
 
-        public async Task<LoginResponseDto> LoginAsync(UserDto userDto)
+        public async Task<LoginResponseDto?> LoginAsync(UserDto userDto)
         {
-
             var user = await _repository.GetByUsernameAsync(userDto.Username);
+
             if (user == null || !BCrypt.Net.BCrypt.Verify(userDto.Password, user.PasswordHash))
                 return null;
 
             var token = GenerateJwtToken(user, _config);
+
+            // approval roles
+            var roleIds = await _repository.GetRoleIdsAsync(user.Id);
+            var roleNames = await _repository.GetRoleNamesAsync(user.Id);
+
+            // teams
+            var teams = await _repository.GetTeamNamesAsync(user.Id);
+
             return new LoginResponseDto
             {
                 UserId = user.Id,
                 Username = user.Username,
                 Token = token,
-                Email = user.Email,
+                Email = user.Email ?? "",
+
+                Teams = teams,
+                ApprovalLevelIds = roleIds,
+                ApprovalLevelNames = roleNames
             };
         }
+
 
         private string GenerateJwtToken(User user, IConfiguration config)
         {

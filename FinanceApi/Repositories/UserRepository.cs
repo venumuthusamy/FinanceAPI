@@ -1,11 +1,13 @@
-﻿using FinanceApi.Models;
-using FinanceApi.Data;
-using Microsoft.EntityFrameworkCore;
+﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.Models;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Graph.Models;
 using System.Net;
 
 namespace FinanceApi.Repositories
 {
+    using AppUser = FinanceApi.Models.User;
     public class UserRepository : IUserRepository
     {
         private readonly ApplicationDbContext _context;
@@ -15,28 +17,29 @@ namespace FinanceApi.Repositories
             _context = context;
         }
 
-        public async Task<List<User>> GetAllAsync()
+        public async Task<List<AppUser>> GetAllAsync()
         {
             return await _context.User.Where(c => c.IsActive).OrderBy(c => c.Id).ToListAsync();
         }
 
-        public async Task<User?> GetByIdAsync(int id)
+        public async Task<AppUser?> GetByIdAsync(int id)
         {
             return await _context.User.FirstOrDefaultAsync(s => s.Id == id && s.IsActive);
         }
 
-        public async Task<User> CreateAsync(UserDto userDto)
+        public async Task<AppUser> CreateAsync(UserDto userDto)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
 
-            var user = new User
+            var user = new AppUser
             {
                 Username = userDto.Username,
                 Email = userDto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(userDto.Password ?? ""),
                 CreatedBy = "System",
                 CreatedDate = DateTime.UtcNow,
-                IsActive = true
+                IsActive = true,
+                DepartmentId = userDto.DepartmentId
             };
 
             _context.User.Add(user);
@@ -60,7 +63,7 @@ namespace FinanceApi.Repositories
         }
 
 
-        public async Task<User?> UpdateAsync(int id, UserDto updatedUser)
+        public async Task<AppUser?> UpdateAsync(int id, UserDto updatedUser)
         {
             using var tx = await _context.Database.BeginTransactionAsync();
 
@@ -69,7 +72,7 @@ namespace FinanceApi.Repositories
 
             existingUser.Username = updatedUser.Username;
             existingUser.Email = updatedUser.Email;
-
+            existingUser.DepartmentId = updatedUser.DepartmentId;
             if (!string.IsNullOrWhiteSpace(updatedUser.Password))
                 existingUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(updatedUser.Password);
 
@@ -110,7 +113,7 @@ namespace FinanceApi.Repositories
             return true;
         }
 
-        public async Task<User?> GetByUsernameAsync(string username)
+        public async Task<AppUser?> GetByUsernameAsync(string username)
         {
             return await _context.User.FirstOrDefaultAsync(u => u.Username == username);
         }
@@ -120,7 +123,7 @@ namespace FinanceApi.Repositories
             await _context.SaveChangesAsync();
         }
 
-        public async Task<User?> GetUserByEmailAsync(string email)
+        public async Task<AppUser?> GetUserByEmailAsync(string email)
         {
             return await _context.User.FirstOrDefaultAsync(u => u.Email == email);
         }
@@ -176,31 +179,24 @@ namespace FinanceApi.Repositories
             _context.PasswordResetToken.Remove(token);
             await _context.SaveChangesAsync();
         }
-        public async Task<List<UserViewDto>> GetAllViewAsync()
+        public async Task<List<UserViewDto>> GetAllViewAsync(int page = 1, int pageSize = 50)
         {
             return await _context.User
-                .Where(u => u.IsActive)   // ✅ bool
+                .AsNoTracking()
+                .Where(u => u.IsActive)
                 .OrderBy(u => u.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
                 .Select(u => new UserViewDto
                 {
                     Id = u.Id,
                     Username = u.Username,
                     Email = u.Email ?? "",
-                    IsActive = u.IsActive,  // ✅ bool
-
-                    ApprovalLevelIds = _context.UserApprovalLevel
-                        .Where(x => x.UserId == u.Id)
-                        .Select(x => x.ApprovalLevelId)
-                        .ToList(),
-
-                    ApprovalLevelNames =
-                        (from ual in _context.UserApprovalLevel
-                         join al in _context.ApprovalLevel on ual.ApprovalLevelId equals al.Id
-                         where ual.UserId == u.Id && al.IsActive == true
-                         select al.Name).ToList()
+                    IsActive = u.IsActive,
                 })
                 .ToListAsync();
         }
+
 
         public async Task<UserViewDto?> GetViewByIdAsync(int id)
         {
@@ -212,6 +208,8 @@ namespace FinanceApi.Repositories
                     Username = u.Username,
                     Email = u.Email ?? "",
                     IsActive = u.IsActive,
+                    DepartmentId = u.DepartmentId,
+
 
                     ApprovalLevelIds = _context.UserApprovalLevel
                         .Where(x => x.UserId == u.Id)
@@ -227,6 +225,38 @@ namespace FinanceApi.Repositories
                 .FirstOrDefaultAsync();
         }
 
+        public async Task<List<int>> GetRoleIdsAsync(int userId)
+        {
+            return await _context.UserApprovalLevel
+                .Where(x => x.UserId == userId)
+                .Select(x => x.ApprovalLevelId)
+                .Distinct()
+                .ToListAsync();
+        }
+
+        public async Task<List<string>> GetRoleNamesAsync(int userId)
+        {
+            return await (
+                from ual in _context.UserApprovalLevel
+                join al in _context.ApprovalLevel on ual.ApprovalLevelId equals al.Id
+                where ual.UserId == userId && al.IsActive == true
+
+                select al.Name
+            ).Distinct().ToListAsync();
+        }
+        public async Task<List<string>> GetTeamNamesAsync(int userId)
+        {
+            // single department team (quick)
+            var team = await _context.User
+                .Where(u => u.Id == userId)
+                .Join(_context.Department,
+                      u => u.DepartmentId,
+                      d => d.Id,
+                      (u, d) => d.DepartmentName)
+                .FirstOrDefaultAsync();
+
+            return string.IsNullOrWhiteSpace(team) ? new List<string>() : new List<string> { team };
+        }
 
 
     }

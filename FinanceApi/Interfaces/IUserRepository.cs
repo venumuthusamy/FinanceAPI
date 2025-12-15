@@ -6,8 +6,9 @@ namespace FinanceApi.Interfaces
     {
         Task<List<User>> GetAllAsync();
         Task<User?> GetByIdAsync(int id);
-        Task<User> CreateAsync(UserDto userDto);
-        Task<User?> UpdateAsync(int id, UserDto userDto);
+
+        Task<User> CreateAsync(UserDto dto);
+        Task<User?> UpdateAsync(int id, UserDto dto);
         Task<bool> DeleteAsync(int id);
         Task<User?> GetByUsernameAsync(string username);
         Task SaveChangesAsync();
@@ -18,9 +19,11 @@ namespace FinanceApi.Interfaces
         Task SavePasswordHistoryAsync(int userId, string passwordHash);
         Task<bool> UpdatePasswordAsync(int userId, string hashedPassword);
         Task DeleteTokenAsync(PasswordResetToken token);
-        Task<List<UserViewDto>> GetAllViewAsync();
+        Task<List<UserViewDto>> GetAllViewAsync(int page = 1, int pageSize = 50);
         Task<UserViewDto?> GetViewByIdAsync(int id);
-
+        Task<List<string>> GetRoleNamesAsync(int userId);
+        Task<List<int>> GetRoleIdsAsync(int userId);
+        Task<List<string>> GetTeamNamesAsync(int userId);
 
     }
 }
