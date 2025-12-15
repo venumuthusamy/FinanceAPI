@@ -193,6 +193,24 @@ namespace FinanceApi.Repositories
                     Username = u.Username,
                     Email = u.Email ?? "",
                     IsActive = u.IsActive,
+
+                    // ✅ Approval Roles
+                    ApprovalLevelNames = _context.UserApprovalLevel
+                        .Where(x => x.UserId == u.Id)
+                        .Join(_context.ApprovalLevel,
+                              x => x.ApprovalLevelId,
+                              r => r.Id,
+                              (x, r) => r.Name)
+                        .ToList(),
+
+                    // ✅ Teams (DepartmentName)
+                    Teams = _context.User
+                        .Where(t => t.Id == u.Id)
+                        .Join(_context.Department,
+                              t => t.DepartmentId,
+                              d => d.Id,
+                              (t, d) => d.DepartmentName)
+                        .ToList()
                 })
                 .ToListAsync();
         }
