@@ -16,36 +16,23 @@ public class OcrController : ControllerBase
     }
 
     [HttpPost("extract")]
-    [Consumes("multipart/form-data")]
-    public async Task<ActionResult<OcrResponseDto>> Extract(
-     [FromForm] OcrExtractRequest req)
+    public async Task<ActionResult<OcrResponseDto>> Extract([FromForm] OcrExtractRequest req)
     {
-        var createdBy = string.IsNullOrWhiteSpace(req.CreatedBy)
-            ? "system"
-            : req.CreatedBy;
-
-        var result = await _ocr.ExtractAndStoreAsync(
-            req.File,
-            req.Lang,
-            module: "PIN-DRAFT",
-            refNo: null,
-            createdBy
-        );
-
-        // ❌ NO SupplierInvoicePin insert here
-        return Ok(result);
+        var lang = string.IsNullOrWhiteSpace(req.Lang) ? "eng" : req.Lang!;
+        var res = await _ocr.ExtractAnyAsync(req.File, lang, req.Module, req.RefNo, req.CreatedBy);
+        return Ok(res);
     }
 
 
     // ✅ Without GRN -> create Draft PIN
-    [HttpPost("pin/create")]
-    [Consumes("multipart/form-data")]
-    public async Task<ActionResult> CreatePin([FromForm] OcrCreatePinRequest req)
-    {
-        var createdBy = string.IsNullOrWhiteSpace(req.CreatedBy) ? "system" : req.CreatedBy;
+    //[HttpPost("pin/create")]
+    //[Consumes("multipart/form-data")]
+    //public async Task<ActionResult> CreatePin([FromForm] OcrCreatePinRequest req)
+    //{
+    //    var createdBy = string.IsNullOrWhiteSpace(req.CreatedBy) ? "system" : req.CreatedBy;
 
-        var res = await _ocr.CreateDraftPinFromUploadAsync(req.File, req.Lang, req.CurrencyId, createdBy);
+    //    var res = await _ocr.CreateDraftPinFromUploadAsync(req.File, req.Lang, req.CurrencyId, createdBy);
 
-        return Ok(new { pinId = res.pinId, ocrId = res.ocrId });
-    }
+    //    return Ok(new { pinId = res.pinId, ocrId = res.ocrId });
+    //}
 }

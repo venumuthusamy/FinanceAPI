@@ -1,242 +1,247 @@
-﻿using FinanceApi.Data;
-using FinanceApi.ModelDTO;
-
-using FinanceApi.Models;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
-using System.Text.RegularExpressions;
+﻿using FinanceApi.ModelDTO;
+using ImageMagick;
 using Tesseract;
+using UglyToad.PdfPig;
+using UglyToad.PdfPig.Content;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
+using Page = UglyToad.PdfPig.Content.Page;
 
-namespace FinanceApi.Services;
-
-public interface IOcrService
+namespace FinanceApi.Services
 {
-    Task<OcrResponseDto> ExtractAndStoreAsync(IFormFile file, string? lang, string? module, string? refNo, string createdBy);
-    Task<(int pinId, int ocrId)> CreateDraftPinFromUploadAsync(IFormFile file, string? lang, int? currencyId, string createdBy);
-}
-
-public class OcrService : IOcrService
-{
-    private readonly IWebHostEnvironment _env;
-    private readonly ApplicationDbContext _db;
-
-    public OcrService(IWebHostEnvironment env, ApplicationDbContext db)
+    public interface IOcrService
     {
-        _env = env;
-        _db = db;
+        Task<OcrResponseDto> ExtractAnyAsync(IFormFile file, string lang, string? module, string? refNo, string? createdBy);
     }
-
-    public async Task<OcrResponseDto> ExtractAndStoreAsync(IFormFile file, string? lang, string? module, string? refNo, string createdBy)
+    public class OcrService:IOcrService
     {
-        var (filePath, contentType) = await SaveUploadAsync(file);
+        private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _cfg;
 
-        EnsureImage(contentType);
-
-        var ocr = await RunTesseractAsync(filePath, string.IsNullOrWhiteSpace(lang) ? "eng" : lang!.Trim());
-
-        var parsed = ParseInvoiceFields(ocr.Text);
-        var parsedJson = JsonSerializer.Serialize(parsed);
-
-        var doc = new OcrDocument
+        public OcrService(IWebHostEnvironment env, IConfiguration cfg)
         {
-            Module = module,
-            RefNo = refNo,
-            FileName = file.FileName,
-            ContentType = contentType,
-            FilePath = filePath,
-            ExtractedText = ocr.Text,
-            ParsedJson = parsedJson,
-            MeanConfidence = (decimal)ocr.MeanConfidence, // ✅ decimal in DB
-            CreatedBy = createdBy
-        };
-
-        _db.OcrDocuments.Add(doc);
-        await _db.SaveChangesAsync();
-
-        return new OcrResponseDto
-        {
-            OcrId = doc.Id,
-            Text = ocr.Text,
-            MeanConfidence = ocr.MeanConfidence,
-            WordCount = ocr.WordCount,
-            Parsed = parsed
-        };
-    }
-
-    // ✅ OPTION-2: No GRN -> create Draft PIN directly
-    public async Task<(int pinId, int ocrId)> CreateDraftPinFromUploadAsync(IFormFile file, string? lang, int? currencyId, string createdBy)
-    {
-        // 1) Run OCR + store OCR log
-        var resp = await ExtractAndStoreAsync(file, lang, module: "PIN", refNo: null, createdBy: createdBy);
-
-        // 2) Create SupplierInvoicePin draft
-        // NOTE: LinesJson empty for now; later you can parse items & build lines
-        var invNo = string.IsNullOrWhiteSpace(resp.Parsed.InvoiceNo) ? "PIN-DRAFT" : resp.Parsed.InvoiceNo!.Trim();
-        var invDate = ParseDate(resp.Parsed.InvoiceDate) ?? DateTime.Today;
-
-        var amount = resp.Parsed.Total ?? 0m;
-        var taxAmount = resp.Parsed.TaxAmount ?? 0m;
-
-        var pin = new SupplierInvoicePin
-        {
-            InvoiceNo = invNo,
-            InvoiceDate = invDate,
-            Amount = amount,
-            Tax = taxAmount,
-            CurrencyId = currencyId ?? 1,
-            Status = 1, // ✅ Draft/Hold
-            LinesJson = "[]",
-            IsActive = true,
-            CreatedDate = DateTime.Now,
-            UpdatedDate = DateTime.Now,
-            CreatedBy = createdBy,
-            UpdatedBy = createdBy,
-            GrnId = null,
-            SupplierId = null
-        };
-
-        _db.SupplierInvoicePin.Add(pin);
-        await _db.SaveChangesAsync();
-
-        return (pin.Id, resp.OcrId);
-    }
-
-    // ---------------- helpers ----------------
-
-    private async Task<(string filePath, string contentType)> SaveUploadAsync(IFormFile file)
-    {
-        var uploads = Path.Combine(_env.ContentRootPath, "wwwroot", "uploads", "ocr");
-        Directory.CreateDirectory(uploads);
-
-        var safeName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}_{Path.GetFileName(file.FileName)}";
-        var filePath = Path.Combine(uploads, safeName);
-
-        await using var fs = new FileStream(filePath, FileMode.Create);
-        await file.CopyToAsync(fs);
-
-        var contentType = (file.ContentType ?? "").ToLowerInvariant();
-        return (filePath, contentType);
-    }
-
-    private static void EnsureImage(string contentType)
-    {
-        var allowed = new HashSet<string> { "image/png", "image/jpeg", "image/jpg", "image/webp" };
-        if (!allowed.Contains(contentType))
-            throw new InvalidOperationException("Only image files supported. (PDF needs PDF->image conversion.)");
-    }
-
-    public async Task<OcrTextResult> RunTesseractAsync(string imagePath, string lang)
-    {
-        // ✅ runtime base: bin\x64\Debug\net8.0\
-        var baseDir = AppContext.BaseDirectory;
-
-        // ✅ IMPORTANT: engine needs tessdata folder path
-        var tessdataDir = Path.Combine(baseDir, "OCR", "tessdata");
-
-        if (!Directory.Exists(tessdataDir))
-            throw new Exception($"tessdata folder not found: {tessdataDir}");
-
-        // ✅ check required traineddata files
-        foreach (var l in (lang ?? "eng").Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var trained = Path.Combine(tessdataDir, $"{l}.traineddata");
-            if (!File.Exists(trained))
-                throw new Exception($"Missing traineddata: {trained}");
+            _env = env;
+            _cfg = cfg;
         }
 
-        return await Task.Run(() =>
+        public async Task<OcrResponseDto> ExtractAnyAsync(IFormFile file, string lang, string? module, string? refNo, string? createdBy)
         {
-            try
+            if (file == null || file.Length == 0) throw new InvalidOperationException("File is empty");
+
+            // save original
+            var uploads = Path.Combine(_env.ContentRootPath, "Uploads", "OCR");
+            Directory.CreateDirectory(uploads);
+
+            var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+            var safeName = $"{DateTime.Now:yyyyMMdd_HHmmss}_{Guid.NewGuid():N}{ext}";
+            var savedPath = Path.Combine(uploads, safeName);
+
+            await using (var fs = new FileStream(savedPath, FileMode.Create))
+                await file.CopyToAsync(fs);
+
+            string extractedText = "";
+            float conf = 0;
+            int wordCount = 0;
+
+            if (ext == ".pdf" || file.ContentType.Contains("pdf", StringComparison.OrdinalIgnoreCase))
             {
-                // EngineMode.Default is safest
-                using var engine = new TesseractEngine(tessdataDir, lang, EngineMode.Default);
+                // 1) Try digital PDF text first
+                extractedText = ExtractPdfText(savedPath);
 
-                using var img = Pix.LoadFromFile(imagePath);
-                using var page = engine.Process(img);
-
-                var text = page.GetText() ?? "";
-                var mean = (float)page.GetMeanConfidence(); // float already
-                var words = string.IsNullOrWhiteSpace(text)
-                    ? 0
-                    : text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
-
-                return new OcrTextResult
+                if (CountWords(extractedText) < 20) // scanned pdf likely
                 {
-                    Text = text.Trim(),
-                    MeanConfidence = mean,
-                    WordCount = words
-                };
+                    var dpi = _cfg.GetValue<int?>("Ocr:PdfDpi") ?? 300;
+                    var pngs = RenderPdfToPngs(savedPath, dpi);
+                    var ocr = RunTesseractOnImages(pngs, lang);
+                    extractedText = ocr.Text;
+                    conf = ocr.MeanConfidence;
+                    wordCount = ocr.WordCount;
+
+                    // cleanup temp pngs
+                    foreach (var p in pngs) TryDelete(p);
+                }
+                else
+                {
+                    wordCount = CountWords(extractedText);
+                    conf = 0.99f; // digital text (not OCR)
+                }
             }
-            catch (Exception ex)
+            else
             {
-                // very clear debug message
-                throw new Exception(
-                    $"Tesseract init failed.\n" +
-                    $"BaseDir={baseDir}\n" +
-                    $"TessdataDir={tessdataDir}\n" +
-                    $"Lang={lang}\n" +
-                    $"Image={imagePath}\n" +
-                    $"Inner={ex.Message}", ex);
+                // image
+                var ocr = RunTesseractOnImage(savedPath, lang);
+                extractedText = ocr.Text;
+                conf = ocr.MeanConfidence;
+                wordCount = ocr.WordCount;
             }
-        });
-    }
 
-    private static int CountWords(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return 0;
-        return Regex.Matches(text.Trim(), @"\S+").Count;
-    }
+            var parsed = ParseInvoice(extractedText);
 
-    private static DateTime? ParseDate(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        if (DateTime.TryParse(s, out var d)) return d.Date;
+            // NOTE: Here you can store OCR doc to DB and set OcrId from DB.
+            // For now return dummy id
+            return new OcrResponseDto
+            {
+                OcrId = 1,
+                Text = extractedText,
+                MeanConfidence = conf,
+                WordCount = wordCount,
+                Parsed = parsed
+            };
+        }
 
-        // if OCR gives dd/MM/yyyy
-        if (DateTime.TryParseExact(s, "dd/MM/yyyy", null, System.Globalization.DateTimeStyles.None, out var d2))
-            return d2.Date;
+        // ---------------- PDF TEXT (Digital) ----------------
+        private string ExtractPdfText(string pdfPath)
+        {
+            var sb = new StringBuilder();
+            using var document = PdfDocument.Open(pdfPath);
+            foreach (Page page in document.GetPages())
+            {
+                sb.AppendLine(page.Text);
+                sb.AppendLine();
+            }
+            return sb.ToString();
+        }
 
-        // if OCR gives yyyy-MM-dd
-        if (DateTime.TryParseExact(s, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var d3))
-            return d3.Date;
+        // ---------------- PDF -> PNG (Scanned) ----------------
+        private List<string> RenderPdfToPngs(string pdfPath, int dpi)
+        {
+            // Requires Ghostscript installed + in PATH
+            var outDir = Path.Combine(Path.GetTempPath(), "ocr_pdf_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(outDir);
 
-        return null;
-    }
+            var outFiles = new List<string>();
 
-    // very basic parsing (improve later)
-    private static OcrParsedDto ParseInvoiceFields(string text)
-    {
-        var dto = new OcrParsedDto();
+            var settings = new MagickReadSettings
+            {
+                Density = new Density(dpi),
+                FrameIndex = 0,
+                FrameCount = 0
+            };
 
-        // Invoice No
-        dto.InvoiceNo = Regex.Match(text, @"Invoice\s*No\s*[:\-]?\s*(.+)", RegexOptions.IgnoreCase)
-            .Groups.Count > 1 ? Regex.Match(text, @"Invoice\s*No\s*[:\-]?\s*(.+)", RegexOptions.IgnoreCase).Groups[1].Value.Trim() : null;
+            using var images = new MagickImageCollection();
+            images.Read(pdfPath, settings);
 
-        // Invoice Date
-        var mDate = Regex.Match(text, @"Invoice\s*Date\s*[:\-]?\s*([0-9]{1,2}[/\-][0-9]{1,2}[/\-][0-9]{2,4})", RegexOptions.IgnoreCase);
-        if (mDate.Success) dto.InvoiceDate = mDate.Groups[1].Value.Trim();
+            int i = 0;
+            foreach (var img in images)
+            {
+                img.Alpha(AlphaOption.Remove);
+                img.ColorSpace = ColorSpace.sRGB;
+                img.Format = MagickFormat.Png;
 
-        // Grand Total
-        var mTotal = Regex.Match(text, @"GRAND\s*TOTAL\s*[:\-]?\s*([0-9,]+(\.[0-9]{1,2})?)", RegexOptions.IgnoreCase);
-        if (mTotal.Success) dto.Total = ToDecimal(mTotal.Groups[1].Value);
+                var outPath = Path.Combine(outDir, $"page_{++i}.png");
+                img.Write(outPath);
+                outFiles.Add(outPath);
+            }
 
-        // Tax % (GST 18%)
-        var mTaxPct = Regex.Match(text, @"GST\s*([0-9]{1,2}(\.[0-9]{1,2})?)\s*%", RegexOptions.IgnoreCase);
-        if (mTaxPct.Success) dto.TaxPercent = ToDecimal(mTaxPct.Groups[1].Value);
+            return outFiles;
+        }
 
-        // Tax Amount
-        var mTaxAmt = Regex.Match(text, @"Tax.*[:\-]?\s*([0-9,]+(\.[0-9]{1,2})?)", RegexOptions.IgnoreCase);
-        if (mTaxAmt.Success) dto.TaxAmount = ToDecimal(mTaxAmt.Groups[1].Value);
+        // ---------------- TESSERACT ----------------
+        private OcrTextResult RunTesseractOnImage(string imagePath, string lang)
+            => RunTesseractOnImages(new List<string> { imagePath }, lang);
 
-        return dto;
-    }
+        private OcrTextResult RunTesseractOnImages(List<string> imagePaths, string lang)
+        {
+            var tessdata = Path.Combine(_env.ContentRootPath, _cfg["Ocr:TessdataRelativePath"] ?? "OCR\\tessdata");
 
-    private static decimal? ToDecimal(string? s)
-    {
-        if (string.IsNullOrWhiteSpace(s)) return null;
-        s = s.Replace(",", "").Trim();
-        return decimal.TryParse(s, out var d) ? d : null;
+            if (!Directory.Exists(tessdata))
+                throw new DirectoryNotFoundException($"tessdata not found: {tessdata}");
+
+            // must contain eng.traineddata etc
+            var sb = new StringBuilder();
+            float totalConf = 0;
+            int totalWords = 0;
+            int pageCount = 0;
+
+            using var engine = new TesseractEngine(tessdata, lang, EngineMode.Default);
+
+            foreach (var p in imagePaths)
+            {
+                using var img = Pix.LoadFromFile(p);
+                using var page = engine.Process(img);
+                var text = page.GetText() ?? "";
+                var conf = page.GetMeanConfidence();
+
+                sb.AppendLine(text);
+                sb.AppendLine("\n--- PAGE BREAK ---\n");
+
+                totalConf += conf;
+                totalWords += CountWords(text);
+                pageCount++;
+            }
+
+            return new OcrTextResult
+            {
+                Text = sb.ToString(),
+                MeanConfidence = pageCount == 0 ? 0 : totalConf / pageCount,
+                WordCount = totalWords
+            };
+        }
+
+        // ---------------- PARSER (basic) ----------------
+        private OcrParsedDto ParseInvoice(string text)
+        {
+            var p = new OcrParsedDto();
+            if (string.IsNullOrWhiteSpace(text)) return p;
+
+            // Supplier name (take first meaningful line)
+            var lines = text.Split('\n').Select(x => x.Trim()).Where(x => x.Length > 3).ToList();
+            p.SupplierName = lines.FirstOrDefault();
+
+            p.InvoiceNo = FindByRegex(text, @"Invoice\s*No\s*[:\-]?\s*([A-Za-z0-9\-\/]+)")
+                       ?? FindByRegex(text, @"\bINV[-\/]?\d{2,}\b");
+
+            var dateRaw = FindByRegex(text, @"Invoice\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})");
+            p.InvoiceDate = ToIsoDate(dateRaw);
+
+            p.SubTotal = FindMoney(text, @"Sub\s*Total\s*[:\-]?\s*([0-9,]+\.\d{2})");
+            p.Discount = FindMoney(text, @"Discount\s*[:\-]?\s*([0-9,]+\.\d{2})");
+            p.TaxAmount = FindMoney(text, @"Tax.*?\s*[:\-]?\s*([0-9,]+\.\d{2})");
+            p.Total = FindMoney(text, @"Grand\s*Total\s*[:\-]?\s*([0-9,]+\.\d{2})")
+                   ?? FindMoney(text, @"TOTAL\s*[:\-]?\s*([0-9,]+\.\d{2})");
+
+            var pct = FindByRegex(text, @"GST\s*(\d{1,2})\%") ?? FindByRegex(text, @"Tax.*?(\d{1,2})\%");
+            if (decimal.TryParse(pct, out var dp)) p.TaxPercent = dp;
+
+            return p;
+        }
+
+        private static string? FindByRegex(string text, string pattern)
+        {
+            var m = Regex.Match(text, pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline);
+            if (!m.Success) return null;
+            return m.Groups.Count > 1 ? m.Groups[1].Value.Trim() : m.Value.Trim();
+        }
+
+        private static decimal? FindMoney(string text, string pattern)
+        {
+            var s = FindByRegex(text, pattern);
+            if (string.IsNullOrWhiteSpace(s)) return null;
+            s = s.Replace(",", "").Trim();
+            if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) return v;
+            return null;
+        }
+
+        private static string? ToIsoDate(string? d)
+        {
+            if (string.IsNullOrWhiteSpace(d)) return null;
+            d = d.Trim();
+
+            // dd/MM/yyyy
+            if (DateTime.TryParseExact(d, new[] { "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy" },
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+                return dt.ToString("yyyy-MM-dd");
+
+            return null;
+        }
+
+        private static int CountWords(string s)
+            => Regex.Matches(s ?? "", @"\b\w+\b").Count;
+
+        private static void TryDelete(string path)
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
     }
 }
