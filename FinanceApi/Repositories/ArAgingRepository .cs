@@ -3,7 +3,7 @@ using FinanceApi.ModelDTO;
 using Dapper;
 using System.Data;
 using FinanceApi.Repositories;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
+
 
 public class ArAgingRepository : DynamicRepository, IArAgingRepository
 {

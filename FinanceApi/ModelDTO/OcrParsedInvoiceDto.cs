@@ -5,12 +5,12 @@ namespace FinanceApi.ModelDTO
     public class OcrParsedDto
     {
         public string? InvoiceNo { get; set; }
-        public string? InvoiceDate { get; set; }   // yyyy-MM-dd
+        public string? InvoiceDate { get; set; } // yyyy-MM-dd
         public decimal? Total { get; set; }
         public decimal? TaxPercent { get; set; }
         public decimal? TaxAmount { get; set; }
-
-        // optional vendor name if you want
+        public decimal? Discount { get; set; }
+        public decimal? SubTotal { get; set; }
         public string? SupplierName { get; set; }
     }
 

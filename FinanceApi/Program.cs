@@ -5,6 +5,7 @@ using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Repositories;
 using FinanceApi.Services;
+using FinanceApi.Swagger;
 using FluentScheduler;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -79,6 +80,8 @@ builder.Services.AddScoped<IArReceiptService, ArReceiptService>();
 builder.Services.AddScoped<IJournalRepository, JournalRepository>();
 builder.Services.AddScoped<IJournalService, JournalService>();
 
+
+
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -123,7 +126,10 @@ if (!string.IsNullOrWhiteSpace(jwtSecret))
 
     builder.Services.AddAuthorization();
 }
-
+builder.Services.AddSwaggerGen(c =>
+{
+    c.OperationFilter<FileUploadOperationFilter>();
+});
 // PORT binding
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(port))
