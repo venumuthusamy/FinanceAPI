@@ -53,6 +53,8 @@ namespace FinanceApi.Data
         public DbSet<Suppliers> suppliers { get; set; }
         public DbSet<ApprovalLevel> ApprovalLevel { get; set; }
         public DbSet<UserApprovalLevel> UserApprovalLevel { get; set; }
+        public DbSet<OcrDocument> OcrDocuments { get; set; }
+        public DbSet<SupplierInvoicePin> SupplierInvoicePin { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)

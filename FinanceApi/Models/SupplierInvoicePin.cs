@@ -19,7 +19,7 @@ namespace FinanceApi.Models
         public string? CreatedBy { get; set; }
         public string? UpdatedBy { get; set; }
         public int? GrnId { get; set; }
-        public int SupplierId {  get; set; }
+        public int? SupplierId {  get; set; }
         public int? AdvanceId { get; set; }           // which advance is used
         public decimal? AdvanceApplyAmount { get; set; }
     }
