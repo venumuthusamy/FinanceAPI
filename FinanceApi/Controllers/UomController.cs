@@ -1,5 +1,6 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
 
@@ -42,17 +43,44 @@ namespace FinanceApi.Controllers
         public async Task<ActionResult> Create(Uom uom)
         {
             uom.CreatedDate = DateTime.Now; // match CurrencyController behavior
-            var id = await _service.CreateAsync(uom);
-            ResponseResult data = new ResponseResult(true, "UOM created successfully", id);
-            return Ok(data);
+            //var id = await _service.CreateAsync(uom);
+            //ResponseResult data = new ResponseResult(true, "UOM created successfully", id);
+            //return Ok(data);
+
+            var uomName = await _service.GetByName(uom.Name);
+            if (uomName == null)
+            {
+                uom.CreatedDate = DateTime.Now;
+                var id = await _service.CreateAsync(uom);
+                ResponseResult data = new ResponseResult(true, "UOM  created successfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "UOM  Already Exist.", null);
+                return Ok(data);
+            }
         }
 
         [HttpPut("UpdateUomById/{id}")]
         public async Task<IActionResult> Update(Uom uom)
         {
+            //await _service.UpdateAsync(uom);
+            //ResponseResult data = new ResponseResult(true, "UOM updated successfully.", null);
+            //return Ok(data);
+
+
+            var exists = await _service.NameExistsAsync(uom.Name, uom.Id);
+            if (exists)
+            {
+                // You can also return Conflict(...) if you prefer a 409 status
+                var dup = new ResponseResult(false, "UOM already exists.", null);
+                return Ok(dup);
+            }
+
             await _service.UpdateAsync(uom);
-            ResponseResult data = new ResponseResult(true, "UOM updated successfully.", null);
-            return Ok(data);
+            var ok = new ResponseResult(true, "UOM  updated successfully.", null);
+            return Ok(ok);
         }
 
         [HttpDelete("DeleteUomById/{id}")]

@@ -65,6 +65,26 @@ namespace FinanceApi.Repositories
             await Connection.ExecuteAsync(query, country);
         }
 
+        public async Task<Country> GetByNameAsync(string name)
+        {
+
+            const string query = "SELECT * FROM Country WHERE CountryName = @CountryName and IsActive=1";
+
+            return await Connection.QuerySingleOrDefaultAsync<Country>(query, new { CountryName = name });
+        }
+
+        public async Task<bool> NameExistsAsync(string CountryName, int excludeId)
+        {
+            const string sql = @"
+        SELECT 1
+        FROM Country
+        WHERE IsActive = 1
+          AND Id <> @excludeId
+          AND UPPER(LTRIM(RTRIM(CountryName))) = UPPER(LTRIM(RTRIM(@CountryName)))";
+
+            var found = await Connection.QueryFirstOrDefaultAsync<int?>(sql, new { CountryName, excludeId });
+            return found.HasValue;
+        }
         public async Task DeactivateAsync(int id)
         {
             const string query = "UPDATE Country SET IsActive = 0 WHERE ID = @id";

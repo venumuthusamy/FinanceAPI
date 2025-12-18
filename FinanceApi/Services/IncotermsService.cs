@@ -40,5 +40,15 @@ namespace FinanceApi.Services
             await _repository.DeactivateAsync(id);
         }
 
+        public async Task<IncotermsDTO> GetByName(string name)
+        {
+            return await _repository.GetByNameAsync(name);
+        }
+
+        public async Task<bool> NameExistsAsync(string Name, long excludeId)
+        {
+            return await _repository.NameExistsAsync(Name, excludeId);
+        }
+
     }
 }

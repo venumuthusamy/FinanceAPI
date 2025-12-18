@@ -10,5 +10,9 @@ namespace FinanceApi.Interfaces
         Task<UomDTO> GetById(int id);
         Task UpdateAsync(Uom uom);
         Task DeleteUom(int id);
+
+        Task<UomDTO> GetByName(string name);
+
+        Task<bool> NameExistsAsync(string Name, int excludeId);
     }
 }

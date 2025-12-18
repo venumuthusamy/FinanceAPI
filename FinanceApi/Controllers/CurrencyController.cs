@@ -46,19 +46,45 @@ namespace FinanceApi.Controllers
         [HttpPost("CreateCurrency")]
         public async Task<ActionResult> Create(Currency currencyDTO)
         {
-            currencyDTO.CreatedDate = DateTime.Now;
-            var id = await _service.CreateAsync(currencyDTO);
-            ResponseResult data = new ResponseResult(true, "Currency created successfully", id);
-            return Ok(data);
+            //currencyDTO.CreatedDate = DateTime.Now;
+            //var id = await _service.CreateAsync(currencyDTO);
+            //ResponseResult data = new ResponseResult(true, "Currency created successfully", id);
+            //return Ok(data);
+
+            var currencyName = await _service.GetByName(currencyDTO.CurrencyName);
+            if (currencyName == null)
+            {
+                currencyDTO.CreatedDate = DateTime.Now;
+                var id = await _service.CreateAsync(currencyDTO);
+                ResponseResult data = new ResponseResult(true, "Currency  created successfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "Currency  Already Exist.", null);
+                return Ok(data);
+            }
 
         }
 
         [HttpPut("UpdateCurrencyById/{id}")]
         public async Task<IActionResult> Update(Currency currencyDTO)
         {
+            //await _service.UpdateAsync(currencyDTO);
+            //ResponseResult data = new ResponseResult(true, "Currency updated successfully.", null);
+            //return Ok(data);
+
+            var exists = await _service.NameExistsAsync(currencyDTO.CurrencyName, currencyDTO.Id);
+            if (exists)
+            {
+                // You can also return Conflict(...) if you prefer a 409 status
+                var dup = new ResponseResult(false, "Currency already exists.", null);
+                return Ok(dup);
+            }
+
             await _service.UpdateAsync(currencyDTO);
-            ResponseResult data = new ResponseResult(true, "Currency updated successfully.", null);
-            return Ok(data);
+            var ok = new ResponseResult(true, "Currency  updated successfully.", null);
+            return Ok(ok);
         }
 
         [HttpDelete("DeleteCurrencyById/{id}")]

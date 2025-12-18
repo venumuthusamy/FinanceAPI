@@ -52,5 +52,27 @@ namespace FinanceApi.Repositories
             const string query = "UPDATE State SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
         }
+
+
+        public async Task<StateDto> GetByNameAsync(string name)
+        {
+
+            const string query = "SELECT * FROM State WHERE StateName = @StateName and IsActive=1";
+
+            return await Connection.QuerySingleOrDefaultAsync<StateDto>(query, new { StateName = name });
+        }
+
+        public async Task<bool> NameExistsAsync(string StateName, int excludeId)
+        {
+            const string sql = @"
+        SELECT 1
+        FROM State
+        WHERE IsActive = 1
+          AND Id <> @excludeId
+          AND UPPER(LTRIM(RTRIM(StateName))) = UPPER(LTRIM(RTRIM(@StateName)))";
+
+            var found = await Connection.QueryFirstOrDefaultAsync<int?>(sql, new { StateName, excludeId });
+            return found.HasValue;
+        }
     }
 }

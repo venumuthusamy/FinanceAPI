@@ -11,5 +11,9 @@ namespace FinanceApi.InterfaceService
         Task DeleteLicense(int id);
 
         Task UpdateLicense(IncotermsDTO incotermsDTO);
+
+        Task<bool> NameExistsAsync(string Name, long excludeId);
+
+        Task<IncotermsDTO> GetByName(string name);
     }
 }

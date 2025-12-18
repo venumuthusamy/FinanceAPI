@@ -10,5 +10,8 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(Currency currencyDTO);
         Task UpdateAsync(Currency currencyDTO);
         Task DeactivateAsync(int id);
+
+        Task<CurrencyDTO> GetByNameAsync(string name);
+        Task<bool> NameExistsAsync(string CurrencyName, int excludeId);
     }
 }
