@@ -2,6 +2,7 @@
 using FinanceApi.Interfaces;
 using FinanceApi.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics.Metrics;
 
 namespace FinanceApi.Controllers
 {
@@ -39,18 +40,46 @@ namespace FinanceApi.Controllers
         public async Task<ActionResult> CreateState(State state)
         {
 
-            var id = await _service.CreateAsync(state);
-            ResponseResult data = new ResponseResult(true, "State created sucessfully", id);
-            return Ok(data);
+            //var id = await _service.CreateAsync(state);
+            //ResponseResult data = new ResponseResult(true, "State created sucessfully", id);
+            //return Ok(data);
+
+            var stateName = await _service.GetByName(state.StateName);
+            if (stateName == null)
+            {
+                state.CreatedDate = DateTime.Now;
+                var id = await _service.CreateAsync(state);
+                ResponseResult data = new ResponseResult(true, "state  created successfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "state  Already Exist.", null);
+                return Ok(data);
+            }
 
         }
 
         [HttpPut("updateState")]
         public async Task<IActionResult> updateState(State state)
         {
+            //await _service.UpdateAsync(state);
+            //ResponseResult data = new ResponseResult(true, "State updated successfully.", null);
+            //return Ok(data);
+
+
+
+            var exists = await _service.NameExistsAsync(state.StateName, state.Id);
+            if (exists)
+            {
+                // You can also return Conflict(...) if you prefer a 409 status
+                var dup = new ResponseResult(false, "StateName already exists.", null);
+                return Ok(dup);
+            }
+
             await _service.UpdateAsync(state);
-            ResponseResult data = new ResponseResult(true, "State updated successfully.", null);
-            return Ok(data);
+            var ok = new ResponseResult(true, "State  updated successfully.", null);
+            return Ok(ok);
         }
 
 

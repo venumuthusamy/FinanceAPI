@@ -11,5 +11,8 @@ namespace FinanceApi.InterfaceService
        Task UpdateAsync(FlagIssues flagIssuesDTO);
 
         Task DeleteAsync(int id);
+
+        Task<FlagIssuesDTO> GetByName(string name);
+        Task<bool> NameExistsAsync(string Name, long excludeId);
     }
 }

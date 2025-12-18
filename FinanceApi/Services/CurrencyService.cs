@@ -40,6 +40,16 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id);
         }
+
+        public async Task<CurrencyDTO> GetByName(string name)
+        {
+            return await _repository.GetByNameAsync(name);
+        }
+
+        public async Task<bool> NameExistsAsync(string currencyName, int excludeId)
+        {
+            return await _repository.NameExistsAsync(currencyName, excludeId);
+        }
     }
 
 }

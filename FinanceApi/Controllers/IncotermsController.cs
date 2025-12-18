@@ -2,9 +2,11 @@
 using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics.Metrics;
 
 namespace FinanceApi.Controllers
 {
@@ -34,9 +36,23 @@ namespace FinanceApi.Controllers
         public async Task<ActionResult> Create(IncotermsDTO incotermsDTO)
         {
 
-            var id = await _service.CreateAsync(incotermsDTO);
-            ResponseResult data = new ResponseResult(true, "Incoterms created sucessfully", id);
-            return Ok(data);
+            //var id = await _service.CreateAsync(incotermsDTO);
+            //ResponseResult data = new ResponseResult(true, "Incoterms created sucessfully", id);
+            //return Ok(data);
+
+            var incotermsName = await _service.GetByName(incotermsDTO.IncotermsName);
+            if (incotermsName == null)
+            {
+                incotermsDTO.CreatedDate = DateTime.Now;
+                var id = await _service.CreateAsync(incotermsDTO);
+                ResponseResult data = new ResponseResult(true, "Incoterms  created successfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "Incoterms  Already Exist.", null);
+                return Ok(data);
+            }
 
         }
 
@@ -52,9 +68,21 @@ namespace FinanceApi.Controllers
         [HttpPut("updateIncotermsById/{id}")]
         public async Task<IActionResult> Update(IncotermsDTO incotermsDTO)
         {
+            //await _service.UpdateLicense(incotermsDTO);
+            //ResponseResult data = new ResponseResult(true, "Incoterms updated successfully.", null);
+            //return Ok(data);
+
+            var exists = await _service.NameExistsAsync(incotermsDTO.IncotermsName, incotermsDTO.ID);
+            if (exists)
+            {
+                // You can also return Conflict(...) if you prefer a 409 status
+                var dup = new ResponseResult(false, "Incoterms  name already exists.", null);
+                return Ok(dup);
+            }
+
             await _service.UpdateLicense(incotermsDTO);
-            ResponseResult data = new ResponseResult(true, "Incoterms updated successfully.", null);
-            return Ok(data);
+            var ok = new ResponseResult(true, "Incoterms  updated successfully.", null);
+            return Ok(ok);
         }
 
 

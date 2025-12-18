@@ -9,5 +9,9 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(Country country);
         Task UpdateAsync(Country country);
         Task DeactivateAsync(int id);
+
+        Task<Country> GetByNameAsync(string name);
+
+        Task<bool> NameExistsAsync(string CountryName, int excludeId);
     }
 }

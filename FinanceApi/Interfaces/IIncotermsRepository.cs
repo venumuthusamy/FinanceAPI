@@ -11,5 +11,9 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(IncotermsDTO incotermsDTO);
         Task DeactivateAsync(int id);
         Task UpdateAsync(IncotermsDTO incotermsDTO);
+
+        Task<bool> NameExistsAsync(string IncotermsName, long excludeId);
+
+        Task<IncotermsDTO> GetByNameAsync(string name);
     }
 }

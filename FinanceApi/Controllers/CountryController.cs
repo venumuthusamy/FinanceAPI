@@ -33,9 +33,19 @@ namespace FinanceApi.Controllers
         public async Task<ActionResult> Create(Country country)
         {
 
-            var id = await _service.CreateAsync(country);
-            ResponseResult data = new ResponseResult(true, "Country created sucessfully", id);
-            return Ok(data);
+            var countryName  = await _service.GetByName(country.CountryName);
+            if (countryName == null)
+            {
+                country.CreatedDate = DateTime.Now;
+                var id = await _service.CreateAsync(country);
+                ResponseResult data = new ResponseResult(true, "Country  created successfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "Country  Already Exist.", null);
+                return Ok(data);
+            }
 
         }
 
@@ -52,9 +62,22 @@ namespace FinanceApi.Controllers
         [HttpPut("update")]
         public async Task<IActionResult> Update(Country country)
         {
+            //await _service.UpdateAsync(country);
+            //ResponseResult data = new ResponseResult(true, "Country updated successfully.", null);
+            //return Ok(data);
+
+            // Duplicate name check excluding this record
+            var exists = await _service.NameExistsAsync(country.CountryName, country.Id);
+            if (exists)
+            {
+                // You can also return Conflict(...) if you prefer a 409 status
+                var dup = new ResponseResult(false, "country  name already exists.", null);
+                return Ok(dup);
+            }
+
             await _service.UpdateAsync(country);
-            ResponseResult data = new ResponseResult(true, "Country updated successfully.", null);
-            return Ok(data);
+            var ok = new ResponseResult(true, "country  updated successfully.", null);
+            return Ok(ok);
         }
 
 

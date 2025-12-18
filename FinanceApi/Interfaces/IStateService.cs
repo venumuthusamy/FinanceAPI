@@ -9,5 +9,9 @@ namespace FinanceApi.Interfaces
         Task<int> CreateAsync(State state);
         Task UpdateAsync(State state);
         Task DeleteAsync(int id);
+
+        Task<StateDto> GetByName(string name);
+
+        Task<bool> NameExistsAsync(string StateName, int excludeId);
     }
 }

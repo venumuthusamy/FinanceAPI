@@ -59,5 +59,26 @@ namespace FinanceApi.Repositories
             await Connection.ExecuteAsync(query, new { ID = id });
         }
 
+        public async Task<IncotermsDTO> GetByNameAsync(string name)
+        {
+
+            const string query = "SELECT * FROM Incoterms WHERE IncotermsName = @IncotermsName and IsActive=1";
+
+            return await Connection.QuerySingleOrDefaultAsync<IncotermsDTO>(query, new { IncotermsName = name });
+        }
+
+        public async Task<bool> NameExistsAsync(string IncotermsName, long excludeId)
+        {
+            const string sql = @"
+        SELECT 1
+        FROM Incoterms
+        WHERE IsActive = 1
+          AND Id <> @excludeId
+          AND UPPER(LTRIM(RTRIM(IncotermsName))) = UPPER(LTRIM(RTRIM(@IncotermsName)))";
+
+            var found = await Connection.QueryFirstOrDefaultAsync<int?>(sql, new { IncotermsName, excludeId });
+            return found.HasValue;
+        }
+
     }
 }

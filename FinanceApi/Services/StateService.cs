@@ -39,5 +39,16 @@ namespace FinanceApi.Services
         {
             await _repository.DeactivateAsync(id);
         }
+
+
+        public async Task<StateDto> GetByName(string name)
+        {
+            return await _repository.GetByNameAsync(name);
+        }
+
+        public async Task<bool> NameExistsAsync(string StateName, int excludeId)
+        {
+            return await _repository.NameExistsAsync(StateName, excludeId);
+        }
     }
 }

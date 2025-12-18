@@ -32,10 +32,23 @@ namespace FinanceApi.Controllers
         public async Task<ActionResult> Create(FlagIssues flagIssuesDTO)
         {
 
-            var id = await _service.CreateAsync(flagIssuesDTO);
-            ResponseResult data = new ResponseResult(true, "FlagIssues created sucessfully", id);
-            return Ok(data);
+            //var id = await _service.CreateAsync(flagIssuesDTO);
+            //ResponseResult data = new ResponseResult(true, "FlagIssues created sucessfully", id);
+            //return Ok(data);
 
+            var flagissuesName = await _service.GetByName(flagIssuesDTO.FlagIssuesNames);
+            if (flagissuesName == null)
+            {
+                flagIssuesDTO.CreatedDate = DateTime.Now;
+                var id = await _service.CreateAsync(flagIssuesDTO);
+                ResponseResult data = new ResponseResult(true, "Flag Issues  created successfully", id);
+                return Ok(data);
+            }
+            else
+            {
+                ResponseResult data = new ResponseResult(false, "Flag Issues  Already Exist.", null);
+                return Ok(data);
+            }
         }
 
 
@@ -52,9 +65,21 @@ namespace FinanceApi.Controllers
         [HttpPut("updateFlagissueById/{id}")]
         public async Task<IActionResult> Update(FlagIssues flagIssuesDTO)
         {
+            //await _service.UpdateAsync(flagIssuesDTO);
+            //ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
+            //return Ok(data);
+
+            var exists = await _service.NameExistsAsync(flagIssuesDTO.FlagIssuesNames, flagIssuesDTO.ID);
+            if (exists)
+            {
+                // You can also return Conflict(...) if you prefer a 409 status
+                var dup = new ResponseResult(false, "flagIssuesname already exists.", null);
+                return Ok(dup);
+            }
+
             await _service.UpdateAsync(flagIssuesDTO);
-            ResponseResult data = new ResponseResult(true, "FlagIssues updated successfully.", null);
-            return Ok(data);
+            var ok = new ResponseResult(true, "flagIssuesname  updated successfully.", null);
+            return Ok(ok);
         }
 
 
