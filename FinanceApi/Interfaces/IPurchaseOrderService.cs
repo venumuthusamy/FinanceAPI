@@ -1,4 +1,5 @@
-﻿using FinanceApi.Models;
+﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
 {
@@ -11,5 +12,6 @@ namespace FinanceApi.Interfaces
         Task DeleteLicense(int id);
 
         Task<IEnumerable<PurchaseOrderDto>> GetAllDetailswithGRN();
+        PoQrResponse BuildPoQr(string poNo);
     }
 }

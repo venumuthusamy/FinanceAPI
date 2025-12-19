@@ -1316,7 +1316,19 @@ END
 GO
 
 
+create TABLE [dbo].[PurchaseOrderReceiving](
+	[Id] [int] IDENTITY(1,1) NOT NULL,
+	[PurchaseOrderId] [int] NOT NULL,
+	[PurchaseOrderNo] [varchar](100) NOT NULL,
+	[ItemKey] [nvarchar](200) NOT NULL,
+	[Qty] [decimal](18, 2) NOT NULL,
 
+        IsActive        BIT          NOT NULL DEFAULT(1),
+	[CreatedBy] [varchar](100) NULL,
+	[CreatedDate] [datetime] NOT NULL,
+        UpdatedBy      INT           NULL,
+        UpdatedDate    DATETIME     NULL
+)
 
 
 

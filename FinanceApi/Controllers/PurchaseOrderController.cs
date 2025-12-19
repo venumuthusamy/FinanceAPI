@@ -1,5 +1,6 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -64,6 +65,13 @@ namespace FinanceApi.Controllers
             await _service.DeleteLicense(id);
             ResponseResult data = new ResponseResult(true, "PurchaseOrder Deleted sucessfully", null);
             return Ok(data);
+        }
+
+        [HttpGet("{poNo}/qr")]
+        public ActionResult<PoQrResponse> GetQr(string poNo)
+        {
+            var res = _service.BuildPoQr(poNo);
+            return Ok(res);
         }
     }
 }
