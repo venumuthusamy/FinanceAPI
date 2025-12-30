@@ -80,6 +80,10 @@ builder.Services.AddScoped<IArReceiptService, ArReceiptService>();
 builder.Services.AddScoped<IJournalRepository, JournalRepository>();
 builder.Services.AddScoped<IJournalService, JournalService>();
 
+builder.Services.AddDataProtection();
+builder.Services.AddSingleton<IMobileLinkTokenService, MobileLinkTokenService>();
+
+
 
 
 builder.Services.AddHttpContextAccessor();
@@ -149,6 +153,43 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+app.Use(async (ctx, next) =>
+{
+    // Only protect SPA HTML pages
+    var accept = ctx.Request.Headers.Accept.ToString();
+    var isHtmlGet = ctx.Request.Method == "GET" &&
+                    (accept.Contains("text/html") || ctx.Request.Path.Value?.EndsWith(".html") == true);
+
+    if (!isHtmlGet)
+    {
+        await next();
+        return;
+    }
+
+    // Allow only the mobile receiving route with valid token
+    if (ctx.Request.Path.StartsWithSegments("/purchase/mobilereceiving"))
+    {
+        var poNo = ctx.Request.Query["poNo"].ToString();
+        var t = ctx.Request.Query["t"].ToString();
+
+        var tokenSvc = ctx.RequestServices.GetRequiredService<IMobileLinkTokenService>();
+
+        if (!tokenSvc.TryValidate(t, poNo, out var err))
+        {
+            ctx.Response.StatusCode = 403;
+            await ctx.Response.WriteAsync("Access denied: " + err);
+            return;
+        }
+
+        await next();
+        return;
+    }
+
+    // Block everything else (root, other pages)
+    ctx.Response.StatusCode = 403;
+    await ctx.Response.WriteAsync("Access denied");
+});
+
 
 app.UseStaticFiles();
 
