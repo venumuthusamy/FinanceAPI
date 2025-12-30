@@ -1,7 +1,9 @@
 ﻿using FinanceApi.Interfaces;
+using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Repositories;
+using Microsoft.AspNetCore.Mvc;
 
 namespace FinanceApi.Services
 {
@@ -10,12 +12,16 @@ namespace FinanceApi.Services
         private readonly IPurchaseOrderRepository _repository;
         private readonly IConfiguration _config;
         private readonly ICodeImageService _img;
+        private readonly IMobileLinkTokenService _tokenSvc;
+        
 
-        public PurchaseOrderService(IPurchaseOrderRepository repository, IConfiguration config, ICodeImageService img)
+        public PurchaseOrderService(IPurchaseOrderRepository repository, IConfiguration config, ICodeImageService img,
+            IMobileLinkTokenService tokenSvc)
         {
             _repository = repository;
             _config = config;
             _img = img;
+            _tokenSvc = tokenSvc;
         }
 
         public async Task<IEnumerable<PurchaseOrderDto>> GetAllAsync()
@@ -54,9 +60,10 @@ namespace FinanceApi.Services
         public PoQrResponse BuildPoQr(string poNo)
         {
             // Put your real UI base URL here (NOT Angular :4200 in production)
-            var baseUrl = _config["PublicUiBaseUrl"] ?? "http://192.168.6.148:4200";
+            var baseUrl = _config["PublicUiBaseUrl"] ?? "http://192.168.6.192:4200";
+            var token = _tokenSvc.Generate(poNo, minutes: 15);
 
-            var payloadUrl = $"{baseUrl}/purchase/mobilereceiving?poNo={Uri.EscapeDataString(poNo)}";
+            var payloadUrl = $"{baseUrl}/purchase/mobilereceiving?poNo={Uri.EscapeDataString(poNo)}&t={token}";
 
             var qrPng = _img.MakeQrPng(payloadUrl, pixelsPerModule: 8);
 
