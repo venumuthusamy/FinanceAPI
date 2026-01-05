@@ -14,69 +14,94 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<QuotationListDTO>> GetAllAsync()
         {
             const string headerSql = @"
-SELECT q.Id,q.Number,q.Status,q.CustomerId,c.CustomerName AS CustomerName,
-       q.CurrencyId,q.FxRate,q.PaymentTermsId,q.ValidityDate,
-       q.Subtotal,q.TaxAmount,q.Rounding,q.GrandTotal,q.NeedsHodApproval,pt.PaymentTermsName
+SELECT q.Id,
+       q.Number,
+       q.Status,
+       q.CustomerId,
+       c.CustomerName AS CustomerName,
+       q.CurrencyId,
+       q.FxRate,
+       q.PaymentTermsId,
+       q.DeliveryDate,                 -- ✅ changed
+       q.Subtotal,
+       q.TaxAmount,
+       q.Rounding,
+       q.GrandTotal,
+       q.NeedsHodApproval,
+       pt.PaymentTermsName
 FROM dbo.Quotation q
-LEFT JOIN dbo.Customer c ON c.Id=q.CustomerId
-left join dbo.PaymentTerms pt on pt.Id = q.PaymentTermsId
-WHERE q.IsActive=1
+LEFT JOIN dbo.Customer c ON c.Id = q.CustomerId
+LEFT JOIN dbo.PaymentTerms pt ON pt.Id = q.PaymentTermsId
+WHERE q.IsActive = 1
 ORDER BY q.Id DESC;";
+
             return await Connection.QueryAsync<QuotationListDTO>(headerSql);
         }
 
         public async Task<QuotationListDTO?> GetByIdAsync(int id)
         {
             const string sql = @"
-SELECT q.Id,q.Number,q.Status,q.CustomerId,c.CustomerName AS CustomerName,
-       q.CurrencyId,q.FxRate,q.PaymentTermsId,q.ValidityDate,
-       q.Subtotal,q.TaxAmount,q.Rounding,q.GrandTotal,q.NeedsHodApproval,cu.CurrencyName,pt.PaymentTermsName,q.ValidityDate
+SELECT q.Id,
+       q.Number,
+       q.Status,
+       q.CustomerId,
+       c.CustomerName AS CustomerName,
+       q.CurrencyId,
+       q.FxRate,
+       q.PaymentTermsId,
+       q.DeliveryDate,                 -- ✅ changed
+       q.Subtotal,
+       q.TaxAmount,
+       q.Rounding,
+       q.GrandTotal,
+       q.NeedsHodApproval,
+       cu.CurrencyName,
+       pt.PaymentTermsName
 FROM dbo.Quotation q
-LEFT JOIN dbo.Customer c ON c.Id=q.CustomerId
-LEFT JOIN dbo.Currency cu ON cu.Id = q.CurrencyId  
-left join dbo.PaymentTerms pt on pt.Id = q.PaymentTermsId
-WHERE q.Id= @Id AND q.IsActive=1;;
+LEFT JOIN dbo.Customer c ON c.Id = q.CustomerId
+LEFT JOIN dbo.Currency cu ON cu.Id = q.CurrencyId
+LEFT JOIN dbo.PaymentTerms pt ON pt.Id = q.PaymentTermsId
+WHERE q.Id = @Id AND q.IsActive = 1;
 
 SELECT l.Id,
        l.QuotationId,
        l.ItemId,
-       i.ItemName AS ItemName,  
-       l.UomId,                          -- ✅ use UomId
-       u.Name AS UomName,                -- ✅ display name
+       i.ItemName AS ItemName,
+       l.UomId,
+       u.Name AS UomName,
        l.Qty,
        l.UnitPrice,
        l.DiscountPct,
-      
-      l.TaxMode,
+       l.TaxCodeId,
+       l.TaxMode,
        l.LineNet,
        l.LineTax,
-       l.LineTotal
+       l.LineTotal,
+       l.Description              -- ✅ NEW
 FROM dbo.QuotationLine l
 LEFT JOIN dbo.Item i ON i.Id = l.ItemId
-LEFT JOIN dbo.Uom   u ON u.Id = l.UomId     -- ✅ join UOM
-
+LEFT JOIN dbo.Uom  u ON u.Id = l.UomId
 WHERE l.QuotationId = @Id
 ORDER BY l.Id;";
+
             using var multi = await Connection.QueryMultipleAsync(sql, new { Id = id });
             var head = await multi.ReadFirstOrDefaultAsync<QuotationListDTO>();
             if (head is null) return null;
+
             head.Lines = (await multi.ReadAsync<QuotationLineDTO>()).ToList();
             return head;
         }
 
         public async Task<int> CreateAsync(QuotationDTO dto, int userId)
         {
-           
-
-            // Lock the Quotation rows while we compute next number
+            // ---------- 1) Get last quotation no ----------
             const string getLastQtNumberSql = @"
 SELECT TOP (1) [Number]
-FROM dbo.Quotation WITH (UPDLOCK, HOLDLOCK)   -- serialize generators
+FROM dbo.Quotation WITH (UPDLOCK, HOLDLOCK)
 WHERE [Number] LIKE 'QT-%'
 ORDER BY Id DESC;";
 
-            var lastQt = await Connection.QueryFirstOrDefaultAsync<string>(
-                getLastQtNumberSql);
+            var lastQt = await Connection.QueryFirstOrDefaultAsync<string>(getLastQtNumberSql);
 
             // ---------- 2) Compute next number ----------
             int next = 1;
@@ -87,19 +112,19 @@ ORDER BY Id DESC;";
                     next = lastNum + 1;
             }
 
-            dto.Number = $"QT-{next:D4}";          // e.g. QT-0001
-           
+            dto.Number = $"QT-{next:D4}";
 
             // ---------- 3) Insert header ----------
             const string insertHead = @"
 INSERT INTO dbo.Quotation
-(Number, Status, CustomerId, CurrencyId, FxRate, PaymentTermsId, ValidityDate,
+(Number, Status, CustomerId, CurrencyId, FxRate, PaymentTermsId, DeliveryDate,     -- ✅ changed
  Subtotal, TaxAmount, Rounding, GrandTotal, NeedsHodApproval,
  CreatedBy, CreatedDate, IsActive)
 OUTPUT INSERTED.Id
-VALUES (@Number, @Status, @CustomerId, @CurrencyId, @FxRate, @PaymentTermsId, @ValidityDate,
-        @Subtotal, @TaxAmount, @Rounding, @GrandTotal, @NeedsHodApproval,
-        @UserId, GETDATE(), 1);";
+VALUES
+(@Number, @Status, @CustomerId, @CurrencyId, @FxRate, @PaymentTermsId, @DeliveryDate,
+ @Subtotal, @TaxAmount, @Rounding, @GrandTotal, @NeedsHodApproval,
+ @UserId, GETDATE(), 1);";
 
             var quotationId = await Connection.QueryFirstAsync<int>(insertHead, new
             {
@@ -109,7 +134,7 @@ VALUES (@Number, @Status, @CustomerId, @CurrencyId, @FxRate, @PaymentTermsId, @V
                 dto.CurrencyId,
                 dto.FxRate,
                 dto.PaymentTermsId,
-                dto.ValidityDate,
+                dto.DeliveryDate,      // ✅ changed
                 dto.Subtotal,
                 dto.TaxAmount,
                 dto.Rounding,
@@ -118,12 +143,12 @@ VALUES (@Number, @Status, @CustomerId, @CurrencyId, @FxRate, @PaymentTermsId, @V
                 UserId = userId
             });
 
-            // ---------- 4) Insert lines (UomId included) ----------
+            // ---------- 4) Insert lines ----------
             const string insertLine = @"
 INSERT INTO dbo.QuotationLine
-(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy,TaxCodeId)
+(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy, TaxCodeId, Description)  -- ✅ NEW
 VALUES
-(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId,@TaxCodeId);";
+(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId, @TaxCodeId, @Description);";
 
             foreach (var l in dto.Lines)
             {
@@ -131,7 +156,7 @@ VALUES
                 {
                     QuotationId = quotationId,
                     l.ItemId,
-                    l.UomId,              // ✅ ID only
+                    l.UomId,
                     l.Qty,
                     l.UnitPrice,
                     l.DiscountPct,
@@ -140,27 +165,34 @@ VALUES
                     l.LineTax,
                     l.LineTotal,
                     UserId = userId,
-                    l.TaxCodeId
+                    l.TaxCodeId,
+                    l.Description // ✅ NEW
                 });
             }
 
-            // ---------- 5) Commit ----------
-            
             return quotationId;
         }
 
-
         public async Task UpdateAsync(QuotationDTO dto, int userId)
         {
-           
-
             const string upd = @"
 UPDATE dbo.Quotation
-SET Number=@Number, Status=@Status, CustomerId=@CustomerId,
-    CurrencyId=@CurrencyId, FxRate=@FxRate, PaymentTermsId=@PaymentTermsId, ValidityDate=@ValidityDate,
-    Subtotal=@Subtotal, TaxAmount=@TaxAmount, Rounding=@Rounding, GrandTotal=@GrandTotal,
-    NeedsHodApproval=@NeedsHodApproval, UpdatedBy=@UserId, UpdatedDate=GETDATE()
+SET Number=@Number,
+    Status=@Status,
+    CustomerId=@CustomerId,
+    CurrencyId=@CurrencyId,
+    FxRate=@FxRate,
+    PaymentTermsId=@PaymentTermsId,
+    DeliveryDate=@DeliveryDate,              -- ✅ changed
+    Subtotal=@Subtotal,
+    TaxAmount=@TaxAmount,
+    Rounding=@Rounding,
+    GrandTotal=@GrandTotal,
+    NeedsHodApproval=@NeedsHodApproval,
+    UpdatedBy=@UserId,
+    UpdatedDate=GETDATE()
 WHERE Id=@Id;";
+
             await Connection.ExecuteAsync(upd, new
             {
                 dto.Number,
@@ -169,7 +201,7 @@ WHERE Id=@Id;";
                 dto.CurrencyId,
                 dto.FxRate,
                 dto.PaymentTermsId,
-                dto.ValidityDate,
+                dto.DeliveryDate,       // ✅ changed
                 dto.Subtotal,
                 dto.TaxAmount,
                 dto.Rounding,
@@ -179,16 +211,17 @@ WHERE Id=@Id;";
                 dto.Id
             });
 
+            // delete old lines
             await Connection.ExecuteAsync(
                 "DELETE FROM dbo.QuotationLine WHERE QuotationId=@Id",
                 new { dto.Id });
 
-            // ✅ Use UomId column (was Uom)
+            // re-insert lines with Description
             const string insertLine = @"
 INSERT INTO dbo.QuotationLine
-(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy,TaxCodeId)
+(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy, TaxCodeId, Description)  -- ✅ NEW
 VALUES
-(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId,@TaxCodeId);";
+(@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId, @TaxCodeId, @Description);";
 
             foreach (var l in dto.Lines)
             {
@@ -196,7 +229,7 @@ VALUES
                 {
                     QuotationId = dto.Id,
                     l.ItemId,
-                    l.UomId,                // ✅ pass UomId
+                    l.UomId,
                     l.Qty,
                     l.UnitPrice,
                     l.DiscountPct,
@@ -205,18 +238,22 @@ VALUES
                     l.LineTax,
                     l.LineTotal,
                     UserId = userId,
-                    l.TaxCodeId
+                    l.TaxCodeId,
+                    l.Description // ✅ NEW
                 });
             }
-
-           
         }
 
         public async Task DeactivateAsync(int id, int userId)
         {
-            const string sql = "UPDATE dbo.Quotation SET IsActive=0, UpdatedBy=@UserId, UpdatedDate=GETDATE() WHERE Id=@Id;";
+            const string sql = @"
+UPDATE dbo.Quotation
+SET IsActive=0, UpdatedBy=@UserId, UpdatedDate=GETDATE()
+WHERE Id=@Id;";
             await Connection.ExecuteAsync(sql, new { Id = id, UserId = userId });
         }
+
+        // ---------- helpers (kept) ----------
         private static decimal R2(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
 
         private static void ComputeLine(QuotationLineDTO l, decimal headerTaxPct,
@@ -252,12 +289,10 @@ VALUES
             {
                 ComputeLine(l, dto.TaxAmount, out var ln, out var lt, out var ltTot);
                 sub += ln; tax += lt;
-                // (optional) if you persist line breakdowns, set them here via anonymous params when inserting
             }
             dto.Subtotal = R2(sub);
             dto.TaxAmount = R2(tax);
             dto.GrandTotal = R2(dto.Subtotal + dto.TaxAmount + dto.Rounding);
         }
-
     }
 }
