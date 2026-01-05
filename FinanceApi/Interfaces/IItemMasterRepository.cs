@@ -1,11 +1,12 @@
 ﻿using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 
 namespace Interfaces
 {
     public interface IItemMasterRepository
     {
-        Task<IEnumerable<ItemMasterDTO>> GetAllAsync();
-        Task<ItemMasterDTO?> GetByIdAsync(int id);
+        Task<IEnumerable<ItemDto>> GetAllAsync();
+        Task<getItemMasterDTO?> GetByIdAsync(int id);
         Task<long> CreateAsync(ItemMasterUpsertDto dto);
         Task UpdateAsync(ItemMasterUpsertDto dto);
         Task DeactivateAsync(int id);
@@ -21,5 +22,6 @@ namespace Interfaces
         Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto);
 
         Task<IEnumerable<StockAdjustmentItemsDTO?>> GetItemDetailsByItemId(int id);
+
     }
 }
