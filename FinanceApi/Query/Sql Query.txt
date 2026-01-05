@@ -453,6 +453,8 @@ CREATE TABLE PurchaseOrder (
     Remarks VARCHAR(50),
     FxRate DECIMAL(10,6),
     Tax DECIMAL(18,2),
+    Location VARCHAR(100), 
+    ContactNumber VARCHAR(50) NULL;
     Shipping DECIMAL(18,2),
     Discount DECIMAL(18,2),
     SubTotal DECIMAL(18,2),

@@ -26,6 +26,8 @@ namespace FinanceApi.Models
         public string Remarks { get; set; }
         public decimal FxRate { get; set; }
         public decimal Tax { get; set; }
+        public string Location{ get; set; }
+        public string ContactNumber { get; set; }
         public decimal Shipping { get; set; }
         public decimal Discount { get; set; }
         public decimal SubTotal { get; set; }
@@ -58,6 +60,8 @@ namespace FinanceApi.Models
         public string Remarks { get; set; }
         public decimal FxRate { get; set; }
         public decimal? Tax { get; set; }
+        public string Location { get; set; }
+        public string ContactNumber { get; set; }
         public decimal? Shipping { get; set; }
         public decimal? Discount { get; set; }
         public decimal SubTotal { get; set; }
