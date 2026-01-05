@@ -43,42 +43,78 @@ ORDER BY i.Id;";
 SELECT  i.Id,
         i.ItemCode,
         i.ItemName,
+        i.ItemType,                                   -- ✅ Item table
         i.UomId,
-        COALESCE(u.Name,'')           AS UomName,
+        COALESCE(u.Name,'')               AS UomName,
         i.BudgetLineId,
-        COALESCE(coa.HeadName,'')     AS BudgetLineName,
+        COALESCE(coa.HeadName,'')         AS BudgetLineName,
         i.CreatedBy,
         i.CreatedDate,
         i.UpdatedBy,
         i.UpdatedDate,
         i.IsActive,
-		i.CategoryId,
-		COALESCE(ca.CatagoryName,'')           AS CatagoryName
+        i.CategoryId,
+        COALESCE(ca.CatagoryName,'')      AS CatagoryName
 
-FROM    Item i
-LEFT JOIN Uom u            ON u.Id  = i.UomId
-LEFT JOIN ChartOfAccount coa ON coa.Id = i.BudgetLineId
-Left Join Catagory ca on ca.ID = i.CategoryId
-WHERE   i.Id = 1 AND i.IsActive = 1;";
+        -- Optional: if you add these fields in ItemDto, uncomment
+        -- ,im.Sku
+        -- ,im.Specs
+        -- ,im.PictureUrl
+        -- ,im.CostingMethodId
+        -- ,im.TaxCodeId
+        -- ,im.ExpiryDate
+
+FROM    dbo.Item i
+LEFT JOIN dbo.Uom u               ON u.Id = i.UomId
+LEFT JOIN dbo.ChartOfAccount coa  ON coa.Id = i.BudgetLineId
+LEFT JOIN dbo.Catagory ca         ON ca.Id = i.CategoryId
+LEFT JOIN dbo.ItemMaster im       ON im.ItemId = i.Id AND im.IsActive = 1   -- ✅ join via ItemId
+WHERE   im.Id = @Id AND i.IsActive = 1;";
+
             return await Connection.QueryFirstOrDefaultAsync<ItemDto>(sql, new { Id = id });
         }
 
+
         public async Task<int> CreateAsync(Item item)
         {
-            // Set audit defaults (like your EF repo did)
-            item.CreatedBy = item.CreatedBy ?? "System";
+            item.CreatedBy ??= "System";
             item.CreatedDate = DateTime.UtcNow;
             item.IsActive = true;
 
             const string sql = @"
 INSERT INTO Item
-    (ItemCode, ItemName,CategoryId, UomId, BudgetLineId, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+(
+    ItemCode,
+    ItemName,
+    ItemType,
+    CategoryId,
+    UomId,
+    BudgetLineId,
+    CreatedBy,
+    CreatedDate,
+    UpdatedBy,
+    UpdatedDate,
+    IsActive
+)
 OUTPUT INSERTED.Id
 VALUES
-    (@ItemCode, @ItemName,@CategoryId, @UomId, @BudgetLineId, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive);";
+(
+    @ItemCode,
+    @ItemName,
+    @ItemType,
+    @CategoryId,
+    @UomId,
+    @BudgetLineId,
+    @CreatedBy,
+    @CreatedDate,
+    @UpdatedBy,
+    @UpdatedDate,
+    @IsActive
+);";
 
             return await Connection.QueryFirstAsync<int>(sql, item);
         }
+
 
         public async Task UpdateAsync(Item item)
         {

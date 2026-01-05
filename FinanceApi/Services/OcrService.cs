@@ -179,62 +179,131 @@ namespace FinanceApi.Services
             };
         }
 
-        // ---------------- PARSER (basic) ----------------
-        private OcrParsedDto ParseInvoice(string text)
+
+
+private OcrParsedDto ParseInvoice(string text)
+    {
+        var p = new OcrParsedDto();
+        if (string.IsNullOrWhiteSpace(text)) return p;
+
+        // normalize
+        text = text.Replace("\r", "\n");
+        text = Regex.Replace(text, @"[ \t]+", " ");
+        text = Regex.Replace(text, @"\n{2,}", "\n").Trim();
+
+        // -----------------------------
+        // 1) SUPPLIER (strict)
+        // -----------------------------
+        // Prefer: "Biopak Pte Ltd" anywhere (because BioPak PDF has tagline before it)
+        p.SupplierName =
+            FirstGroup(text, @"\b(Biopak\s+Pte\s+Ltd)\b", RegexOptions.IgnoreCase)
+            ?? FirstGroup(text, @"\b([A-Za-z][A-Za-z &\.\-]*?\b(?:Pte\s+Ltd|PVT\s+LTD|LTD|Limited))\b", RegexOptions.IgnoreCase);
+
+        // -----------------------------
+        // 2) INVOICE NO (strict)
+        // -----------------------------
+        // BioPak format: INV-S-46891 (INV-<LETTER>-<NUMBER>)
+        p.InvoiceNo =
+            FirstGroup(text, @"\b(INV-[A-Z]-\d+)\b", RegexOptions.IgnoreCase)
+            ?? FirstGroup(text, @"\b(INV[-A-Za-z]*-\d{3,})\b", RegexOptions.IgnoreCase)
+            ?? FirstGroup(text, @"Invoice\s*#\s*([A-Za-z0-9\-\/]+)", RegexOptions.IgnoreCase);
+
+        // -----------------------------
+        // 3) INVOICE DATE
+        // -----------------------------
+        // Handles: "DateInvoice #9/12/2025INV-S-46891"
+        var dateRaw =
+            FirstGroup(text, @"Date\s*Invoice\s*#?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})", RegexOptions.IgnoreCase)
+            ?? FirstGroup(text, @"\bDate\b\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})", RegexOptions.IgnoreCase);
+
+        p.InvoiceDate = ToIsoDate(dateRaw);
+
+        // -----------------------------
+        // 4) TOTALS (BioPak bottom section)
+        // -----------------------------
+        p.SubTotal = FindMoney(text, @"\bSubtotal\b\s*\$?\s*([0-9,]+(?:\.\d{2})?)");
+        p.TaxAmount = FindMoney(text, @"Tax\s*Total\s*\(\s*\d{1,2}\s*%\s*\)\s*\$?\s*([0-9,]+(?:\.\d{2})?)");
+        p.Total = FindMoneyLast(text, @"\bTotal\b\s*\$?\s*([0-9,]+(?:\.\d{2})?)")
+              ?? FindMoneyLast(text, @"Balance\s*Due\b\s*\$?\s*([0-9,]+(?:\.\d{2})?)");
+
+        // -----------------------------
+        // 5) TAX PERCENT
+        // -----------------------------
+        var pct =
+            FirstGroup(text, @"Tax\s*Total\s*\((\d{1,2})\%\)", RegexOptions.IgnoreCase)
+            ?? FirstGroup(text, @"GST\s*(\d{1,2})\%", RegexOptions.IgnoreCase);
+
+        if (decimal.TryParse(pct, NumberStyles.Number, CultureInfo.InvariantCulture, out var dp))
+            p.TaxPercent = dp;
+
+        return p;
+    }
+
+    // ---------------- helpers ----------------
+
+    private static string? FirstGroup(string input, string pattern, RegexOptions opt)
+    {
+        var m = Regex.Match(input ?? "", pattern, opt);
+        return m.Success && m.Groups.Count > 1 ? m.Groups[1].Value.Trim() : null;
+    }
+
+    private static decimal? FindMoney(string input, string pattern)
+    {
+        var s = FirstGroup(input, pattern, RegexOptions.IgnoreCase);
+        if (string.IsNullOrWhiteSpace(s)) return null;
+
+        s = s.Replace(",", "").Trim();
+        if (decimal.TryParse(s, NumberStyles.Number, CultureInfo.InvariantCulture, out var v))
+            return v;
+
+        return null;
+    }
+
+    private static decimal? FindMoneyLast(string input, string pattern)
+    {
+        var ms = Regex.Matches(input ?? "", pattern, RegexOptions.IgnoreCase);
+        if (ms.Count == 0) return null;
+
+        var last = ms[ms.Count - 1].Groups[1].Value.Trim().Replace(",", "");
+        if (decimal.TryParse(last, NumberStyles.Number, CultureInfo.InvariantCulture, out var v))
+            return v;
+
+        return null;
+    }
+
+    private static string? ToIsoDate(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+
+        raw = raw.Trim();
+        var formats = new[]
         {
-            var p = new OcrParsedDto();
-            if (string.IsNullOrWhiteSpace(text)) return p;
+        "d/M/yyyy","dd/M/yyyy","d/MM/yyyy","dd/MM/yyyy",
+        "d-M-yyyy","dd-M-yyyy","d-MM-yyyy","dd-MM-yyyy"
+    };
 
-            // Supplier name (take first meaningful line)
-            var lines = text.Split('\n').Select(x => x.Trim()).Where(x => x.Length > 3).ToList();
-            p.SupplierName = lines.FirstOrDefault();
+        if (DateTime.TryParseExact(raw, formats, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var dt))
+            return dt.ToString("yyyy-MM-dd");
 
-            p.InvoiceNo = FindByRegex(text, @"Invoice\s*No\s*[:\-]?\s*([A-Za-z0-9\-\/]+)")
-                       ?? FindByRegex(text, @"\bINV[-\/]?\d{2,}\b");
+        return null;
+    }
 
-            var dateRaw = FindByRegex(text, @"Invoice\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})");
-            p.InvoiceDate = ToIsoDate(dateRaw);
 
-            p.SubTotal = FindMoney(text, @"Sub\s*Total\s*[:\-]?\s*([0-9,]+\.\d{2})");
-            p.Discount = FindMoney(text, @"Discount\s*[:\-]?\s*([0-9,]+\.\d{2})");
-            p.TaxAmount = FindMoney(text, @"Tax.*?\s*[:\-]?\s*([0-9,]+\.\d{2})");
-            p.Total = FindMoney(text, @"Grand\s*Total\s*[:\-]?\s*([0-9,]+\.\d{2})")
-                   ?? FindMoney(text, @"TOTAL\s*[:\-]?\s*([0-9,]+\.\d{2})");
+    // ----------------- helpers -----------------
 
-            var pct = FindByRegex(text, @"GST\s*(\d{1,2})\%") ?? FindByRegex(text, @"Tax.*?(\d{1,2})\%");
-            if (decimal.TryParse(pct, out var dp)) p.TaxPercent = dp;
+  
 
-            return p;
-        }
 
-        private static string? FindByRegex(string text, string pattern)
+
+    private static string? FindByRegex(string text, string pattern)
         {
             var m = Regex.Match(text, pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline);
             if (!m.Success) return null;
             return m.Groups.Count > 1 ? m.Groups[1].Value.Trim() : m.Value.Trim();
         }
 
-        private static decimal? FindMoney(string text, string pattern)
-        {
-            var s = FindByRegex(text, pattern);
-            if (string.IsNullOrWhiteSpace(s)) return null;
-            s = s.Replace(",", "").Trim();
-            if (decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var v)) return v;
-            return null;
-        }
-
-        private static string? ToIsoDate(string? d)
-        {
-            if (string.IsNullOrWhiteSpace(d)) return null;
-            d = d.Trim();
-
-            // dd/MM/yyyy
-            if (DateTime.TryParseExact(d, new[] { "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy" },
-                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
-                return dt.ToString("yyyy-MM-dd");
-
-            return null;
-        }
+      
 
         private static int CountWords(string s)
             => Regex.Matches(s ?? "", @"\b\w+\b").Count;

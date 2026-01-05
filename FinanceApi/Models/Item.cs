@@ -22,17 +22,20 @@ namespace FinanceApi.Models
         public int Id { get; set; }
         public string ItemCode { get; set; }
         public string ItemName { get; set; }
+
+        // ✅ ItemType HERE
+        public string? ItemType { get; set; }   // SALES / PURCHASE / BOTH
+
         public int UomId { get; set; }
         public string UomName { get; set; }
+
         public int BudgetLineId { get; set; }
         public string BudgetLineName { get; set; }
 
-        public string? CreatedBy { get; set; }
-        public DateTime? CreatedDate { get; set; }
-        public string? UpdatedBy { get; set; }
-        public DateTime? UpdatedDate { get; set; }
-        public bool IsActive { get; set; }
         public int CategoryId { get; set; }
         public string CatagoryName { get; set; }
+
+        public bool IsActive { get; set; }
     }
+
 }

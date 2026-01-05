@@ -1,5 +1,6 @@
 ﻿using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
+using FinanceApi.Models;
 using Interfaces;
 
 
@@ -10,8 +11,8 @@ namespace FinanceApi.Services
         private readonly IItemMasterRepository _repo;
         public ItemMasterService(IItemMasterRepository repo) => _repo = repo;
 
-        public Task<IEnumerable<ItemMasterDTO>> GetAllAsync() => _repo.GetAllAsync();
-        public Task<ItemMasterDTO?> GetByIdAsync(int id) => _repo.GetByIdAsync(id);
+        public Task<IEnumerable<ItemDto>> GetAllAsync() => _repo.GetAllAsync();
+        public Task<getItemMasterDTO?> GetByIdAsync(int id) => _repo.GetByIdAsync(id);
         public Task<long> CreateAsync(ItemMasterUpsertDto dto) => _repo.CreateAsync(dto);
         public Task UpdateAsync(ItemMasterUpsertDto dto) => _repo.UpdateAsync(dto);
         public Task DeleteAsync(int id) => _repo.DeactivateAsync(id);
