@@ -18,6 +18,8 @@
         /* From UI */
         public int? SelectedWarehouseId { get; set; }
 
+        public string Description { get; set; }
+
         /* Stored (computed on server) */
         public int? WarehouseId { get; set; }
         public int? BinId { get; set; }

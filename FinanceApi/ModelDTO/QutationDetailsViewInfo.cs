@@ -12,7 +12,7 @@
         public int CurrencyId { get; set; }
         public decimal FxRate { get; set; } = 1m;
         public int PaymentTermsId { get; set; }
-        public DateTime? ValidityDate { get; set; }
+        public DateTime? DeliveryDate { get; set; }
 
         public decimal Subtotal { get; set; }
         public decimal TaxAmount { get; set; }
@@ -42,6 +42,8 @@
 
             public int? TaxCodeId { get; set; }
             public string? TaxMode { get; set; } = "EXCLUSIVE";
+
+            public string Description { get; set; }
 
             public decimal? LineNet { get; set; }
             public decimal? LineTax { get; set; }
