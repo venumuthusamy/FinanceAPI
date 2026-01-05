@@ -75,6 +75,8 @@ namespace FinanceApi.Repositories
                            po.Remarks,
                            po.FxRate,
                            po.Tax,
+                           po.Location,
+                           po.ContactNumber,
                            po.Shipping,
                            po.Discount,
                            po.SubTotal,
@@ -121,6 +123,8 @@ namespace FinanceApi.Repositories
     po.Remarks,
     po.FxRate,
     po.Tax,
+    po.Location,
+    po.ContactNumber,
     po.Shipping,
     po.Discount,
     po.SubTotal,
@@ -168,6 +172,8 @@ ORDER BY po.Id;
                            po.Remarks,
                            po.FxRate,
                            po.Tax,
+                           po.Location,
+                           po.ContactNumber,
                            po.Shipping,
                            po.Discount,
                            po.SubTotal,
@@ -218,14 +224,14 @@ ORDER BY po.Id;
 INSERT INTO dbo.PurchaseOrder
 (
     PurchaseOrderNo, SupplierId, ApproveLevelId, ApprovalStatus, PaymentTermId,
-    CurrencyId, IncotermsId, PoDate, DeliveryDate, Remarks, FxRate, Tax, Shipping,
+    CurrencyId, IncotermsId, PoDate, DeliveryDate, Remarks, FxRate, Tax,Location,ContactNumber,Shipping,
     Discount, SubTotal, NetTotal, PoLines, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
 (
     @PurchaseOrderNo, @SupplierId, @ApproveLevelId, @ApprovalStatus, @PaymentTermId,
-    @CurrencyId, @IncotermsId, @PoDate, @DeliveryDate, @Remarks, @FxRate, @Tax, @Shipping,
+    @CurrencyId, @IncotermsId, @PoDate, @DeliveryDate, @Remarks, @FxRate, @Tax,@Location,@ContactNumber, @Shipping,
     @Discount, @SubTotal, @NetTotal, @PoLines, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
@@ -344,6 +350,8 @@ SET
     Remarks         = @Remarks,
     FxRate          = @FxRate,
     Tax             = @Tax,
+    Location        = @Location,
+    ContactNumber   = @ContactNumber,
     Shipping        = @Shipping,
     Discount        = @Discount,
     SubTotal        = @SubTotal,
