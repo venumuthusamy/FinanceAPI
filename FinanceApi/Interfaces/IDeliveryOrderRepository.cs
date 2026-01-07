@@ -7,7 +7,7 @@ namespace FinanceApi.Interfaces
     {
         Task<int> CreateAsync(DoCreateRequest req, int userId);
         Task<IEnumerable<DoHeaderDto>> GetAllAsync();
-        Task<DoHeaderDto?> GetHeaderAsync(int id);
+        Task<DoHeaderEditDto?> GetHeaderAsync(int id);
         Task<IEnumerable<DoLineDto>> GetLinesAsync(int doId);
         Task UpdateHeaderAsync(int id, DoUpdateHeaderRequest req, int userId);
 

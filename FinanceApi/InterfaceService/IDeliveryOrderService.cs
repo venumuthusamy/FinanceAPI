@@ -6,7 +6,7 @@ namespace FinanceApi.InterfaceService
     public interface IDeliveryOrderService
     {
         Task<int> CreateAsync(DoCreateRequest req, int userId);
-        Task<(DoHeaderDto? header, IEnumerable<DoLineDto> lines)> GetAsync(int id);
+        Task<(DoHeaderEditDto? header, IEnumerable<DoLineDto> lines)> GetAsync(int id);
         Task<IEnumerable<DoHeaderDto>> GetAllAsync();
         Task<IEnumerable<DoLineDto>> GetLinesAsync(int doId);
         Task UpdateHeaderAsync(int id, DoUpdateHeaderRequest req, int userId);
