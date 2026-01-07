@@ -260,11 +260,11 @@ WHERE ItemId=@ItemId AND WarehouseId=@WarehouseId AND ISNULL(SupplierId,0)=ISNUL
             var doId = await Connection.QuerySingleAsync<int>(@"
 INSERT INTO dbo.DeliveryOrder
 (DoNumber, Status, SoId, PackId, DriverId, VehicleId, RouteName, DeliveryDate,
- PodFileUrl, IsPosted, CreatedBy, CreatedOn)
+ PodFileUrl, IsPosted, CreatedBy, CreatedOn,DriverMobileNo, ReceivedPersonName, ReceivedPersonMobileNo)
 OUTPUT INSERTED.Id
 VALUES
 (@DoNumber, 0, @SoId, @PackId, @DriverId, @VehicleId, @RouteName, @DeliveryDate,
- NULL, @IsPosted, @UserId, SYSUTCDATETIME());",
+ NULL, @IsPosted, @UserId, SYSUTCDATETIME(),@DriverMobileNo, @ReceivedPersonName, @ReceivedPersonMobileNo);",
                 new
                 {
                     DoNumber = doNumber,
@@ -274,6 +274,10 @@ VALUES
                     req.VehicleId,
                     req.RouteName,
                     req.DeliveryDate,
+                     req.DriverMobileNo,
+                    req.ReceivedPersonName,
+                   req.ReceivedPersonMobileNo,
+
                     IsPosted = isPosted ? 1 : 0,
                     UserId = userId
                 }).ConfigureAwait(false);
@@ -331,16 +335,41 @@ WHERE Id = @SoId;",
         }
 
         // =============== READ ===============
-        public Task<DoHeaderDto?> GetHeaderAsync(int id)
-            => Connection.QuerySingleOrDefaultAsync<DoHeaderDto>(@"
+        public Task<DoHeaderEditDto?> GetHeaderAsync(int id)
+    => Connection.QuerySingleOrDefaultAsync<DoHeaderEditDto>(@"
 SELECT
-  DO.Id, DO.DoNumber, DO.Status, DO.SoId, DO.PackId,
-  DO.DriverId, DO.VehicleId, DO.RouteName, DO.DeliveryDate,
-  DO.PodFileUrl, DO.IsPosted,
-  SO.SalesOrderNo AS SalesOrderNo   
+  DO.Id,
+  DO.DoNumber,
+  DO.Status,
+  DO.SoId,
+  DO.PackId,
+
+  CAST(NULL AS nvarchar(50)) AS InvoiceNo,
+  CAST(NULL AS int)          AS SiId,
+
+  DO.DriverId,
+  DO.VehicleId,
+  DO.RouteName,
+  DO.DeliveryDate,
+  DO.PodFileUrl,
+  DO.IsPosted,
+
+  -- ✅ NEW FIELDS
+  DO.DriverMobileNo,
+  DO.ReceivedPersonName,
+  DO.ReceivedPersonMobileNo,
+
+  SO.SalesOrderNo,
+
+  SO.CustomerId,
+  C.CustomerName AS CustomerName
 FROM dbo.DeliveryOrder DO
 LEFT JOIN dbo.SalesOrder SO ON SO.Id = DO.SoId
-WHERE DO.Id = @id;", new { id });
+LEFT JOIN dbo.Customer C ON C.Id = SO.CustomerId
+WHERE DO.Id = @id;
+", new { id });
+
+
 
         public Task<IEnumerable<DoLineDto>> GetLinesAsync(int doId)
             => Connection.QueryAsync<DoLineDto>(@"
@@ -353,7 +382,7 @@ FROM dbo.DeliveryOrderLine
 WHERE DoId=@doId;", new { doId });
 
         public Task<IEnumerable<DoHeaderDto>> GetAllAsync()
-            => Connection.QueryAsync<DoHeaderDto>(@"
+   => Connection.QueryAsync<DoHeaderDto>(@"
 SELECT 
     d.Id,
     d.DoNumber,
@@ -368,6 +397,12 @@ SELECT
     d.DeliveryDate,
     d.PodFileUrl,
     d.IsPosted,
+
+    -- ✅ NEW
+    d.DriverMobileNo,
+    d.ReceivedPersonName,
+    d.ReceivedPersonMobileNo,
+
     s.SalesOrderNo,
     s.CustomerId,
     c.CustomerName
@@ -378,12 +413,13 @@ OUTER APPLY (
     SELECT TOP (1) si.*
     FROM dbo.SalesInvoice si
     WHERE si.DoId = d.Id
-    ORDER BY si.Id DESC       -- or InvoiceDate DESC, etc.
+    ORDER BY si.Id DESC
 ) si1
 LEFT JOIN dbo.Customer c 
     ON c.Id = s.CustomerId
 ORDER BY d.Id DESC;
-;");
+");
+
 
         // =============== UPDATE HEADER ===============
         public async Task UpdateHeaderAsync(int id, DoUpdateHeaderRequest req, int userId)

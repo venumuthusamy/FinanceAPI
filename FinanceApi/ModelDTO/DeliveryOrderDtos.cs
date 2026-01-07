@@ -3,14 +3,56 @@
     public static class DeliveryOrderDtos
     {
         public record DoHeaderDto(
-            int Id, string DoNumber, int Status,
-            int? SoId, int? PackId, string? InvoiceNo,int SiId,
-            int? DriverId, int? VehicleId,
-            string? RouteName, DateTime? DeliveryDate,
-            string? PodFileUrl, bool IsPosted,
-            string SalesOrderNo,int? CustomerId, string? CustomerName
-        );
+       int Id,
+       string DoNumber,
+       int Status,
+       int? SoId,
+       int? PackId,
+       string? InvoiceNo,
+       int? SiId,
+       int? DriverId,
+       int? VehicleId,
+       string? RouteName,
+       DateTime? DeliveryDate,
+       string? PodFileUrl,
+       bool IsPosted,
 
+       // ✅ NEW
+       string? DriverMobileNo,
+       string? ReceivedPersonName,
+       string? ReceivedPersonMobileNo,
+
+       string? SalesOrderNo,
+       int? CustomerId,
+       string? CustomerName
+   );
+
+
+
+        public record DoHeaderEditDto(
+            int Id,
+            string DoNumber,
+            int Status,
+            int? SoId,
+            int? PackId,
+            string? InvoiceNo,
+            int? SiId,
+            int? DriverId,
+            int? VehicleId,
+            string? RouteName,
+            DateTime? DeliveryDate,
+            string? PodFileUrl,
+            bool IsPosted,
+
+            // ✅ NEW
+            string? DriverMobileNo,
+            string? ReceivedPersonName,
+            string? ReceivedPersonMobileNo,
+
+            string? SalesOrderNo,
+            int? CustomerId,
+            string? CustomerName
+        );
         public record DoLineDto(
             int Id, int DoId, int? SoLineId, int? PackLineId,
             int? ItemId, string ItemName, string? Uom, decimal Qty, string? Notes,
@@ -25,6 +67,9 @@
             public int? VehicleId { get; set; }
             public string? RouteName { get; set; }
             public DateTime? DeliveryDate { get; set; }
+            public string? DriverMobileNo { get; set; }           // snapshot (optional)
+            public string? ReceivedPersonName { get; set; }
+            public string? ReceivedPersonMobileNo { get; set; }
             public List<DoCreateLine> Lines { get; set; } = new();
 
             public class DoCreateLine
@@ -57,12 +102,18 @@
             public string? SupplierId { get; set; }   // ← nullable
         }
 
-        public class DoUpdateHeaderRequest
-        {
-            public int? DriverId { get; set; }
-            public int? VehicleId { get; set; }
-            public string? RouteName { get; set; }
-            public DateTime? DeliveryDate { get; set; }
-        }
+       public class DoUpdateHeaderRequest
+{
+  public int? DriverId { get; set; }
+  public int? VehicleId { get; set; }
+  public string? RouteName { get; set; }
+  public DateTime? DeliveryDate { get; set; }
+
+  // ✅ NEW
+  public string? DriverMobileNo { get; set; }
+  public string? ReceivedPersonName { get; set; }
+  public string? ReceivedPersonMobileNo { get; set; }
+}
+
     }
 }

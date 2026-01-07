@@ -11,7 +11,7 @@ namespace FinanceApi.Services
 
         public Task<int> CreateAsync(DoCreateRequest req, int userId) => _repo.CreateAsync(req, userId);
 
-        public async Task<(DoHeaderDto? header, IEnumerable<DoLineDto> lines)> GetAsync(int id)
+        public async Task<(DoHeaderEditDto? header, IEnumerable<DoLineDto> lines)> GetAsync(int id)
         {
             var hdr = await _repo.GetHeaderAsync(id);
             var lines = await _repo.GetLinesAsync(id);
