@@ -22,16 +22,22 @@ SELECT q.Id,
        q.CurrencyId,
        q.FxRate,
        q.PaymentTermsId,
-       q.DeliveryDate,                 -- ✅ changed
+       q.DeliveryDate,                 -- existing
+       q.Remarks,                      -- ✅ NEW (Header)
+       q.DeliveryTo,                   -- ✅ NEW (Header)
        q.Subtotal,
        q.TaxAmount,
        q.Rounding,
        q.GrandTotal,
        q.NeedsHodApproval,
-       pt.PaymentTermsName
+       pt.PaymentTermsName,
+	   us.Username as CreatedUserName,
+	   u.Username as ModifiedUserName
 FROM dbo.Quotation q
 LEFT JOIN dbo.Customer c ON c.Id = q.CustomerId
 LEFT JOIN dbo.PaymentTerms pt ON pt.Id = q.PaymentTermsId
+Left join dbo.[User] us on us.Id = q.CreatedBy
+Left join dbo.[User] u on u.Id = q.UpdatedBy
 WHERE q.IsActive = 1
 ORDER BY q.Id DESC;";
 
@@ -49,7 +55,9 @@ SELECT q.Id,
        q.CurrencyId,
        q.FxRate,
        q.PaymentTermsId,
-       q.DeliveryDate,                 -- ✅ changed
+       q.DeliveryDate,                 -- existing
+       q.Remarks,                      -- ✅ NEW (Header)
+       q.DeliveryTo,                   -- ✅ NEW (Header)
        q.Subtotal,
        q.TaxAmount,
        q.Rounding,
@@ -77,7 +85,8 @@ SELECT l.Id,
        l.LineNet,
        l.LineTax,
        l.LineTotal,
-       l.Description              -- ✅ NEW
+       l.Description ,
+ i.ItemCode-- existing (you already added)
 FROM dbo.QuotationLine l
 LEFT JOIN dbo.Item i ON i.Id = l.ItemId
 LEFT JOIN dbo.Uom  u ON u.Id = l.UomId
@@ -117,12 +126,14 @@ ORDER BY Id DESC;";
             // ---------- 3) Insert header ----------
             const string insertHead = @"
 INSERT INTO dbo.Quotation
-(Number, Status, CustomerId, CurrencyId, FxRate, PaymentTermsId, DeliveryDate,     -- ✅ changed
+(Number, Status, CustomerId, CurrencyId, FxRate, PaymentTermsId, DeliveryDate,
+ Remarks, DeliveryTo,                         -- ✅ NEW (Header)
  Subtotal, TaxAmount, Rounding, GrandTotal, NeedsHodApproval,
  CreatedBy, CreatedDate, IsActive)
 OUTPUT INSERTED.Id
 VALUES
 (@Number, @Status, @CustomerId, @CurrencyId, @FxRate, @PaymentTermsId, @DeliveryDate,
+ @Remarks, @DeliveryTo,                        -- ✅ NEW (Header)
  @Subtotal, @TaxAmount, @Rounding, @GrandTotal, @NeedsHodApproval,
  @UserId, GETDATE(), 1);";
 
@@ -134,7 +145,12 @@ VALUES
                 dto.CurrencyId,
                 dto.FxRate,
                 dto.PaymentTermsId,
-                dto.DeliveryDate,      // ✅ changed
+                dto.DeliveryDate,
+
+                // ✅ NEW (Header)
+                dto.Remarks,
+                dto.DeliveryTo,
+
                 dto.Subtotal,
                 dto.TaxAmount,
                 dto.Rounding,
@@ -146,7 +162,7 @@ VALUES
             // ---------- 4) Insert lines ----------
             const string insertLine = @"
 INSERT INTO dbo.QuotationLine
-(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy, TaxCodeId, Description)  -- ✅ NEW
+(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy, TaxCodeId, Description)
 VALUES
 (@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId, @TaxCodeId, @Description);";
 
@@ -166,7 +182,7 @@ VALUES
                     l.LineTotal,
                     UserId = userId,
                     l.TaxCodeId,
-                    l.Description // ✅ NEW
+                    l.Description
                 });
             }
 
@@ -183,7 +199,9 @@ SET Number=@Number,
     CurrencyId=@CurrencyId,
     FxRate=@FxRate,
     PaymentTermsId=@PaymentTermsId,
-    DeliveryDate=@DeliveryDate,              -- ✅ changed
+    DeliveryDate=@DeliveryDate,
+    Remarks=@Remarks,                 -- ✅ NEW (Header)
+    DeliveryTo=@DeliveryTo,           -- ✅ NEW (Header)
     Subtotal=@Subtotal,
     TaxAmount=@TaxAmount,
     Rounding=@Rounding,
@@ -201,7 +219,12 @@ WHERE Id=@Id;";
                 dto.CurrencyId,
                 dto.FxRate,
                 dto.PaymentTermsId,
-                dto.DeliveryDate,       // ✅ changed
+                dto.DeliveryDate,
+
+                // ✅ NEW (Header)
+                dto.Remarks,
+                dto.DeliveryTo,
+
                 dto.Subtotal,
                 dto.TaxAmount,
                 dto.Rounding,
@@ -216,10 +239,10 @@ WHERE Id=@Id;";
                 "DELETE FROM dbo.QuotationLine WHERE QuotationId=@Id",
                 new { dto.Id });
 
-            // re-insert lines with Description
+            // re-insert lines
             const string insertLine = @"
 INSERT INTO dbo.QuotationLine
-(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy, TaxCodeId, Description)  -- ✅ NEW
+(QuotationId, ItemId, UomId, Qty, UnitPrice, DiscountPct, TaxMode, LineNet, LineTax, LineTotal, CreatedBy, TaxCodeId, Description)
 VALUES
 (@QuotationId, @ItemId, @UomId, @Qty, @UnitPrice, @DiscountPct, @TaxMode, @LineNet, @LineTax, @LineTotal, @UserId, @TaxCodeId, @Description);";
 
@@ -239,7 +262,7 @@ VALUES
                     l.LineTotal,
                     UserId = userId,
                     l.TaxCodeId,
-                    l.Description // ✅ NEW
+                    l.Description
                 });
             }
         }
