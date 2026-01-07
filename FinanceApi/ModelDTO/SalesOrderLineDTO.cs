@@ -29,6 +29,7 @@
         public string? Description { get; set; }
 
         public decimal TaxAmount { get; set; }
+        public List<SalesOrderLineAllocDTO>? Allocations { get; set; }
 
     }
     public class SalesOrderListDto
