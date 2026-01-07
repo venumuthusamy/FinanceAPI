@@ -3,8 +3,6 @@ using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
-using Microsoft.AspNetCore.Connections;
-using Microsoft.EntityFrameworkCore;
 using System.Data;
 
 namespace FinanceApi.Repositories
@@ -12,10 +10,11 @@ namespace FinanceApi.Repositories
     public class PurchaseGoodReceiptRepository : DynamicRepository, IPurchaseGoodReceiptRepository
     {
         private readonly IDbConnectionFactory _connectionFactory;
+
         public PurchaseGoodReceiptRepository(IDbConnectionFactory connectionFactory)
-         : base(connectionFactory)
+            : base(connectionFactory)
         {
-            _connectionFactory = connectionFactory; // store it for later use
+            _connectionFactory = connectionFactory;
         }
 
         public async Task<IEnumerable<PurchaseGoodReceiptItemsDTO>> GetAllAsync()
@@ -37,17 +36,13 @@ FROM PurchaseGoodReceipt AS pg
 JOIN PurchaseOrder AS po ON po.Id = pg.POID
 LEFT JOIN Suppliers   AS s  ON s.Id = po.SupplierId
 WHERE pg.IsActive = 1
-  -- (optional) filter by supplier if needed
-  -- AND po.SupplierId = @SupplierId
   AND NOT EXISTS (
         SELECT 1
         FROM SupplierInvoicePin AS pin
         WHERE pin.GrnId   = pg.Id
-          AND pin.IsActive = 1   -- assuming 1 = active
+          AND pin.IsActive = 1
           AND pin.GrnId IS NOT NULL
-  );
-
-";
+  );";
 
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }
@@ -60,12 +55,10 @@ WHERE pg.IsActive = 1
 
         public async Task<int> CreateAsync(PurchaseGoodReceiptItems goodReceiptItemsDTO)
         {
-            // 1. Get last GRN
             const string getLastGRNQuery = @"SELECT TOP 1 GrnNo FROM PurchaseGoodReceipt ORDER BY Id DESC";
             var lastGRN = await Connection.QueryFirstOrDefaultAsync<string>(getLastGRNQuery);
             int nextNumber = 1;
 
-            // 2. Increment number
             if (!string.IsNullOrWhiteSpace(lastGRN) && lastGRN.StartsWith("GRN-"))
             {
                 var numericPart = lastGRN.Substring(4);
@@ -73,11 +66,9 @@ WHERE pg.IsActive = 1
                     nextNumber = lastNumber + 1;
             }
 
-            // 3. Format GRN No
             var newGRN = $"GRN-{nextNumber:D4}";
             goodReceiptItemsDTO.GrnNo = newGRN;
 
-            // 4. Insert
             const string insertQuery = @"
 INSERT INTO PurchaseGoodReceipt 
     (POID, ReceptionDate, OverReceiptTolerance, GRNJson, GrnNo, isActive) 
@@ -139,12 +130,12 @@ WITH (
     initial         NVARCHAR(MAX) '$.initial',
     isFlagIssue     BIT           '$.isFlagIssue',
     isPostInventory BIT           '$.isPostInventory',
-    qtyReceived     int '$.qtyReceived',
+    qtyReceived     INT           '$.qtyReceived',
     qualityCheck    NVARCHAR(MAX) '$.qualityCheck',
     batchSerial     NVARCHAR(MAX) '$.batchSerial',
-	warehouseId     INT '$.warehouseId',
-    binId           INT '$.binId',
-	strategyId      INT '$.strategyId',
+	warehouseId     INT           '$.warehouseId',
+    binId           INT           '$.binId',
+	strategyId      INT           '$.strategyId',
     warehouseName   NVARCHAR(MAX) '$.warehouseName',
 	binName         NVARCHAR(MAX) '$.binName',
     strategyName    NVARCHAR(MAX) '$.strategyName'
@@ -180,7 +171,7 @@ ORDER BY pg.Id DESC;";
             const string query = @"
 SELECT ID, POID, ReceptionDate, OverReceiptTolerance, GRNJson, FlagIssuesID, GrnNo
 FROM PurchaseGoodReceipt
-ORDER BY ID";
+ORDER BY ID;";
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }
 
@@ -197,25 +188,45 @@ SELECT
      po.Tax
 FROM PurchaseGoodReceipt as pgr 
 INNER JOIN PurchaseOrder as po ON po.id= pgr.POID
-ORDER BY pgr.ID";
+ORDER BY pgr.ID;";
             return await Connection.QueryAsync<PurchaseGoodReceiptItemsDTO>(query);
         }
 
-        // 🔹 Public method called from Service
+        // ===========================================================
+        // ✅ GRN PostInventory -> update shortage SO lines + alloc + alert
+        // ✅ EXACT signature as interface (NO extra param)
+        // ===========================================================
         public async Task ApplyGrnAndUpdateSalesOrderAsync(string itemCode, int? warehouseId, int? supplierId, int? binId, decimal receivedQty)
         {
-            var itemId = await GetItemIdByCodeAsync(itemCode);
-            if (itemId == null)
-                throw new ArgumentException("Invalid ItemCode.");
-
             using var conn = _connectionFactory.CreateConnection();
-            conn.Open(); // ✅ sync open
-
+            conn.Open();
             using var tx = conn.BeginTransaction();
+
             try
             {
-                await UpdateSalesOrderLinesAndAlertAsync(conn, tx, itemId.Value, warehouseId, supplierId, binId, receivedQty);
+                var itemId = await GetItemIdByCodeAsync(conn, tx, itemCode);
+                if (itemId == null)
+                    throw new Exception($"ItemCode not found in Item master: {itemCode}");
+
+                var result = await conn.QueryFirstAsync<dynamic>(
+                    "dbo.sp_GRN_LockSO_InsertAlloc_Debug",
+                    new
+                    {
+                        ItemId = itemId.Value,
+                        WarehouseId = warehouseId,
+                        BinId = binId,
+                        SupplierId = supplierId,
+                        ReceivedQty = receivedQty,
+                        CreatedBy = (int?)null
+                    },
+                    tx,
+                    commandType: CommandType.StoredProcedure);
+
                 tx.Commit();
+
+                // 👇 If this throws, you’ll know mismatch
+                if ((int)result.UpdatedLines == 0)
+                    throw new Exception($"No SO lines matched for ItemId={itemId.Value}. Check SalesOrderLines.ItemId mapping.");
             }
             catch
             {
@@ -226,88 +237,14 @@ ORDER BY pgr.ID";
 
 
         // 🔹 Get ItemId from ItemCode
-        private async Task<int?> GetItemIdByCodeAsync(string itemCode)
-        {
-            using var conn = _connectionFactory.CreateConnection();
-            conn.Open(); // ✅ sync open
-
-            const string sql = @"
-                SELECT TOP (1) Id 
-                FROM dbo.Item 
-                WHERE ItemCode = @ItemCode AND IsActive = 1;";
-
-            return await conn.ExecuteScalarAsync<int?>(sql, new { ItemCode = itemCode });
-        }
-
-
-        // 🔹 Update both SalesOrderLines + PurchaseAlert
-        private async Task UpdateSalesOrderLinesAndAlertAsync(
-             IDbConnection conn,
-             IDbTransaction tx,
-             int itemId,
-             int? warehouseId,
-             int? supplierId,
-             int? binId,
-             decimal receivedQty)
+        private async Task<int?> GetItemIdByCodeAsync(IDbConnection conn, IDbTransaction tx, string itemCode)
         {
             const string sql = @"
-----------------------------------------------------------
--- 1️⃣ Update SalesOrderLines when certain conditions match
-----------------------------------------------------------
-UPDATE sol
-SET
-    sol.WarehouseId = @WarehouseId,
-    sol.SupplierId  = @SupplierId,
-    sol.BinId       = @BinId,
-
-    sol.Available = CASE 
-                 WHEN @ReceivedQty > sol.LockedQty THEN sol.LockedQty
-                 ELSE @ReceivedQty 
-              END,
-    sol.Quantity = CASE 
-                 WHEN @ReceivedQty > sol.LockedQty THEN sol.LockedQty
-                 ELSE @ReceivedQty 
-              END,
-    sol.UpdatedDate = GETDATE()
-FROM dbo.SalesOrderLines sol
-WHERE 
-    sol.ItemId = @ItemId
-    AND sol.Quantity = 0
-    AND sol.LockedQty > 0
-    AND sol.WarehouseId IS NULL
-    AND sol.SupplierId IS NULL
-    AND sol.BinId IS NULL;
-
-----------------------------------------------------------
--- 2️⃣ Update PurchaseAlert with GRN logic
-----------------------------------------------------------
-UPDATE pa
-SET 
-    pa.WarehouseId = @WarehouseId,
-    pa.SupplierId = @SupplierId,
-    pa.RequiredQty = CASE 
-                        WHEN @ReceivedQty < pa.RequiredQty 
-                            THEN pa.RequiredQty - @ReceivedQty
-                        ELSE pa.RequiredQty
-                     END,
-    pa.IsRead = CASE 
-                    WHEN @ReceivedQty >= pa.RequiredQty THEN 1 
-                    ELSE 0 
-                END
-FROM dbo.PurchaseAlert pa
-WHERE 
-    pa.ItemId = @ItemId
-    AND pa.IsRead = 0;
-";
-
-            await conn.ExecuteAsync(sql, new
-            {
-                ItemId = itemId,
-                WarehouseId = warehouseId,
-                SupplierId = supplierId,
-                BinId = binId,
-                ReceivedQty = receivedQty
-            }, tx);
+SELECT TOP 1 Id
+FROM dbo.Item
+WHERE ItemCode=@ItemCode AND IsActive=1;";
+            return await conn.ExecuteScalarAsync<int?>(sql, new { ItemCode = itemCode }, tx);
         }
+
     }
 }
