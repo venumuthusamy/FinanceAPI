@@ -263,24 +263,65 @@ WHERE sil.SiId = @SiId
         {
             const string sql = @"
 SELECT
-    Id,
-    ISNULL(InvoiceNo,'') AS InvoiceNo,
-    InvoiceDate,
-    SourceType,
-    SoId,
-    DoId,
-    Subtotal,
-    ShippingCost,
-    TaxAmount,
-    Total,
-    Status,
-    IsActive,
-    Remarks
-FROM dbo.SalesInvoice
-WHERE Id=@Id;";
+    si.Id,
+    ISNULL(si.InvoiceNo,'') AS InvoiceNo,
+    si.InvoiceDate,
+    si.SourceType,
+    si.SoId,
+    si.DoId,
+    si.TaxAmount,
+    si.Total,
+    si.Status,
+    si.IsActive,
+    si.Remarks,
+
+    -- SourceRef
+    SourceRef =
+      CASE
+        WHEN si.SourceType = 1 THEN ISNULL(so.SalesOrderNo,'')
+        WHEN si.SourceType = 2 THEN ISNULL(do1.DoNumber,'')
+        ELSE ''
+      END,
+
+    -- Customer
+    so.CustomerId,
+    CustomerName = ISNULL(c.CustomerName,''),
+    ContactNumber = ISNULL(c.ContactNumber,''),
+    PointOfContactPerson = ISNULL(c.PointOfContactPerson,''),
+    Email = ISNULL(c.Email,''),
+
+    -- Payment Term (from Customer)
+    PaymentTermId = c.PaymentTermId,
+
+    -- Quotation (FIXED JOIN)
+    q.CurrencyId,
+    FxRate = ISNULL(q.FxRate, 0),
+    DeliveryDate = q.DeliveryDate,
+    DeliveryTo = q.DeliveryTo,
+	p.PaymentTermsName,
+	cu.CurrencyName
+FROM dbo.SalesInvoice si
+LEFT JOIN Finance.dbo.SalesOrder so     ON so.Id = si.SoId
+LEFT JOIN Finance.dbo.DeliveryOrder do1 ON do1.Id = si.DoId
+
+-- ✅ FIX HERE
+LEFT JOIN dbo.Quotation q
+    ON q.Id = so.QuotationNo
+   AND q.IsActive = 1
+
+LEFT JOIN dbo.Customer c
+    ON c.Id = so.CustomerId
+	LEFT JOIN dbo.PaymentTerms p
+    ON p.Id = q.PaymentTermsId
+	LEFT JOIN dbo.Currency cu
+    ON cu.Id = q.CurrencyId
+WHERE si.Id =@Id;
+
+";
 
             return await Connection.QueryFirstOrDefaultAsync<SiHeaderDto>(sql, new { Id = id });
         }
+
 
         public async Task<IEnumerable<SiLineDto>> GetLinesAsync(int id)
         {

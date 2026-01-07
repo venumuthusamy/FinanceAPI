@@ -10,13 +10,32 @@ namespace FinanceApi.ModelDTO
             public DateTime InvoiceDate { get; set; }
             public byte SourceType { get; set; }
             public int? SoId { get; set; }
-            public decimal TaxAmount { get; set; }
             public int? DoId { get; set; }
+            public decimal TaxAmount { get; set; }
             public decimal Total { get; set; }
             public byte Status { get; set; }
             public bool IsActive { get; set; }
-            public SiHeaderDto() { }
+            public string SourceRef { get; set; } = "";
+
+            // ✅ Print extra fields
+            public int? CustomerId { get; set; }
+            public string CustomerName { get; set; } = "";
+            public string ContactNumber { get; set; } = "";
+            public string PointOfContactPerson { get; set; } = "";
+            public string Email { get; set; } = "";
+
+            public int? PaymentTermId { get; set; }     // from Customer
+            public string PaymentTermsName { get; set; } = ""; // from PaymentTerms table (if exists)
+
+            public int? CurrencyId { get; set; }        // from Quotation
+            public string CurrencyName { get; set; } = ""; // from Currency table (if exists)
+            public decimal FxRate { get; set; }         // from Quotation
+            public DateTime? DeliveryDate { get; set; } // from Quotation (optional)
+
+            public string? DeliveryTo { get; set; }     // from Quotation (optional)
+            public string? Remarks { get; set; }        // invoice remarks
         }
+
 
         public class SiLineDto
         {
@@ -35,6 +54,7 @@ namespace FinanceApi.ModelDTO
             public string? Tax { get; set; }
             public int? TaxCodeId { get; set; }
             public string? Description { get; set; }   // <— NEW
+            public int BudgetLineId {  get; set; }
             public SiLineDto() { }
         }
 
