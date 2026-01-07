@@ -51,4 +51,5 @@ public class QuotationController : ControllerBase
         await _svc.DeleteAsync(id, userId);
         return Ok(new ResponseResult(true, "Deleted", null));
     }
+
 }

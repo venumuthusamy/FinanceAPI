@@ -60,6 +60,9 @@
         public decimal GrandTotal { get; set; }
         public bool NeedsHodApproval { get; set; }
 
+        public string? Remarks { get; set; }
+        public string? DeliveryTo { get; set; }
+
         public List<QuotationLineDTO> Lines { get; set; } = new();
     }
 
@@ -71,6 +74,8 @@
 
         public int CustomerId { get; set; }
         public string? CustomerName { get; set; }
+
+        public string ItemCode { get; set; }
 
         public int CurrencyId { get; set; }
         public decimal FxRate { get; set; } = 1m;
@@ -89,6 +94,12 @@
         public string CurrencyName { get; set; } = "";
         public string PaymentTermsName { get; set; } = "";
 
+        public string? Remarks { get; set; }
+        public string? DeliveryTo { get; set; }
+
+        public string CreatedUserName { get; set; }
+
+        public string ModifiedUserName { get; set; }
         public List<QuotationLineDTO> Lines { get; set; } = new();
     }
 }
