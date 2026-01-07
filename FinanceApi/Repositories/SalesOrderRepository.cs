@@ -16,7 +16,9 @@ namespace FinanceApi.Repositories
     {
         public SalesOrderRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory) { }
 
-        // ===================== READ LIST =====================
+        // ====================================================
+        // ===================== READ LIST ====================
+        // ====================================================
         public async Task<IEnumerable<SalesOrderDTO>> GetAllAsync()
         {
             const string headersSql = @"
@@ -58,7 +60,7 @@ SELECT
     ItemId,
     ItemName,
     Uom,
-    [Description],              -- ✅ NEW
+    [Description],
     Quantity,
     UnitPrice,
     Discount,
@@ -83,19 +85,22 @@ WHERE SalesOrderId IN @Ids AND IsActive = 1;";
 
             var map = headers.ToDictionary(h => h.Id);
             foreach (var ln in lines)
-                if (map.TryGetValue(ln.SalesOrderId, out var parent)) parent.LineItems.Add(ln);
+                if (map.TryGetValue(ln.SalesOrderId, out var parent))
+                    parent.LineItems.Add(ln);
 
             return headers;
         }
 
-        // ===================== READ ONE (SOId) =====================
+        // ====================================================
+        // ===================== READ ONE =====================
+        // ====================================================
         public async Task<SalesOrderDTO?> GetByIdAsync(int id)
         {
             const string headerSql = @"
 SELECT TOP(1)
     so.Id,
     so.QuotationNo,
-    Q.Number,
+    q.Number,
     so.CustomerId,
     ISNULL(c.CustomerName,'') AS CustomerName,
     so.RequestedDate,
@@ -116,7 +121,7 @@ SELECT TOP(1)
     so.ApprovedBy
 FROM dbo.SalesOrder so
 LEFT JOIN dbo.Customer  c ON c.Id = so.CustomerId
-LEFT JOIN dbo.Quotation Q ON Q.Id = so.QuotationNo
+LEFT JOIN dbo.Quotation q ON q.Id = so.QuotationNo
 WHERE so.Id = @Id AND so.IsActive = 1;";
 
             var head = await Connection.QueryFirstOrDefaultAsync<SalesOrderDTO>(headerSql, new { Id = id });
@@ -129,10 +134,10 @@ SELECT
     sl.ItemId,
     sl.ItemName,
     sl.Uom,
-    sl.[Description],           -- ✅ NEW
+    sl.[Description],
     sl.Quantity,
     sl.UnitPrice,
-    sl.Discount,          -- PERCENT
+    sl.Discount,
     sl.Tax,
     sl.TaxCodeId,
     sl.TaxAmount,
@@ -169,6 +174,12 @@ ORDER BY sl.Id;";
         private readonly record struct AllocCandidate(int WarehouseId, int? BinId, int SupplierId, decimal WhAvail, decimal SupplierQty);
         private readonly record struct Allocation(int WarehouseId, int? BinId, int SupplierId, decimal Qty);
 
+        private async Task EnsureOpenAsync(IDbConnection conn)
+        {
+            if (conn.State != ConnectionState.Open)
+                await (conn as SqlConnection)!.OpenAsync();
+        }
+
         private async Task<int?> GetItemMasterIdAsync(IDbConnection conn, IDbTransaction tx, int itemId)
         {
             const string sql = @"
@@ -177,28 +188,6 @@ FROM dbo.Item i WITH (NOLOCK)
 JOIN dbo.ItemMaster im WITH (NOLOCK) ON im.Sku = i.ItemCode
 WHERE i.Id = @ItemId;";
             return await conn.ExecuteScalarAsync<int?>(sql, new { ItemId = itemId }, tx);
-        }
-
-        private async Task<decimal> GetEffectiveTotalAvailableAsync(IDbConnection conn, IDbTransaction tx, int itemMasterId)
-        {
-            const string sql = @"
-WITH STOCK AS (
-    SELECT ISNULL(SUM(iws.OnHand - iws.Reserved),0) AS Avl
-    FROM dbo.ItemWarehouseStock iws WITH (NOLOCK)
-    WHERE iws.ItemId = @ItemMasterId
-),
-LOCKED AS (
-    SELECT ISNULL(SUM(sol.LockedQty),0) AS Lck
-    FROM dbo.SalesOrderLines sol WITH (NOLOCK)
-    JOIN dbo.SalesOrder so  WITH (NOLOCK) ON so.Id = sol.SalesOrderId AND so.IsActive = 1
-    JOIN dbo.Item i         WITH (NOLOCK) ON i.Id  = sol.ItemId
-    JOIN dbo.ItemMaster im  WITH (NOLOCK) ON im.Sku = i.ItemCode
-    WHERE sol.IsActive = 1
-      AND im.Id = @ItemMasterId
-)
-SELECT CASE WHEN s.Avl - l.Lck < 0 THEN 0 ELSE s.Avl - l.Lck END
-FROM STOCK s CROSS JOIN LOCKED l;";
-            return await conn.ExecuteScalarAsync<decimal>(sql, new { ItemMasterId = itemMasterId }, tx);
         }
 
         private async Task<List<AllocCandidate>> GetAllocCandidatesAsync(IDbConnection conn, IDbTransaction tx, int itemMasterId)
@@ -259,6 +248,9 @@ ORDER BY WhAvail DESC, ip.Qty DESC;";
             return res;
         }
 
+        private static decimal Round2(decimal v) =>
+            Math.Round(v, 2, MidpointRounding.AwayFromZero);
+
         private static (decimal net, decimal taxAmt, decimal total, decimal discountValue) ComputeAmounts(
             decimal qty, decimal unitPrice, decimal discountPct, string? taxMode, decimal gstPct)
         {
@@ -268,7 +260,7 @@ ORDER BY WhAvail DESC, ip.Qty DESC;";
             var afterDisc = sub - discountValue;
             if (afterDisc < 0) afterDisc = 0;
 
-            var sMode = (taxMode ?? "EXCLUSIVE").ToUpperInvariant();
+            var sMode = (taxMode ?? "EXEMPT").ToUpperInvariant();
             var rate = gstPct / 100m;
 
             decimal net, tax, tot;
@@ -299,10 +291,6 @@ ORDER BY WhAvail DESC, ip.Qty DESC;";
             return (net, tax, tot, discountValue);
         }
 
-        private static decimal Round2(decimal v) =>
-            Math.Round(v, 2, MidpointRounding.AwayFromZero);
-
-        // ✅ Auto-fill DeliveryDate from Quotation if missing
         private async Task<DateTime?> GetQuotationDeliveryDateAsync(IDbConnection conn, IDbTransaction tx, int quotationId)
         {
             const string sql = @"
@@ -310,6 +298,122 @@ SELECT TOP(1) DeliveryDate
 FROM dbo.Quotation WITH (NOLOCK)
 WHERE Id = @Id AND IsActive = 1;";
             return await conn.ExecuteScalarAsync<DateTime?>(sql, new { Id = quotationId }, tx);
+        }
+
+        // ======= NEW: insert ordered SO line (NO Qty=0 rows) =======
+        private async Task<int> InsertSalesOrderLineAsync(
+            IDbConnection conn, IDbTransaction tx,
+            int salesOrderId, SalesOrderLines l, SalesOrder so, DateTime now)
+        {
+            var (net, tax, total, _) = ComputeAmounts(
+                l.Quantity, l.UnitPrice, l.Discount, l.Tax ?? "EXEMPT", so.GstPct);
+
+            const string sql = @"
+INSERT INTO dbo.SalesOrderLines
+(SalesOrderId, ItemId, ItemName, Uom, [Description],
+ Quantity, UnitPrice, Discount, Tax, TaxCodeId, TaxAmount, Total,
+ WarehouseId, BinId, Available, SupplierId, LockedQty,
+ CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
+OUTPUT INSERTED.Id
+VALUES
+(@SalesOrderId, @ItemId, @ItemName, @Uom, @Description,
+ @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @TaxAmount, @Total,
+ NULL, NULL, 0, NULL, 0,
+ @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);";
+
+            return await conn.ExecuteScalarAsync<int>(sql, new
+            {
+                SalesOrderId = salesOrderId,
+                l.ItemId,
+                l.ItemName,
+                l.Uom,
+                Description = (object?)l.Description ?? DBNull.Value,
+
+                Quantity = l.Quantity,
+                UnitPrice = l.UnitPrice,
+                Discount = l.Discount,
+                Tax = l.Tax,
+                l.TaxCodeId,
+                TaxAmount = tax,
+                Total = total,
+
+                CreatedBy = so.CreatedBy,
+                CreatedDate = so.CreatedDate == default ? now : so.CreatedDate,
+                UpdatedBy = so.UpdatedBy ?? so.CreatedBy,
+                UpdatedDate = so.UpdatedDate ?? now
+            }, tx);
+        }
+
+        // ======= NEW: insert allocations into SalesOrderLineAlloc =======
+        private async Task<int> InsertAllocRowsAsync(
+            IDbConnection conn, IDbTransaction tx,
+            int salesOrderLineId, List<Allocation> allocs, SalesOrder so, DateTime now)
+        {
+            if (allocs == null || allocs.Count == 0) return 0;
+
+            const string ins = @"
+INSERT INTO dbo.SalesOrderLineAlloc
+(SalesOrderLineId, WarehouseId, BinId, SupplierId, Qty, IsActive, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+VALUES
+(@SalesOrderLineId, @WarehouseId, @BinId, @SupplierId, @Qty, 1, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate);";
+
+            foreach (var a in allocs)
+            {
+                await conn.ExecuteAsync(ins, new
+                {
+                    SalesOrderLineId = salesOrderLineId,
+                    WarehouseId = a.WarehouseId,
+                    BinId = a.BinId,
+                    SupplierId = a.SupplierId,
+                    Qty = a.Qty,
+                    CreatedBy = so.CreatedBy,
+                    CreatedDate = so.CreatedDate == default ? now : so.CreatedDate,
+                    UpdatedBy = so.UpdatedBy ?? so.CreatedBy,
+                    UpdatedDate = so.UpdatedDate ?? now
+                }, tx);
+            }
+
+            return (int)allocs.Sum(x => x.Qty);
+        }
+
+        // ======= Update line summary fields from allocations (first WH for display + LockedQty sum) =======
+        private async Task UpdateLineAllocationSummaryAsync(
+            IDbConnection conn, IDbTransaction tx,
+            int salesOrderLineId)
+        {
+            const string sql = @"
+;WITH A AS (
+    SELECT TOP 1 WarehouseId, BinId, SupplierId
+    FROM dbo.SalesOrderLineAlloc WITH (NOLOCK)
+    WHERE SalesOrderLineId=@Id AND IsActive=1
+    ORDER BY Qty DESC, Id ASC
+),
+S AS (
+    SELECT ISNULL(SUM(Qty),0) AS AllocQty
+    FROM dbo.SalesOrderLineAlloc WITH (NOLOCK)
+    WHERE SalesOrderLineId=@Id AND IsActive=1
+)
+UPDATE L
+SET L.WarehouseId = A.WarehouseId,
+    L.BinId       = A.BinId,
+    L.SupplierId  = A.SupplierId,
+    L.LockedQty   = S.AllocQty
+FROM dbo.SalesOrderLines L
+CROSS JOIN S
+LEFT JOIN A ON 1=1
+WHERE L.Id=@Id;";
+            await conn.ExecuteAsync(sql, new { Id = salesOrderLineId }, tx);
+        }
+
+        private async Task SoftDeleteAllocBySoAsync(IDbConnection conn, IDbTransaction tx, int? soId, int? updatedBy)
+        {
+            const string sql = @"
+UPDATE a
+SET IsActive=0, UpdatedBy=@UpdatedBy, UpdatedDate=SYSUTCDATETIME()
+FROM dbo.SalesOrderLineAlloc a
+JOIN dbo.SalesOrderLines l ON l.Id = a.SalesOrderLineId
+WHERE l.SalesOrderId=@SoId AND a.IsActive=1;";
+            await conn.ExecuteAsync(sql, new { SoId = soId, UpdatedBy = updatedBy }, tx);
         }
 
         private async Task RecomputeAndSetHeaderTotalsAsync(
@@ -337,9 +441,7 @@ WHERE SalesOrderId = @Id AND IsActive = 1;";
             foreach (var row in rows)
             {
                 var gross = row.Quantity * row.UnitPrice;
-
                 var discVal = Round2(gross * (row.DiscountPct / 100m));
-
                 var afterDisc = gross - discVal;
                 if (afterDisc < 0) afterDisc = 0;
 
@@ -352,7 +454,6 @@ WHERE SalesOrderId = @Id AND IsActive = 1;";
                     case "STANDARD_RATED":
                         lineTax = Round2(afterDisc * rate);
                         break;
-
                     case "INCLUSIVE":
                         if (rate > 0)
                         {
@@ -361,7 +462,6 @@ WHERE SalesOrderId = @Id AND IsActive = 1;";
                         }
                         else lineTax = 0;
                         break;
-
                     default:
                         lineTax = 0;
                         break;
@@ -385,7 +485,6 @@ SET Subtotal   = @Subtotal,
     TaxAmount  = @TaxAmount,
     GrandTotal = @GrandTotal,
     Discount   = @Discount,
-    Status     = 1,
     UpdatedDate = SYSUTCDATETIME()
 WHERE Id=@Id;";
 
@@ -396,156 +495,6 @@ WHERE Id=@Id;";
                 TaxAmount = taxAmount,
                 GrandTotal = grand,
                 Discount = totalDiscountVal
-            }, tx);
-        }
-
-        // ===== Insert rows with allocation and shortage row =====
-        private async Task<decimal> ApplyAllocationWithShortageRowAsync(
-            IDbConnection conn, IDbTransaction tx,
-            int salesOrderId, SalesOrderLines requestLine,
-            List<Allocation> allocs, DateTime now, SalesOrder so, int itemMasterId)
-        {
-            const string insLine = @"
-INSERT INTO dbo.SalesOrderLines
-(SalesOrderId, ItemId, ItemName, Uom, [Description],
- Quantity, UnitPrice, Discount, Tax, TaxCodeId, TaxAmount, Total,
- WarehouseId, BinId, Available, SupplierId, LockedQty,
- CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
-VALUES
-(@SalesOrderId, @ItemId, @ItemName, @Uom, @Description,
- @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @TaxAmount, @Total,
- @WarehouseId, @BinId, @Available, @SupplierId, @LockedQty,
- @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);";
-
-            var totalQty = requestLine.Quantity;
-            if (totalQty <= 0) return 0m;
-
-            decimal allocated = 0m;
-
-            foreach (var a in allocs)
-            {
-                var sliceQty = Math.Min(a.Qty, totalQty - allocated);
-                if (sliceQty <= 0) break;
-
-                var (net, tax, sliceTotal, _) = ComputeAmounts(
-                    sliceQty,
-                    requestLine.UnitPrice,
-                    requestLine.Discount,
-                    requestLine.Tax ?? "EXEMPT",
-                    so.GstPct);
-
-                await conn.ExecuteAsync(insLine, new
-                {
-                    SalesOrderId = salesOrderId,
-                    ItemId = requestLine.ItemId,
-                    ItemName = requestLine.ItemName,
-                    Uom = requestLine.Uom,
-                    Description = (object?)requestLine.Description ?? DBNull.Value,
-
-                    Quantity = sliceQty,
-                    UnitPrice = requestLine.UnitPrice,
-                    Discount = requestLine.Discount,
-
-                    Tax = requestLine.Tax,
-                    TaxCodeId = requestLine.TaxCodeId,
-                    TaxAmount = tax,
-                    Total = sliceTotal,
-
-                    WarehouseId = a.WarehouseId,
-                    BinId = a.BinId,
-                    Available = sliceQty,
-                    SupplierId = a.SupplierId,
-                    LockedQty = sliceQty,
-
-                    CreatedBy = so.CreatedBy,
-                    CreatedDate = so.CreatedDate == default ? now : so.CreatedDate,
-                    UpdatedBy = so.UpdatedBy ?? so.CreatedBy,
-                    UpdatedDate = so.UpdatedDate ?? now
-                }, tx);
-
-                allocated += sliceQty;
-                if (allocated >= totalQty) break;
-            }
-
-            var shortage = totalQty - allocated;
-            if (shortage > 0)
-            {
-                await conn.ExecuteAsync(insLine, new
-                {
-                    SalesOrderId = salesOrderId,
-                    ItemId = requestLine.ItemId,
-                    ItemName = requestLine.ItemName,
-                    Uom = requestLine.Uom,
-                    Description = (object?)requestLine.Description ?? DBNull.Value,
-
-                    Quantity = 0m,
-                    UnitPrice = requestLine.UnitPrice,
-                    Discount = 0m,
-                    Tax = requestLine.Tax,
-                    TaxCodeId = requestLine.TaxCodeId,
-                    TaxAmount = 0m,
-                    Total = 0m,
-
-                    WarehouseId = (int?)null,
-                    BinId = (int?)null,
-                    Available = 0m,
-                    SupplierId = (int?)null,
-                    LockedQty = shortage,
-
-                    CreatedBy = so.CreatedBy,
-                    CreatedDate = so.CreatedDate == default ? now : so.CreatedDate,
-                    UpdatedBy = so.UpdatedBy ?? so.CreatedBy,
-                    UpdatedDate = so.UpdatedDate ?? now
-                }, tx);
-            }
-
-            return shortage < 0 ? 0 : shortage;
-        }
-
-        private async Task InsertNoStockLineAsync(
-            IDbConnection conn, IDbTransaction tx,
-            int salesOrderId, SalesOrderLines requestLine,
-            int itemMasterId,
-            DateTime now, SalesOrder so)
-        {
-            const string insLine = @"
-INSERT INTO dbo.SalesOrderLines
-(SalesOrderId, ItemId, ItemName, Uom, [Description],
- Quantity, UnitPrice, Discount, Tax, TaxCodeId, TaxAmount, Total,
- WarehouseId, BinId, Available, SupplierId, LockedQty,
- CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
-VALUES
-(@SalesOrderId, @ItemId, @ItemName, @Uom, @Description,
- @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @TaxAmount, @Total,
- @WarehouseId, @BinId, @Available, @SupplierId, @LockedQty,
- @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);";
-
-            await conn.ExecuteAsync(insLine, new
-            {
-                SalesOrderId = salesOrderId,
-                ItemId = requestLine.ItemId,
-                ItemName = requestLine.ItemName,
-                Uom = requestLine.Uom,
-                Description = (object?)requestLine.Description ?? DBNull.Value,
-
-                Quantity = 0m,
-                UnitPrice = requestLine.UnitPrice,
-                Discount = 0m,
-                Tax = requestLine.Tax,
-                TaxCodeId = requestLine.TaxCodeId,
-                TaxAmount = 0m,
-                Total = 0m,
-
-                WarehouseId = (int?)null,
-                BinId = (int?)null,
-                Available = 0m,
-                SupplierId = (int?)null,
-                LockedQty = requestLine.Quantity,
-
-                CreatedBy = so.CreatedBy,
-                CreatedDate = now,
-                UpdatedBy = so.UpdatedBy ?? so.CreatedBy,
-                UpdatedDate = so.UpdatedDate ?? now
             }, tx);
         }
 
@@ -561,7 +510,9 @@ SELECT @n;";
             return $"{prefix}{next.ToString().PadLeft(width, '0')}";
         }
 
-        // ===================== CREATE =====================
+        // ====================================================
+        // ===================== CREATE =======================
+        // ====================================================
         public async Task<int> CreateAsync(SalesOrder so)
         {
             var now = DateTime.UtcNow;
@@ -580,13 +531,12 @@ VALUES
  @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1, @ApprovedBy);";
 
             var conn = Connection;
-            if (conn.State != ConnectionState.Open)
-                await (conn as SqlConnection)!.OpenAsync();
+            await EnsureOpenAsync(conn);
 
             using var tx = conn.BeginTransaction();
             try
             {
-                // ✅ Autobind DeliveryDate from Quotation (if missing)
+                // autobind DeliveryDate from quotation if missing
                 if ((so.DeliveryDate == null || so.DeliveryDate == default) && so.QuotationNo > 0)
                 {
                     var qDel = await GetQuotationDeliveryDateAsync(conn, tx, so.QuotationNo);
@@ -616,32 +566,35 @@ VALUES
                     ApprovedBy = (object?)so.ApprovedBy ?? DBNull.Value
                 }, tx);
 
-                foreach (var l in so.LineItems)
+                foreach (var l in so.LineItems ?? Enumerable.Empty<SalesOrderLines>())
                 {
+                    // 1) Insert ORDER line (Quantity = ordered qty)
+                    var lineId = await InsertSalesOrderLineAsync(conn, tx, salesOrderId, l, so, now);
+
+                    // 2) Allocation candidates
                     var itemMasterId = await GetItemMasterIdAsync(conn, tx, l.ItemId) ?? 0;
                     if (itemMasterId == 0)
                         throw new InvalidOperationException($"Item master not found for ItemId {l.ItemId}");
 
-                    var effAvail = await GetEffectiveTotalAvailableAsync(conn, tx, itemMasterId);
+                    var cands = await GetAllocCandidatesAsync(conn, tx, itemMasterId);
+                    var allocs = MakeAllocation(cands, l.Quantity);
 
-                    if (effAvail <= 0)
-                    {
-                        await InsertNoStockLineAsync(conn, tx, salesOrderId, l, itemMasterId, now, so);
-                        await UpsertPurchaseAlertAsync(conn, tx, salesOrderId, soNo, l.ItemId, l.ItemName, l.Quantity, null, null);
-                    }
-                    else
-                    {
-                        var cands = await GetAllocCandidatesAsync(conn, tx, itemMasterId);
-                        var allocs = MakeAllocation(cands, l.Quantity);
-                        var shortage = await ApplyAllocationWithShortageRowAsync(conn, tx, salesOrderId, l, allocs, now, so, itemMasterId);
+                    // 3) Insert allocations
+                    var allocatedQty = allocs.Sum(a => a.Qty);
+                    if (allocatedQty > 0)
+                        await InsertAllocRowsAsync(conn, tx, lineId, allocs, so, now);
 
-                        if (shortage > 0)
-                        {
-                            var first = allocs.FirstOrDefault();
-                            int? wh = first.WarehouseId == 0 ? (int?)null : first.WarehouseId;
-                            int? sup = first.SupplierId == 0 ? (int?)null : first.SupplierId;
-                            await UpsertPurchaseAlertAsync(conn, tx, salesOrderId, soNo, l.ItemId, l.ItemName, shortage, wh, sup);
-                        }
+                    // 4) Update line summary (LockedQty = allocatedQty, show first WH/SUP/BIN)
+                    await UpdateLineAllocationSummaryAsync(conn, tx, lineId);
+
+                    // 5) Shortage -> PurchaseAlert (NO Quantity=0 row)
+                    var shortage = l.Quantity - allocatedQty;
+                    if (shortage > 0)
+                    {
+                        var first = allocs.FirstOrDefault();
+                        int? wh = allocs.Count > 0 ? first.WarehouseId : (int?)null;
+                        int? sup = allocs.Count > 0 ? first.SupplierId : (int?)null;
+                        await UpsertPurchaseAlertAsync(conn, tx, salesOrderId, soNo, l.ItemId, l.ItemName, shortage, wh, sup);
                     }
                 }
 
@@ -657,15 +610,17 @@ VALUES
             }
         }
 
-        // ===================== UPDATE (FULL REALLOCATION) =====================
+        // ====================================================
+        // ========== UPDATE (FULL REALLOCATION) ===============
+        // ====================================================
         public async Task UpdateWithReallocationAsync(SalesOrder so)
         {
             var now = DateTime.UtcNow;
 
             const string updHead = @"
 UPDATE dbo.SalesOrder SET
-    RequestedDate = ISNULL(RequestedDate, @RequestedDate),
-    DeliveryDate  = ISNULL(DeliveryDate , @DeliveryDate ),
+    RequestedDate = @RequestedDate,
+    DeliveryDate  = @DeliveryDate,
     Shipping      = @Shipping,
     Discount      = @Discount,
     GstPct        = @GstPct,
@@ -679,12 +634,11 @@ SET IsActive=0, UpdatedBy=@UpdatedBy, UpdatedDate=@UpdatedDate
 WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
 
             var conn = Connection;
-            if (conn.State != ConnectionState.Open) await (conn as SqlConnection)!.OpenAsync();
+            await EnsureOpenAsync(conn);
 
             using var tx = conn.BeginTransaction();
             try
             {
-                // ✅ Autobind DeliveryDate from Quotation (if missing)
                 if ((so.DeliveryDate == null || so.DeliveryDate == default) && so.QuotationNo > 0)
                 {
                     var qDel = await GetQuotationDeliveryDateAsync(conn, tx, so.QuotationNo);
@@ -703,6 +657,8 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
                     so.Id
                 }, tx);
 
+                // deactivate old alloc + lines
+                await SoftDeleteAllocBySoAsync(conn, tx, so.Id, so.UpdatedBy ?? so.CreatedBy);
                 await conn.ExecuteAsync(softDeleteLines, new
                 {
                     SalesOrderId = so.Id,
@@ -711,34 +667,33 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
                 }, tx);
 
                 var soNo = await conn.ExecuteScalarAsync<string>(
-                    "SELECT TOP (1) SalesOrderNo FROM dbo.SalesOrder WITH (NOLOCK) WHERE Id=@Id;", new { so.Id }, tx);
+                    "SELECT TOP (1) SalesOrderNo FROM dbo.SalesOrder WITH (NOLOCK) WHERE Id=@Id;", new { so.Id }, tx) ?? "";
 
+                // re-insert lines + allocs (same as create)
                 foreach (var l in so.LineItems ?? Enumerable.Empty<SalesOrderLines>())
                 {
+                    var lineId = await InsertSalesOrderLineAsync(conn, tx, so.Id, l, so, now);
+
                     var itemMasterId = await GetItemMasterIdAsync(conn, tx, l.ItemId) ?? 0;
                     if (itemMasterId == 0)
                         throw new InvalidOperationException($"Item master not found for ItemId {l.ItemId}");
 
-                    var effAvail = await GetEffectiveTotalAvailableAsync(conn, tx, itemMasterId);
+                    var cands = await GetAllocCandidatesAsync(conn, tx, itemMasterId);
+                    var allocs = MakeAllocation(cands, l.Quantity);
 
-                    if (effAvail <= 0)
-                    {
-                        await InsertNoStockLineAsync(conn, tx, so.Id, l, itemMasterId, now, so);
-                        await UpsertPurchaseAlertAsync(conn, tx, so.Id, soNo ?? "", l.ItemId, l.ItemName, l.Quantity, null, null);
-                    }
-                    else
-                    {
-                        var cands = await GetAllocCandidatesAsync(conn, tx, itemMasterId);
-                        var allocs = MakeAllocation(cands, l.Quantity);
-                        var shortage = await ApplyAllocationWithShortageRowAsync(conn, tx, so.Id, l, allocs, now, so, itemMasterId);
+                    var allocatedQty = allocs.Sum(a => a.Qty);
+                    if (allocatedQty > 0)
+                        await InsertAllocRowsAsync(conn, tx, lineId, allocs, so, now);
 
-                        if (shortage > 0)
-                        {
-                            var first = allocs.FirstOrDefault();
-                            int? wh = first.WarehouseId == 0 ? (int?)null : first.WarehouseId;
-                            int? sup = first.SupplierId == 0 ? (int?)null : first.SupplierId;
-                            await UpsertPurchaseAlertAsync(conn, tx, so.Id, soNo ?? "", l.ItemId, l.ItemName, shortage, wh, sup);
-                        }
+                    await UpdateLineAllocationSummaryAsync(conn, tx, lineId);
+
+                    var shortage = l.Quantity - allocatedQty;
+                    if (shortage > 0)
+                    {
+                        var first = allocs.FirstOrDefault();
+                        int? wh = allocs.Count > 0 ? first.WarehouseId : (int?)null;
+                        int? sup = allocs.Count > 0 ? first.SupplierId : (int?)null;
+                        await UpsertPurchaseAlertAsync(conn, tx, so.Id, soNo, l.ItemId, l.ItemName, shortage, wh, sup);
                     }
                 }
 
@@ -753,7 +708,9 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
             }
         }
 
-        // ===================== LIGHT UPDATE (no Locked recompute) =====================
+        // ====================================================
+        // ========== LIGHT UPDATE (no realloc) ================
+        // ====================================================
         public async Task UpdateAsync(SalesOrder so)
         {
             var now = DateTime.UtcNow;
@@ -765,22 +722,12 @@ UPDATE dbo.SalesOrder SET
     UpdatedBy=@UpdatedBy, UpdatedDate=@UpdatedDate
 WHERE Id=@Id;";
 
-            const string findByKeys = @"
-SELECT TOP 1 Id
-FROM dbo.SalesOrderLines WITH (NOLOCK)
-WHERE SalesOrderId=@SalesOrderId AND IsActive=1
-  AND ItemId=@ItemId
-  AND ISNULL(WarehouseId, -1) = ISNULL(@WarehouseId, -1)
-  AND ISNULL(BinId,       -1) = ISNULL(@BinId,       -1)
-  AND ISNULL(SupplierId,  -1) = ISNULL(@SupplierId,  -1)
-ORDER BY Id;";
-
             const string updLine = @"
 UPDATE dbo.SalesOrderLines SET
     ItemId=@ItemId,
     ItemName=@ItemName,
     Uom=@Uom,
-    [Description]=@Description,        -- ✅ NEW
+    [Description]=@Description,
     Quantity=@Quantity,
     UnitPrice=@UnitPrice,
     Discount=@Discount,
@@ -788,62 +735,17 @@ UPDATE dbo.SalesOrderLines SET
     TaxCodeId=@TaxCodeId,
     TaxAmount=@TaxAmount,
     Total=@Total,
-    WarehouseId=@WarehouseId,
-    BinId=@BinId,
-    Available=@Available,
-    SupplierId=@SupplierId,
     UpdatedBy=@UpdatedBy,
     UpdatedDate=@UpdatedDate,
     IsActive=1
 WHERE Id=@Id AND SalesOrderId=@SalesOrderId;";
 
-            const string insLine = @"
-INSERT INTO dbo.SalesOrderLines
-(SalesOrderId, ItemId, ItemName, Uom, [Description],
- Quantity, UnitPrice, Discount, Tax, TaxCodeId, TaxAmount, Total,
- WarehouseId, BinId, Available, SupplierId, LockedQty,
- CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
-VALUES
-(@SalesOrderId, @ItemId, @ItemName, @Uom, @Description,
- @Quantity, @UnitPrice, @Discount, @Tax, @TaxCodeId, @TaxAmount, @Total,
- @WarehouseId, @BinId, @Available, @SupplierId, @LockedQty,
- @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1);
-SELECT CAST(SCOPE_IDENTITY() AS INT);";
-
-            const string softDeleteMissing = @"
-UPDATE dbo.SalesOrderLines
-SET IsActive=0, UpdatedBy=@UpdatedBy, UpdatedDate=@UpdatedDate
-WHERE SalesOrderId=@SalesOrderId AND IsActive=1
-  AND (@KeepIdsCount=0 OR Id NOT IN @KeepIds);";
-
-            const string getItemMasterId = @"
-SELECT TOP 1 im.Id
-FROM dbo.Item i WITH (NOLOCK)
-JOIN dbo.ItemMaster im WITH (NOLOCK) ON im.Sku = i.ItemCode
-WHERE i.Id = @ItemId;";
-
-            const string getBinAvail = @"
-SELECT TOP 1 iws.BinId, (SUM(iws.OnHand) - SUM(iws.Reserved)) AS Available
-FROM dbo.ItemWarehouseStock iws WITH (NOLOCK)
-WHERE iws.ItemId = @ItemMasterId AND iws.WarehouseId = @WarehouseId
-GROUP BY iws.BinId
-ORDER BY Available DESC;";
-
-            const string getSupplier = @"
-SELECT TOP 1 ip.SupplierId
-FROM dbo.ItemPrice ip WITH (NOLOCK)
-WHERE ip.ItemId = @ItemMasterId AND ip.WarehouseId = @WarehouseId
-ORDER BY ip.Qty DESC, ip.Id DESC;";
-
-            const string getItemName = @"SELECT TOP 1 ItemName FROM dbo.Item WITH (NOLOCK) WHERE Id = @ItemId;";
-
             var conn = Connection;
-            if (conn.State != ConnectionState.Open) await (conn as SqlConnection)!.OpenAsync();
+            await EnsureOpenAsync(conn);
 
             using var tx = conn.BeginTransaction();
             try
             {
-                // ✅ Autobind DeliveryDate from Quotation (if missing)
                 if ((so.DeliveryDate == null || so.DeliveryDate == default) && so.QuotationNo > 0)
                 {
                     var qDel = await GetQuotationDeliveryDateAsync(conn, tx, so.QuotationNo);
@@ -865,110 +767,33 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
                     so.Id
                 }, tx);
 
-                var keepIds = new List<int>();
-
+                // We expect UI to send existing line id in l.Id (or DTO -> model mapping)
                 foreach (var l in so.LineItems ?? Enumerable.Empty<SalesOrderLines>())
                 {
+                    if (l.Id <= 0) continue;
+
                     var (net, tax, computedTotal, _) =
                         ComputeAmounts(l.Quantity, l.UnitPrice, l.Discount, l.Tax ?? "EXEMPT", so.GstPct);
 
-                    int? whId = l.WarehouseId;
-                    var itemMasterId = await conn.ExecuteScalarAsync<int?>(getItemMasterId, new { l.ItemId }, tx) ?? 0;
-
-                    int? binId = l.BinId;
-                    decimal? available = null;
-                    int? supplierId = l.SupplierId;
-
-                    if (itemMasterId > 0 && whId.HasValue)
+                    await conn.ExecuteAsync(updLine, new
                     {
-                        var ba = await conn.QueryFirstOrDefaultAsync<(int? BinId, decimal? Available)>(
-                            getBinAvail, new { ItemMasterId = itemMasterId, WarehouseId = whId.Value }, tx);
-                        if (!binId.HasValue || binId == 0) binId = ba.BinId;
-                        available = ba.Available;
-
-                        if (!supplierId.HasValue || supplierId == 0)
-                            supplierId = await conn.ExecuteScalarAsync<int?>(getSupplier, new { ItemMasterId = itemMasterId, WarehouseId = whId.Value }, tx);
-
-                        if (binId.HasValue && binId.Value == 0) binId = null;
-                        if (supplierId.HasValue && supplierId.Value == 0) supplierId = null;
-                    }
-
-                    var itemName = await conn.ExecuteScalarAsync<string?>(getItemName, new { l.ItemId }, tx) ?? "";
-
-                    int lineId = l.Id > 0 ? l.Id :
-                        (await conn.ExecuteScalarAsync<int?>(findByKeys, new
-                        {
-                            SalesOrderId = so.Id,
-                            ItemId = l.ItemId,
-                            WarehouseId = whId,
-                            BinId = binId,
-                            SupplierId = supplierId
-                        }, tx)) ?? 0;
-
-                    if (lineId > 0)
-                    {
-                        await conn.ExecuteAsync(updLine, new
-                        {
-                            Id = lineId,
-                            SalesOrderId = so.Id,
-                            ItemId = l.ItemId,
-                            ItemName = itemName,
-                            Uom = l.Uom,
-                            Description = (object?)l.Description ?? DBNull.Value,  // ✅ NEW
-                            Quantity = l.Quantity,
-                            UnitPrice = l.UnitPrice,
-                            Discount = l.Discount,
-                            Tax = l.Tax,
-                            TaxCodeId = l.TaxCodeId,
-                            TaxAmount = tax,
-                            Total = computedTotal,
-                            WarehouseId = whId,
-                            BinId = binId,
-                            Available = available,
-                            SupplierId = supplierId,
-                            UpdatedBy = so.UpdatedBy,
-                            UpdatedDate = now
-                        }, tx);
-                        keepIds.Add(lineId);
-                    }
-                    else
-                    {
-                        var newLineId = await conn.ExecuteScalarAsync<int>(insLine, new
-                        {
-                            SalesOrderId = so.Id,
-                            ItemId = l.ItemId,
-                            ItemName = itemName,
-                            Uom = l.Uom,
-                            Description = (object?)l.Description ?? DBNull.Value,  // ✅ NEW
-                            Quantity = l.Quantity,
-                            UnitPrice = l.UnitPrice,
-                            Discount = l.Discount,
-                            Tax = l.Tax,
-                            TaxCodeId = l.TaxCodeId,
-                            TaxAmount = tax,
-                            Total = computedTotal,
-                            WarehouseId = whId,
-                            BinId = binId,
-                            Available = available,
-                            SupplierId = supplierId,
-                            LockedQty = (decimal?)null,
-                            CreatedBy = (object?)so.UpdatedBy ?? so.CreatedBy,
-                            CreatedDate = now,
-                            UpdatedBy = so.UpdatedBy,
-                            UpdatedDate = now
-                        }, tx);
-                        keepIds.Add(newLineId);
-                    }
+                        Id = l.Id,
+                        SalesOrderId = so.Id,
+                        l.ItemId,
+                        l.ItemName,
+                        l.Uom,
+                        Description = (object?)l.Description ?? DBNull.Value,
+                        Quantity = l.Quantity,
+                        UnitPrice = l.UnitPrice,
+                        Discount = l.Discount,
+                        Tax = l.Tax,
+                        l.TaxCodeId,
+                        TaxAmount = tax,
+                        Total = computedTotal,
+                        UpdatedBy = so.UpdatedBy,
+                        UpdatedDate = now
+                    }, tx);
                 }
-
-                await conn.ExecuteAsync(softDeleteMissing, new
-                {
-                    SalesOrderId = so.Id,
-                    KeepIds = keepIds.Count == 0 ? new[] { -1 } : keepIds.ToArray(),
-                    KeepIdsCount = keepIds.Count,
-                    UpdatedBy = so.UpdatedBy,
-                    UpdatedDate = now
-                }, tx);
 
                 await RecomputeAndSetHeaderTotalsAsync(conn, tx, so.Id, so.GstPct, so.Shipping, 0m);
 
@@ -981,21 +806,31 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
             }
         }
 
-        // ===================== SOFT DELETE =====================
+        // ====================================================
+        // ===================== SOFT DELETE ==================
+        // ====================================================
         public async Task DeactivateAsync(int id, int updatedBy)
         {
             const string sqlHead = @"UPDATE dbo.SalesOrder SET IsActive=0, UpdatedBy=@UpdatedBy, UpdatedDate=SYSUTCDATETIME() WHERE Id=@Id;";
             const string sqlLines = @"UPDATE dbo.SalesOrderLines SET IsActive=0, UpdatedBy=@UpdatedBy, UpdatedDate=SYSUTCDATETIME() WHERE SalesOrderId=@Id AND IsActive=1;";
+            const string sqlAlloc = @"
+UPDATE a SET IsActive=0, UpdatedBy=@UpdatedBy, UpdatedDate=SYSUTCDATETIME()
+FROM dbo.SalesOrderLineAlloc a
+JOIN dbo.SalesOrderLines l ON l.Id=a.SalesOrderLineId
+WHERE l.SalesOrderId=@Id AND a.IsActive=1;";
 
             var conn = Connection;
-            if (conn.State != ConnectionState.Open) await (conn as SqlConnection)!.OpenAsync();
+            await EnsureOpenAsync(conn);
 
             using var tx = conn.BeginTransaction();
             try
             {
                 var n = await conn.ExecuteAsync(sqlHead, new { Id = id, UpdatedBy = updatedBy }, tx);
                 if (n == 0) throw new KeyNotFoundException("Sales Order not found.");
+
                 await conn.ExecuteAsync(sqlLines, new { Id = id, UpdatedBy = updatedBy }, tx);
+                await conn.ExecuteAsync(sqlAlloc, new { Id = id, UpdatedBy = updatedBy }, tx);
+
                 tx.Commit();
             }
             catch
@@ -1005,10 +840,11 @@ ORDER BY ip.Qty DESC, ip.Id DESC;";
             }
         }
 
-        // ===================== QUOTATION → DETAILS =====================
+        // ====================================================
+        // =============== QUOTATION → DETAILS =================
+        // ====================================================
         public async Task<QutationDetailsViewInfo?> GetByQuatitonDetails(int id)
         {
-            // ✅ FIXED: was hardcoded to 1, now uses @Id
             const string sql = @"
 SELECT q.Id,
        q.Number,
@@ -1048,7 +884,7 @@ SELECT l.Id,
        l.LineNet,
        l.LineTax,
        l.LineTotal,
-       l.Description,                 -- ✅ already present
+       l.Description,
        whAgg.WarehouseCount,
        whAgg.WarehouseIdsCsv AS WarehouseIds,
        whAgg.WarehousesJson
@@ -1121,7 +957,9 @@ ORDER BY l.Id;";
             return head;
         }
 
-        // ===================== PREVIEW (READ ONLY) =====================
+        // ====================================================
+        // ================= PREVIEW (READ ONLY) ===============
+        // ====================================================
         public async Task<AllocationPreviewResponse> PreviewAllocationAsync(AllocationPreviewRequest req)
         {
             var result = new AllocationPreviewResponse();
@@ -1129,8 +967,7 @@ ORDER BY l.Id;";
                 return result;
 
             var conn = Connection;
-            if (conn.State != ConnectionState.Open)
-                await (conn as SqlConnection)!.OpenAsync();
+            await EnsureOpenAsync(conn);
 
             const string sqlMapItemMaster = @"
 SELECT TOP 1 im.Id
@@ -1183,9 +1020,7 @@ LEFT JOIN dbo.Suppliers s WITH (NOLOCK) ON s.Id = ip.SupplierId
 LEFT JOIN dbo.Bin b WITH (NOLOCK)       ON b.Id = iws.BinId
 WHERE ip.ItemId = @ItemMasterId
   AND ip.Qty > 0
-ORDER BY 
-    WhAvail DESC,
-    ip.Qty DESC;";
+ORDER BY WhAvail DESC, ip.Qty DESC;";
 
             foreach (var line in req.Lines)
             {
@@ -1253,7 +1088,199 @@ ORDER BY
             return result;
         }
 
-        // ===== Alert upsert (unchanged) =====
+        // ====================================================
+        // ===================== APPROVE / REJECT ==============
+        // ====================================================
+        public async Task<int> ApproveAsync(int id, int approvedBy)
+        {
+            const string sql = @"
+UPDATE dbo.SalesOrder
+SET Status = 2,
+    ApprovedBy = @ApprovedBy,
+    UpdatedBy = @ApprovedBy,
+    UpdatedDate = SYSUTCDATETIME()
+WHERE Id = @Id AND IsActive = 1;";
+
+            var conn = Connection;
+            await EnsureOpenAsync(conn);
+
+            var rows = await conn.ExecuteAsync(sql, new { Id = id, ApprovedBy = approvedBy });
+            return rows;
+        }
+
+        public async Task<int> RejectAsync(int id)
+        {
+            const string sqlHead = @"
+UPDATE dbo.SalesOrder
+SET IsActive = 0,
+    Status = 4,
+    UpdatedDate = SYSUTCDATETIME()
+WHERE Id = @Id;";
+
+            const string sqlLines = @"
+UPDATE dbo.SalesOrderLines
+SET IsActive = 0,
+    LockedQty = 0,
+    UpdatedDate = SYSUTCDATETIME()
+WHERE SalesOrderId = @Id AND IsActive = 1;";
+
+            const string sqlAlloc = @"
+UPDATE a
+SET IsActive=0,
+    UpdatedDate=SYSUTCDATETIME()
+FROM dbo.SalesOrderLineAlloc a
+JOIN dbo.SalesOrderLines l ON l.Id=a.SalesOrderLineId
+WHERE l.SalesOrderId=@Id AND a.IsActive=1;";
+
+            var conn = Connection;
+            await EnsureOpenAsync(conn);
+
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                var a = await conn.ExecuteAsync(sqlHead, new { Id = id }, tx);
+                if (a == 0)
+                {
+                    tx.Rollback();
+                    return 0;
+                }
+
+                var b = await conn.ExecuteAsync(sqlLines, new { Id = id }, tx);
+                await conn.ExecuteAsync(sqlAlloc, new { Id = id }, tx);
+
+                tx.Commit();
+                return a + b;
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
+        }
+
+        // ====================================================
+        // ===================== DRAFT LINES ===================
+        // ====================================================
+        public async Task<IEnumerable<DraftLineDTO>> GetDraftLinesAsync()
+        {
+            const string sql = @"
+SELECT
+    so.Id                AS SalesOrderId,
+    so.SalesOrderNo,
+    sol.Id               AS LineId,
+    sol.ItemId,
+    ISNULL(sol.ItemName,'') AS ItemName,
+    sol.Uom,
+    ISNULL(sol.Quantity,0)  AS Quantity,
+    sol.UnitPrice,
+    sol.WarehouseId,
+    sol.BinId,
+    sol.SupplierId,
+    sol.LockedQty,
+    sol.CreatedDate
+FROM dbo.SalesOrderLines sol WITH (NOLOCK)
+JOIN dbo.SalesOrder so       WITH (NOLOCK) ON so.Id = sol.SalesOrderId
+WHERE sol.IsActive = 1
+  AND so.IsActive  = 1
+  AND (sol.WarehouseId IS NULL OR sol.SupplierId IS NULL OR sol.BinId IS NULL)
+ORDER BY so.Id DESC, sol.Id DESC;";
+
+            return await Connection.QueryAsync<DraftLineDTO>(sql);
+        }
+
+        // ====================================================
+        // ===================== GET BY STATUS =================
+        // ====================================================
+        public async Task<IEnumerable<SalesOrderDTO>> GetAllByStatusAsync(byte status)
+        {
+            const string headersSql = @"
+SELECT
+    so.Id,
+    so.QuotationNo,
+    so.CustomerId,
+    ISNULL(c.CustomerName,'') AS CustomerName,
+    so.RequestedDate,
+    so.DeliveryDate,
+    so.Status,
+    so.Shipping,
+    so.Discount,
+    so.GstPct,
+    so.CreatedBy,
+    so.CreatedDate,
+    so.UpdatedBy,
+    so.UpdatedDate,
+    so.IsActive,
+    so.SalesOrderNo,
+    ISNULL(so.Subtotal,0)    AS Subtotal,
+    ISNULL(so.TaxAmount,0)   AS TaxAmount,
+    ISNULL(so.GrandTotal,0)  AS GrandTotal,
+    so.ApprovedBy
+FROM dbo.SalesOrder so
+LEFT JOIN dbo.Customer c ON c.Id = so.CustomerId
+WHERE so.IsActive = 1
+  AND so.Status   = @Status
+ORDER BY so.Id;";
+
+            var headers = (await Connection.QueryAsync<SalesOrderDTO>(headersSql, new { Status = status })).ToList();
+            if (headers.Count == 0) return headers;
+
+            var ids = headers.Select(h => h.Id).ToArray();
+
+            const string linesSql = @"
+SELECT
+    Id,
+    SalesOrderId,
+    ItemId,
+    ItemName,
+    Uom,
+    [Description],
+    Quantity,
+    UnitPrice,
+    Discount,
+    Tax,
+    TaxCodeId,
+    TaxAmount,
+    Total,
+    WarehouseId,
+    BinId,
+    Available,
+    SupplierId,
+    LockedQty,
+    CreatedBy,
+    CreatedDate,
+    UpdatedBy,
+    UpdatedDate,
+    IsActive
+FROM dbo.SalesOrderLines
+WHERE SalesOrderId IN @Ids
+  AND IsActive = 1;";
+
+            var lines = await Connection.QueryAsync<SalesOrderLineDTO>(linesSql, new { Ids = ids });
+
+            var map = headers.ToDictionary(h => h.Id);
+            foreach (var ln in lines)
+                if (map.TryGetValue(ln.SalesOrderId, out var parent))
+                    parent.LineItems.Add(ln);
+
+            return headers;
+        }
+
+        // ====================================================
+        // ===================== OPEN BY CUSTOMER ==============
+        // ====================================================
+        public async Task<IEnumerable<SalesOrderListDto>> GetOpenByCustomerAsync(int customerId)
+        {
+            const string sql = "sp_SalesOrder_GetOpenByCustomer";
+            return await Connection.QueryAsync<SalesOrderListDto>(
+                sql,
+                new { CustomerId = customerId },
+                commandType: CommandType.StoredProcedure
+            );
+        }
+
+        // ====================================================
+        // ===================== ALERT UPSERT ==================
+        // ====================================================
         private async Task UpsertPurchaseAlertAsync(
             IDbConnection conn, IDbTransaction tx,
             int salesOrderId, string soNo,
@@ -1318,182 +1345,6 @@ VALUES
                     Message = title
                 }, tx);
             }
-        }
-
-        // ===================== APPROVE / REJECT =====================
-        public async Task<int> ApproveAsync(int id, int approvedBy)
-        {
-            const string sql = @"
-UPDATE dbo.SalesOrder
-SET Status = 2,
-    ApprovedBy = @ApprovedBy,
-    UpdatedBy = @ApprovedBy,
-    UpdatedDate = SYSUTCDATETIME()
-WHERE Id = @Id AND IsActive = 1;";
-
-            var conn = Connection;
-            if (conn.State != ConnectionState.Open)
-                await (conn as SqlConnection)!.OpenAsync();
-
-            var rows = await conn.ExecuteAsync(sql, new { Id = id, ApprovedBy = approvedBy });
-            return rows;
-        }
-
-        public async Task<int> RejectAsync(int id)
-        {
-            const string sqlHead = @"
-UPDATE dbo.SalesOrder
-SET IsActive = 0,
-    Status = 4,
-    UpdatedDate = SYSUTCDATETIME()
-WHERE Id = @Id;";
-
-            const string sqlLines = @"
-UPDATE dbo.SalesOrderLines
-SET IsActive = 0,
-    LockedQty = 0,
-    UpdatedDate = SYSUTCDATETIME()
-WHERE SalesOrderId = @Id AND IsActive = 1;";
-
-            var conn = Connection;
-            if (conn.State != ConnectionState.Open)
-                await (conn as SqlConnection)!.OpenAsync();
-
-            using var tx = conn.BeginTransaction();
-            try
-            {
-                var a = await conn.ExecuteAsync(sqlHead, new { Id = id }, tx);
-                if (a == 0)
-                {
-                    tx.Rollback();
-                    return 0;
-                }
-
-                var b = await conn.ExecuteAsync(sqlLines, new { Id = id }, tx);
-
-                tx.Commit();
-                return a + b;
-            }
-            catch
-            {
-                tx.Rollback();
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<DraftLineDTO>> GetDraftLinesAsync()
-        {
-            const string sql = @"
-SELECT
-    so.Id                AS SalesOrderId,
-    so.SalesOrderNo,
-    sol.Id               AS LineId,
-    sol.ItemId,
-    ISNULL(sol.ItemName,'') AS ItemName,
-    sol.Uom,
-    ISNULL(sol.Quantity,0)  AS Quantity,
-    sol.UnitPrice,
-    sol.WarehouseId,
-    sol.BinId,
-    sol.SupplierId,
-    sol.LockedQty,
-    sol.CreatedDate
-FROM dbo.SalesOrderLines sol WITH (NOLOCK)
-JOIN dbo.SalesOrder so       WITH (NOLOCK) ON so.Id = sol.SalesOrderId
-WHERE sol.IsActive = 1
-  AND so.IsActive  = 1
-  AND (sol.WarehouseId IS NULL OR sol.SupplierId IS NULL OR sol.BinId IS NULL)
-ORDER BY so.Id DESC, sol.Id DESC;";
-
-            var rows = await Connection.QueryAsync<DraftLineDTO>(sql);
-            return rows;
-        }
-
-        public async Task<IEnumerable<SalesOrderDTO>> GetAllByStatusAsync(byte status)
-        {
-            const string headersSql = @"
-SELECT
-    so.Id,
-    so.QuotationNo,
-    so.CustomerId,
-    ISNULL(c.CustomerName,'') AS CustomerName,
-    so.RequestedDate,
-    so.DeliveryDate,
-    so.Status,
-    so.Shipping,
-    so.Discount,
-    so.GstPct,
-    so.CreatedBy,
-    so.CreatedDate,
-    so.UpdatedBy,
-    so.UpdatedDate,
-    so.IsActive,
-    so.SalesOrderNo,
-    ISNULL(so.Subtotal,0)    AS Subtotal,
-    ISNULL(so.TaxAmount,0)   AS TaxAmount,
-    ISNULL(so.GrandTotal,0)  AS GrandTotal,
-    so.ApprovedBy
-FROM dbo.SalesOrder so
-LEFT JOIN dbo.Customer c ON c.Id = so.CustomerId
-WHERE so.IsActive = 1
-  AND so.Status   = @Status
-ORDER BY so.Id;";
-
-            var headers = (await Connection.QueryAsync<SalesOrderDTO>(headersSql, new { Status = status }))
-                .ToList();
-
-            if (headers.Count == 0) return headers;
-
-            var ids = headers.Select(h => h.Id).ToArray();
-
-            const string linesSql = @"
-SELECT
-    Id,
-    SalesOrderId,
-    ItemId,
-    ItemName,
-    Uom,
-    [Description],          -- ✅ NEW
-    Quantity,
-    UnitPrice,
-    Discount,
-    Tax,
-    TaxCodeId,
-    TaxAmount,
-    Total,
-    WarehouseId,
-    BinId,
-    Available,
-    SupplierId,
-    LockedQty,
-    CreatedBy,
-    CreatedDate,
-    UpdatedBy,
-    UpdatedDate,
-    IsActive
-FROM dbo.SalesOrderLines
-WHERE SalesOrderId IN @Ids
-  AND IsActive = 1;";
-
-            var lines = await Connection.QueryAsync<SalesOrderLineDTO>(linesSql, new { Ids = ids });
-
-            var map = headers.ToDictionary(h => h.Id);
-            foreach (var ln in lines)
-                if (map.TryGetValue(ln.SalesOrderId, out var parent))
-                    parent.LineItems.Add(ln);
-
-            return headers;
-        }
-
-        public async Task<IEnumerable<SalesOrderListDto>> GetOpenByCustomerAsync(int customerId)
-        {
-            const string sql = "sp_SalesOrder_GetOpenByCustomer";
-
-            return await Connection.QueryAsync<SalesOrderListDto>(
-                sql,
-                new { CustomerId = customerId },
-                commandType: CommandType.StoredProcedure
-            );
         }
     }
 }
