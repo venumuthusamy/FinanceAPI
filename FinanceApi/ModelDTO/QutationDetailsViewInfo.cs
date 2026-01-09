@@ -24,6 +24,8 @@
         public string PaymentTermsName { get; set; } = "";
         public decimal GstPct { get; set; }
 
+        public string DeliveryTo { get; set; }
+        public string Remarks { get; set; }
         public List<QuotationLineDetailsViewInfo> Lines { get; set; } = new();
 
         public class QuotationLineDetailsViewInfo

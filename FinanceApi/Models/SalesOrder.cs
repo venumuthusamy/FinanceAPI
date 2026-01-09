@@ -23,6 +23,9 @@
         public DateTime? UpdatedDate { get; set; }
         public bool IsActive { get; set; } = true;
 
+        public string DeliveryTo { get; set; }
+        public string Remarks { get; set; }
+
         public List<SalesOrderLines> LineItems { get; set; } = new();
     }
 

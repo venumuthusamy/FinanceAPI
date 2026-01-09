@@ -29,6 +29,10 @@ SELECT
     ISNULL(c.CustomerName,'') AS CustomerName,
     so.RequestedDate,
     so.DeliveryDate,
+
+    so.DeliveryTo,
+    so.Remarks,
+
     so.Status,
     so.Shipping,
     so.Discount,
@@ -105,6 +109,10 @@ SELECT TOP(1)
     ISNULL(c.CustomerName,'') AS CustomerName,
     so.RequestedDate,
     so.DeliveryDate,
+
+    so.DeliveryTo,
+    so.Remarks,
+
     so.Status,
     so.Shipping,
     so.Discount,
@@ -521,12 +529,16 @@ SELECT @n;";
 
             const string insertHeader = @"
 INSERT INTO dbo.SalesOrder
-(QuotationNo, CustomerId, RequestedDate, DeliveryDate, Status, Shipping, Discount, GstPct,
+(QuotationNo, CustomerId, RequestedDate, DeliveryDate,
+ DeliveryTo, Remarks,
+ Status, Shipping, Discount, GstPct,
  SalesOrderNo, SubTotal, TaxAmount, GrandTotal,
  CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive, ApprovedBy)
 OUTPUT INSERTED.Id
 VALUES
-(@QuotationNo, @CustomerId, @RequestedDate, @DeliveryDate, @Status, @Shipping, @Discount, @GstPct,
+(@QuotationNo, @CustomerId, @RequestedDate, @DeliveryDate,
+ @DeliveryTo, @Remarks,
+ @Status, @Shipping, @Discount, @GstPct,
  @SalesOrderNo, @SubTotal, @TaxAmount, @GrandTotal,
  @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, 1, @ApprovedBy);";
 
@@ -551,6 +563,10 @@ VALUES
                     so.CustomerId,
                     so.RequestedDate,
                     so.DeliveryDate,
+
+                    DeliveryTo = (object?)so.DeliveryTo ?? DBNull.Value,
+                    Remarks = (object?)so.Remarks ?? DBNull.Value,
+
                     so.Status,
                     so.Shipping,
                     so.Discount,
@@ -621,6 +637,8 @@ VALUES
 UPDATE dbo.SalesOrder SET
     RequestedDate = @RequestedDate,
     DeliveryDate  = @DeliveryDate,
+    DeliveryTo    = @DeliveryTo,
+    Remarks       = @Remarks,
     Shipping      = @Shipping,
     Discount      = @Discount,
     GstPct        = @GstPct,
@@ -649,6 +667,8 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
                 {
                     so.RequestedDate,
                     so.DeliveryDate,
+                    DeliveryTo = (object?)so.DeliveryTo ?? DBNull.Value,
+                    Remarks = (object?)so.Remarks ?? DBNull.Value,
                     so.Shipping,
                     so.Discount,
                     so.GstPct,
@@ -667,7 +687,8 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
                 }, tx);
 
                 var soNo = await conn.ExecuteScalarAsync<string>(
-                    "SELECT TOP (1) SalesOrderNo FROM dbo.SalesOrder WITH (NOLOCK) WHERE Id=@Id;", new { so.Id }, tx) ?? "";
+                    "SELECT TOP (1) SalesOrderNo FROM dbo.SalesOrder WITH (NOLOCK) WHERE Id=@Id;",
+                    new { so.Id }, tx) ?? "";
 
                 // re-insert lines + allocs (same as create)
                 foreach (var l in so.LineItems ?? Enumerable.Empty<SalesOrderLines>())
@@ -717,9 +738,18 @@ WHERE SalesOrderId=@SalesOrderId AND IsActive=1;";
 
             const string updHead = @"
 UPDATE dbo.SalesOrder SET
-    QuotationNo=@QuotationNo, CustomerId=@CustomerId, RequestedDate=@RequestedDate, DeliveryDate=@DeliveryDate,
-    Status=@Status, Shipping=@Shipping, Discount=@Discount, GstPct=@GstPct,
-    UpdatedBy=@UpdatedBy, UpdatedDate=@UpdatedDate
+    QuotationNo=@QuotationNo,
+    CustomerId=@CustomerId,
+    RequestedDate=@RequestedDate,
+    DeliveryDate=@DeliveryDate,
+    DeliveryTo=@DeliveryTo,
+    Remarks=@Remarks,
+    Status=@Status,
+    Shipping=@Shipping,
+    Discount=@Discount,
+    GstPct=@GstPct,
+    UpdatedBy=@UpdatedBy,
+    UpdatedDate=@UpdatedDate
 WHERE Id=@Id;";
 
             const string updLine = @"
@@ -758,6 +788,10 @@ WHERE Id=@Id AND SalesOrderId=@SalesOrderId;";
                     so.CustomerId,
                     so.RequestedDate,
                     so.DeliveryDate,
+
+                    DeliveryTo = (object?)so.DeliveryTo ?? DBNull.Value,
+                    Remarks = (object?)so.Remarks ?? DBNull.Value,
+
                     so.Status,
                     so.Shipping,
                     so.Discount,
@@ -772,7 +806,7 @@ WHERE Id=@Id AND SalesOrderId=@SalesOrderId;";
                 {
                     if (l.Id <= 0) continue;
 
-                    var (net, tax, computedTotal, _) =
+                    var (_, tax, computedTotal, _) =
                         ComputeAmounts(l.Quantity, l.UnitPrice, l.Discount, l.Tax ?? "EXEMPT", so.GstPct);
 
                     await conn.ExecuteAsync(updLine, new
@@ -862,6 +896,8 @@ SELECT q.Id,
        q.NeedsHodApproval,
        cu.CurrencyName,
        pt.PaymentTermsName,
+       q.DeliveryTo,
+	   q.Remarks,
        COALESCE(cn.GSTPercentage,0) AS GstPct
 FROM dbo.Quotation q
 LEFT JOIN dbo.Customer     c  ON c.Id = q.CustomerId
@@ -1201,6 +1237,10 @@ SELECT
     ISNULL(c.CustomerName,'') AS CustomerName,
     so.RequestedDate,
     so.DeliveryDate,
+
+    so.DeliveryTo,
+    so.Remarks,
+
     so.Status,
     so.Shipping,
     so.Discount,
