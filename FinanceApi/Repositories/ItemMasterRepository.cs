@@ -167,7 +167,7 @@ SELECT  im.Id,
         ISNULL(inv.OnHand,0)                      AS OnHand,
         ISNULL(inv.Reserved,0)                    AS Reserved,
         ISNULL(inv.OnHand,0) - ISNULL(inv.Reserved,0) AS Available,
-
+        i.ItemTypeName,
         0 AS Qty
 FROM dbo.ItemMaster im
 LEFT JOIN dbo.Item it               ON it.Id = im.ItemId AND it.IsActive = 1
@@ -175,7 +175,8 @@ LEFT JOIN dbo.Catagory ca           ON ca.Id = it.CategoryId
 LEFT JOIN dbo.Uom u                 ON u.Id = it.UomId
 LEFT JOIN dbo.ChartOfAccount coa    ON coa.Id = it.BudgetLineId
 LEFT JOIN dbo.InventorySummaries inv ON inv.ItemId = it.Id
-WHERE im.Id = @Id AND im.IsActive = 1;";
+left join itemtype as i on i.id= it.ItemTypeId
+WHERE it.Id = @Id AND im.IsActive = 1;";
             return await Connection.QueryFirstOrDefaultAsync<getItemMasterDTO>(sql, new { Id = id });
         }
 
