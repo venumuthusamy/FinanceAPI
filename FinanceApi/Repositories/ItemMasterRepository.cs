@@ -643,10 +643,6 @@ VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);",
             var newJson = await GetItemSnapshotJsonAsync(itemId);
             await AddAuditAsync(itemId, "UPDATE", userId, oldJson, newJson, null);
         }
-
-
-        // ===================== Inventory + Supplier Price =====================
-
         public async Task ApplyGrnToInventoryAsync(ApplyGrnRequest req)
         {
             if (req?.Lines == null || req.Lines.Count == 0) return;
@@ -658,6 +654,62 @@ VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);",
             using var tx = dbConn.BeginTransaction();
             try
             {
+                // =========================
+                // SQL: Ensure item exists (insert if missing)
+                // =========================
+                const string findItemSql = @"SELECT TOP 1 Id FROM dbo.ItemMaster WHERE Sku = @Sku;";
+
+                const string insItemSql = @"
+INSERT INTO dbo.ItemMaster
+ (Sku, Name, Category, Uom, CostingMethodId, TaxCodeId, Specs, PictureUrl, IsActive,
+  CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
+OUTPUT INSERTED.Id
+VALUES
+ (@Sku, @Name, N'Uncategorized', N'EA', NULL, NULL, NULL, NULL, 1,
+  @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
+
+                // =========================
+                // SQL: Stock UPSERT (NO DUPLICATES)
+                // =========================
+                const string upsertStockMergeSql = @"
+MERGE dbo.ItemWarehouseStock WITH (HOLDLOCK) AS T
+USING (
+    SELECT
+      @ItemId      AS ItemId,
+      @WarehouseId AS WarehouseId,
+      @BinId       AS BinId
+) AS S
+ON  T.ItemId = S.ItemId
+AND T.WarehouseId = S.WarehouseId
+AND ISNULL(T.BinId, -1) = ISNULL(S.BinId, -1)
+
+WHEN MATCHED THEN
+  UPDATE SET
+    T.OnHand = ISNULL(T.OnHand,0) + @QtyDelta,
+    T.Available =
+      CASE
+        WHEN (ISNULL(T.OnHand,0) + @QtyDelta - ISNULL(T.Reserved,0)) < 0 THEN 0
+        ELSE (ISNULL(T.OnHand,0) + @QtyDelta - ISNULL(T.Reserved,0))
+      END,
+    T.StrategyId = COALESCE(@StrategyId, T.StrategyId),
+    T.BatchFlag  = @BatchFlag,
+    T.SerialFlag = @SerialFlag
+
+WHEN NOT MATCHED THEN
+  INSERT (
+    ItemId, WarehouseId, BinId, StrategyId,
+    OnHand, Reserved, MinQty, MaxQty, ReorderQty, LeadTimeDays,
+    BatchFlag, SerialFlag, Available,
+    IsApproved, IsTransfered, StockIssueID, IsFullTransfer, IsPartialTransfer, ApprovedBy
+  )
+  VALUES (
+    @ItemId, @WarehouseId, @BinId, @StrategyId,
+    @QtyDelta, 0, NULL, NULL, NULL, NULL,
+    @BatchFlag, @SerialFlag,
+    CASE WHEN @QtyDelta < 0 THEN 0 ELSE @QtyDelta END,
+    0, 0, 0, 0, 0, 0
+  );";
+
                 foreach (var ln in req.Lines)
                 {
                     if (string.IsNullOrWhiteSpace(ln.ItemCode))
@@ -666,78 +718,53 @@ VALUES (@ItemId, @ExistingCost, @UnitCost, @CreatedBy);",
                     var sku = ln.ItemCode.Trim();
                     var by = req.UpdatedBy ?? "";
 
-                    // Ensure Item exists
-                    const string findItemSql = @"SELECT Id FROM dbo.ItemMaster WHERE Sku = @Sku;";
-                    var itemId = await dbConn.QueryFirstOrDefaultAsync<long?>(findItemSql, new { Sku = sku }, tx);
-                    if (itemId is null)
+                    // IMPORTANT: normalize BinId (if UI sends 0 => treat as NULL)
+                    long? binId = null;
+                    if (ln.BinId != null)
                     {
-                        const string insItemSql = @"
-INSERT INTO dbo.ItemMaster
- (Sku, Name, Category, Uom, CostingMethodId, TaxCodeId, Specs, PictureUrl, IsActive, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate)
-OUTPUT INSERTED.Id
-VALUES (@Sku, @Name, N'Uncategorized', N'EA', NULL, NULL, NULL, NULL, 1, @By, SYSUTCDATETIME(), @By, SYSUTCDATETIME());";
-                        itemId = await dbConn.QueryFirstAsync<long>(insItemSql, new { Sku = sku, Name = sku, By = by }, tx);
+                        var b = Convert.ToInt64(ln.BinId);
+                        binId = (b <= 0) ? (long?)null : b;
                     }
 
-                    // Update existing warehouse stock
-                    const string updStockSql = @"
-UPDATE dbo.ItemWarehouseStock
-   SET OnHand     = OnHand + @QtyDelta,
-       Available  = CAST(CASE WHEN (OnHand + @QtyDelta - Reserved) < 0 
-                              THEN 0 
-                              ELSE (OnHand + @QtyDelta - Reserved) END AS INT),
-       StrategyId = COALESCE(@StrategyId, StrategyId),
-       BatchFlag  = @BatchFlag,
-       SerialFlag = @SerialFlag
- WHERE ItemId = @ItemId AND WarehouseId = @WarehouseId 
-   AND (BinId = @BinId OR (@BinId IS NULL AND BinId IS NULL));";
+                    // normalize other ids
+                    var warehouseId = Convert.ToInt64(ln.WarehouseId);
+                    var strategyId = (ln.StrategyId == null) ? (long?)null : Convert.ToInt64(ln.StrategyId);
 
-                    var affected = await dbConn.ExecuteAsync(
-                        updStockSql,
-                        new
-                        {
-                            ItemId = itemId.Value,
-                            WarehouseId = ln.WarehouseId,
-                            BinId = ln.BinId,
-                            QtyDelta = ln.QtyDelta,
-                            StrategyId = ln.StrategyId,
-                            ln.BatchFlag,
-                            ln.SerialFlag
-                        },
+                    var qtyDelta = Convert.ToDecimal(ln.QtyDelta);
+
+                    // 1) Ensure Item exists
+                    var itemId = await dbConn.QueryFirstOrDefaultAsync<long?>(
+                        findItemSql,
+                        new { Sku = sku },
                         tx
                     );
 
-                    if (affected == 0)
+                    if (itemId is null)
                     {
-                        const string insStockSql = @"
-INSERT INTO dbo.ItemWarehouseStock
- (ItemId, WarehouseId, BinId, StrategyId, OnHand, Reserved, MinQty, MaxQty, ReorderQty, LeadTimeDays,
-  BatchFlag, SerialFlag, Available, IsApproved, IsTransfered, StockIssueID, IsFullTransfer, IsPartialTransfer,ApprovedBy)
-VALUES
- (@ItemId, @WarehouseId, @BinId, @StrategyId, @OnHand, 0, NULL, NULL, NULL, NULL,
-  @BatchFlag, @SerialFlag, @Available, 0, 0, 0, 0, 0,0);";
-
-                        decimal onHand = ln.QtyDelta;
-                        int available = (int)Math.Max(0m, onHand);
-
-                        await dbConn.ExecuteAsync(
-                            insStockSql,
-                            new
-                            {
-                                ItemId = itemId.Value,
-                                WarehouseId = ln.WarehouseId,
-                                BinId = ln.BinId,
-                                StrategyId = ln.StrategyId,
-                                OnHand = onHand,
-                                ln.BatchFlag,
-                                ln.SerialFlag,
-                                Available = available
-                            },
+                        itemId = await dbConn.QueryFirstAsync<long>(
+                            insItemSql,
+                            new { Sku = sku, Name = sku, By = by },
                             tx
                         );
                     }
 
-                    // Upsert ItemPrice per (ItemId, SupplierId, WarehouseId) — PRICE accumulates
+                    // 2) Stock upsert using MERGE (safe & no duplicates)
+                    await dbConn.ExecuteAsync(
+                        upsertStockMergeSql,
+                        new
+                        {
+                            ItemId = itemId.Value,
+                            WarehouseId = warehouseId,
+                            BinId = binId,
+                            QtyDelta = qtyDelta,
+                            StrategyId = strategyId,
+                            BatchFlag = ln.BatchFlag,
+                            SerialFlag = ln.SerialFlag
+                        },
+                        tx
+                    );
+
+                    // 3) Upsert ItemPrice
                     if (ln.SupplierId > 0 && ln.Price > 0)
                     {
                         await dbConn.ExecuteAsync(
@@ -746,18 +773,15 @@ VALUES
                             {
                                 ItemId = itemId.Value,
                                 SupplierId = ln.SupplierId,
-                                WarehouseId = ln.WarehouseId,
-                                Price = ln.Price,                 // will be added to existing
-                                Qty = (decimal?)ln.QtyDelta,      // add to Qty if provided
+                                WarehouseId = warehouseId,
+                                Price = ln.Price,
+                                Qty = (decimal?)qtyDelta,
                                 Barcode = ln.Barcode,
                                 IsTransfered = 0,
                                 By = by
                             },
                             tx
                         );
-
-                        // if needed later:
-                        // await SnapshotBomIfChangedAsync(dbConn, tx, itemId.Value, ln.SupplierId, ln.Price, by);
                     }
                 }
 
@@ -765,13 +789,10 @@ VALUES
             }
             catch
             {
-                try { tx.Rollback(); } catch { /* ignore */ }
+                try { tx.Rollback(); } catch { }
                 throw;
             }
         }
-
-
-
 
 
         public async Task UpdateWarehouseAndSupplierPriceAsync(UpdateWarehouseSupplierPriceDto dto)
