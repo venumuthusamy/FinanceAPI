@@ -72,5 +72,6 @@ namespace FinanceApi.Models
         public string? UpdatedBy { get; set; }
         public DateTime? UpdatedDate { get; set; }
         public bool IsActive { get; set; }
+        public string? Email { get; set; }
     }
 }

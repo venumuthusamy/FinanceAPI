@@ -1,9 +1,12 @@
-﻿using FinanceApi.Interfaces;
+﻿using FinanceApi.Data;
+using FinanceApi.Interfaces;
 using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Repositories;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using static QRCoder.PayloadGenerator;
 
 namespace FinanceApi.Services
 {
@@ -13,15 +16,17 @@ namespace FinanceApi.Services
         private readonly IConfiguration _config;
         private readonly ICodeImageService _img;
         private readonly IMobileLinkTokenService _tokenSvc;
-        
+        private readonly Interfaces.IEmailService _emailService;
+
 
         public PurchaseOrderService(IPurchaseOrderRepository repository, IConfiguration config, ICodeImageService img,
-            IMobileLinkTokenService tokenSvc)
+            IMobileLinkTokenService tokenSvc, Interfaces.IEmailService emailService)
         {
             _repository = repository;
             _config = config;
             _img = img;
             _tokenSvc = tokenSvc;
+            _emailService = emailService;
         }
 
         public async Task<IEnumerable<PurchaseOrderDto>> GetAllAsync()
@@ -75,5 +80,38 @@ namespace FinanceApi.Services
                 QrCodeSrcBase64: ToDataUrl(qrPng)
             );
         }
+
+
+        public async Task<ResponseResult> EmailSupplierPoAsync(int poId, IFormFile pdf)
+        {
+            if (pdf == null || pdf.Length == 0)
+                return new ResponseResult(false, "PDF is required", null);
+
+            var meta = await _repository.GetSupplierEmailMetaAsync(poId);
+
+            if (string.IsNullOrWhiteSpace(meta.Email))
+                return new ResponseResult(false, "Supplier email not found", null);
+
+            // ✅ Approved only (2 = Approved)
+            if (meta.ApprovalStatus != 2)
+                return new ResponseResult(false, "PO not approved", null);
+
+            byte[] pdfBytes;
+            using (var ms = new MemoryStream())
+            {
+                await pdf.CopyToAsync(ms);
+                pdfBytes = ms.ToArray();
+            }
+
+            await _emailService.SendSupplierPoEmailAsync(
+                meta.Email,
+                meta.SupplierName,
+                meta.PoNo,
+                pdfBytes
+            );
+
+            return new ResponseResult(true, "PO emailed to supplier", null);
+        }
+
     }
 }
