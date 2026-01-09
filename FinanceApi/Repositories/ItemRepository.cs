@@ -86,7 +86,7 @@ INSERT INTO Item
 (
     ItemCode,
     ItemName,
-    ItemType,
+    ItemTypeId,
     CategoryId,
     UomId,
     BudgetLineId,
@@ -101,7 +101,7 @@ VALUES
 (
     @ItemCode,
     @ItemName,
-    @ItemType,
+    @ItemTypeId,
     @CategoryId,
     @UomId,
     @BudgetLineId,
