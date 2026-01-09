@@ -53,6 +53,7 @@
 
         public DateTime? ExpiryDate { get; set; }
         public int Qty { get; set; }
+        public string ItemTypeName { get; set; }
     }
 
 }
