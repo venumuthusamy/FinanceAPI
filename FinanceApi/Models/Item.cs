@@ -24,7 +24,7 @@ namespace FinanceApi.Models
         public string ItemName { get; set; }
 
         // ✅ ItemType HERE
-        public string? ItemType { get; set; }   // SALES / PURCHASE / BOTH
+        public string? ItemTypeId { get; set; }   // SALES / PURCHASE / BOTH
 
         public int UomId { get; set; }
         public string UomName { get; set; }

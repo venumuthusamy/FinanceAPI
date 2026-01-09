@@ -34,7 +34,7 @@
         public string? Uom { get; set; }
 
         // ✅ NEW: from Item table
-        public string? ItemType { get; set; }          // SALES / PURCHASE / BOTH
+        public string? ItemTypeId { get; set; }          // SALES / PURCHASE / BOTH
         public int? CategoryId { get; set; }
         public int? UomId { get; set; }
         public int? BudgetLineId { get; set; }
