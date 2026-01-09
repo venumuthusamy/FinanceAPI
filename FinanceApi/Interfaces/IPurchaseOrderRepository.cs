@@ -11,5 +11,8 @@ namespace FinanceApi.Interfaces
         Task DeactivateAsync(int id);
 
         Task<IEnumerable<PurchaseOrderDto>> GetAllDetailswithGRN();
+
+        Task<(string Email, string SupplierName, string PoNo, int ApprovalStatus)>
+           GetSupplierEmailMetaAsync(int poId);
     }
 }

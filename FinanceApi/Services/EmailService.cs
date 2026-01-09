@@ -90,5 +90,45 @@ namespace FinanceApi.Services
                 throw;
             }
         }
+        public async Task SendSupplierPoEmailAsync(
+    string supplierEmail,
+    string supplierName,
+    string poNo,
+    byte[] pdfBytes)
+        {
+            var fromEmail = _config["EmailSettings:From"];
+            var smtpHost = _config["EmailSettings:SmtpHost"];
+            var smtpPort = int.Parse(_config["EmailSettings:SmtpPort"]);
+            var smtpUser = _config["EmailSettings:SmtpUser"];
+            var smtpPass = _config["EmailSettings:SmtpPass"];
+
+            var subject = $"Purchase Order {poNo}";
+            var body = $@"
+        <p>Hello {supplierName},</p>
+        <p>Please find attached Purchase Order <b>{poNo}</b>.</p>
+        <p>Regards,<br/>Unity ERP</p>";
+
+            using var message = new MailMessage(fromEmail, supplierEmail, subject, body)
+            {
+                IsBodyHtml = true
+            };
+
+            message.Attachments.Add(
+                new Attachment(
+                    new MemoryStream(pdfBytes),
+                    $"{poNo}.pdf",
+                    "application/pdf"
+                )
+            );
+
+            using var client = new SmtpClient(smtpHost, smtpPort)
+            {
+                Credentials = new NetworkCredential(smtpUser, smtpPass),
+                EnableSsl = true
+            };
+
+            await client.SendMailAsync(message);
+        }
+
     }
 }
