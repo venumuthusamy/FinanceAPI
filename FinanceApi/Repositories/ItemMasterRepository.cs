@@ -220,7 +220,7 @@ INSERT INTO dbo.Item
 (
     ItemCode,
     ItemName,
-    ItemType,
+    ItemTypeId,
     UomId,
     BudgetLineId,
     CategoryId,
@@ -235,7 +235,7 @@ VALUES
 (
     @ItemCode,
     @ItemName,
-    @ItemType,
+    @ItemTypeId,
     @UomId,
     @BudgetLineId,
     @CategoryId,
@@ -250,7 +250,7 @@ VALUES
             {
                 ItemCode = dto.ItemCode ?? dto.Sku,
                 ItemName = dto.ItemName ?? dto.Name,
-                dto.ItemType,               // SALES / PURCHASE / BOTH
+                dto.ItemTypeId,               // SALES / PURCHASE / BOTH
                 dto.UomId,
                 dto.BudgetLineId,
                 dto.CategoryId,
@@ -493,7 +493,7 @@ WHERE Id=@Id;";
 UPDATE dbo.Item SET
     ItemCode     = @ItemCode,
     ItemName     = @ItemName,
-    ItemType     = @ItemType,
+    ItemTypeId     = @ItemTypeId,
     CategoryId   = @CategoryId,
     UomId        = @UomId,
     BudgetLineId = @BudgetLineId,
@@ -507,7 +507,7 @@ WHERE Id = @ItemId;";
                 ItemId = itemId,
                 ItemCode = dto.ItemCode ?? dto.Sku,
                 ItemName = dto.ItemName ?? dto.Name,
-                dto.ItemType,
+                dto.ItemTypeId,
                 dto.CategoryId,
                 dto.UomId,
                 dto.BudgetLineId,

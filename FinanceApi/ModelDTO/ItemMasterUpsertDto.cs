@@ -9,7 +9,7 @@
         public string ItemName { get; set; } = "";
 
         // ✅ NEW (SALES / PURCHASE / BOTH)
-        public string? ItemType { get; set; }
+        public int ItemTypeId { get; set; }
 
         // ✅ NEW (ids)
         public int CategoryId { get; set; }
