@@ -13,13 +13,15 @@ namespace FinanceApi.Services
         private readonly IRunningNumberRepository _seq;
         private readonly ICodeImageService _img;
         private readonly IConfiguration _config;
+        private readonly IMobileLinkTokenService _tokenSvc;
         public PickingService(IPickingRepository repository, IRunningNumberRepository seq,
-        ICodeImageService img, IConfiguration config)
+        ICodeImageService img, IConfiguration config, IMobileLinkTokenService tokenSvc)
         {
             _repository = repository;
             _seq = seq;
             _img = img;
             _config = config;
+            _tokenSvc = tokenSvc;
         }
 
         public Task<IEnumerable<PickingDTO>> GetAllAsync() => _repository.GetAllAsync();
@@ -62,16 +64,20 @@ namespace FinanceApi.Services
             var countryYear = $"{req.Country}{yy}";                         // SG25
             var barText = $"{req.Prefix}-{countryYear}-{mmdd}-{serial4}-{req.SoId}";   // PKL-SG25-1108-0012
 
-            var apiBase = _config["PublicApiBaseUrl"] ?? "http://192.168.6.104:7182";
+            //var apiBase = _config["PublicApiBaseUrl"] ?? "http://192.168.6.137:7182";
+            var apiBase = "http://192.168.6.137:7182";
             //var barPayload = $"{_frontend.BaseUrl}/Sales/Scan/So/{req.SoId}?code={Uri.EscapeDataString(barText)}";
-            var barPayload =  $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}";
+
+            var token = _tokenSvc.Generate(req.SoId.ToString(), minutes: 15);
+
+            var barPayload =  $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}&t={Uri.EscapeDataString(token)}";
 
             // QR human-readable text (two lines)
             var qrText = $"Packing List No: {barText}\nDate: {dt:dd-MMM-yyyy}";
 
             //var qrPayload = $"{_frontend.BaseUrl}/Sales/Scan/So/{req.SoId}?code={Uri.EscapeDataString(barText)}";
 
-            var qrPayload = $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}";
+            var qrPayload = $"{apiBase}/scan/so.html?id={req.SoId}&code={Uri.EscapeDataString(barText)}&t={Uri.EscapeDataString(token)}";
 
 
             // images -> base64 data urls

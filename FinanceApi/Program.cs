@@ -185,6 +185,26 @@ app.Use(async (ctx, next) =>
         return;
     }
 
+    // ✅ ADD HERE: Allow Picking scan page with valid token
+    if (ctx.Request.Path.StartsWithSegments("/scan/so.html"))
+    {
+        var soId = ctx.Request.Query["id"].ToString();
+        var t = ctx.Request.Query["t"].ToString();
+
+        var tokenSvc = ctx.RequestServices.GetRequiredService<IMobileLinkTokenService>();
+
+        if (!tokenSvc.TryValidate(t, soId, out var err))
+        {
+            ctx.Response.StatusCode = 403;
+            await ctx.Response.WriteAsync("Access denied: " + err);
+            return;
+        }
+
+        await next();
+        return;
+    }
+
+
     // Block everything else (root, other pages)
     ctx.Response.StatusCode = 403;
     await ctx.Response.WriteAsync("Access denied");
