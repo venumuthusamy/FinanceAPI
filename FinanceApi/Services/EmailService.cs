@@ -106,7 +106,7 @@ namespace FinanceApi.Services
             var body = $@"
         <p>Hello {supplierName},</p>
         <p>Please find attached Purchase Order <b>{poNo}</b>.</p>
-        <p>Regards,<br/>Unity ERP</p>";
+        <p>Regards,<br/>CSPL</p>";
 
             using var message = new MailMessage(fromEmail, supplierEmail, subject, body)
             {
