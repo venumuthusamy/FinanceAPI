@@ -86,7 +86,8 @@ namespace FinanceApi.Repositories
                            po.CreatedDate,
                            po.UpdatedBy,
                            po.UpdatedDate,
-                           po.IsActive                        
+                           po.IsActive,
+                           s.Email
 
                            FROM PurchaseOrder po
                            LEFT JOIN Suppliers s ON po.SupplierId = s.Id
@@ -183,7 +184,8 @@ ORDER BY po.Id;
                            po.CreatedDate,
                            po.UpdatedBy,
                            po.UpdatedDate,
-                           po.IsActive                        
+                           po.IsActive,
+                           s.Email
 
                            FROM PurchaseOrder po
                            LEFT JOIN Suppliers s ON po.SupplierId = s.Id
@@ -451,5 +453,33 @@ JOIN SRids X ON X.StockReorderId = L.StockReorderId;
             const string query = "UPDATE PurchaseOrder SET IsActive = 0 WHERE ID = @id";
             await Connection.ExecuteAsync(query, new { ID = id });
         }
+
+        public async Task<(string Email, string SupplierName, string PoNo, int ApprovalStatus)>
+    GetSupplierEmailMetaAsync(int poId)
+        {
+            const string sql = @"
+SELECT 
+    ISNULL(s.Email,'') AS Email,
+    ISNULL(s.Name,'')  AS SupplierName,
+    ISNULL(po.PurchaseOrderNo,'') AS PoNo,
+    ISNULL(po.ApprovalStatus,0) AS ApprovalStatus
+FROM PurchaseOrder po
+LEFT JOIN Suppliers s ON s.Id = po.SupplierId
+WHERE po.Id = @poId AND po.IsActive = 1;
+";
+
+            var row = await Connection.QueryFirstOrDefaultAsync(sql, new { poId });
+
+            if (row == null)
+                return ("", "", "", 0);
+
+            return (
+                (string)row.Email,
+                (string)row.SupplierName,
+                (string)row.PoNo,
+                (int)row.ApprovalStatus
+            );
+        }
+
     }
 }

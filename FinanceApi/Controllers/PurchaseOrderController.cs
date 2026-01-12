@@ -1,5 +1,6 @@
 ﻿using FinanceApi.Data;
 using FinanceApi.Interfaces;
+using FinanceApi.InterfaceService;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 using FinanceApi.Services;
@@ -73,5 +74,16 @@ namespace FinanceApi.Controllers
             var res = _service.BuildPoQr(poNo);
             return Ok(res);
         }
+
+        [HttpPost("{poId:int}/email-supplier")]
+        [Consumes("multipart/form-data")]
+        public async Task<IActionResult> EmailSupplierPo(
+             [FromRoute] int poId,
+             [FromForm] EmailSupplierPoRequest req)
+        {
+            var result = await _service.EmailSupplierPoAsync(poId, req.Pdf);
+            return result.isSuccess ? Ok(result) : BadRequest(result);
+        }
+
     }
 }

@@ -1,4 +1,5 @@
-﻿using FinanceApi.ModelDTO;
+﻿using FinanceApi.Data;
+using FinanceApi.ModelDTO;
 using FinanceApi.Models;
 
 namespace FinanceApi.Interfaces
@@ -13,5 +14,7 @@ namespace FinanceApi.Interfaces
 
         Task<IEnumerable<PurchaseOrderDto>> GetAllDetailswithGRN();
         PoQrResponse BuildPoQr(string poNo);
+
+        Task<ResponseResult> EmailSupplierPoAsync(int poId, IFormFile pdf);
     }
 }
