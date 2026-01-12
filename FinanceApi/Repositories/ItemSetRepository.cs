@@ -112,12 +112,23 @@ ORDER BY i.Id;";
                 .Distinct()
                 .ToList() ?? new List<long>();
 
-            using var tx = Connection.BeginTransaction();
+            // ✅ IMPORTANT: take Connection ONCE
+            using var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                conn.Open();
+
+            using var tx = conn.BeginTransaction();
             try
             {
-                // Duplicate check (active)
-                const string dupSql = @"SELECT COUNT(1) FROM dbo.ItemSet WHERE IsActive = 1 AND SetName = @SetName;";
-                var exists = await Connection.ExecuteScalarAsync<int>(dupSql, new { SetName = itemSet.SetName.Trim() }, tx);
+                const string dupSql =
+                    @"SELECT COUNT(1) FROM dbo.ItemSet WHERE IsActive = 1 AND SetName = @SetName;";
+
+                var exists = await conn.ExecuteScalarAsync<int>(
+                    dupSql,
+                    new { SetName = itemSet.SetName.Trim() },
+                    tx
+                );
+
                 if (exists > 0) throw new InvalidOperationException("SetName already exists.");
 
                 const string insertHeader = @"
@@ -125,12 +136,16 @@ INSERT INTO dbo.ItemSet (SetName, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate
 OUTPUT INSERTED.Id
 VALUES (@SetName, @CreatedBy, SYSUTCDATETIME(), NULL, NULL, @IsActive);";
 
-                var newId = await Connection.ExecuteScalarAsync<int>(insertHeader, new
-                {
-                    SetName = itemSet.SetName.Trim(),
-                    CreatedBy = itemSet.CreatedBy ?? "system",
-                    IsActive = itemSet.IsActive ? 1 : 0
-                }, tx);
+                var newId = await conn.ExecuteScalarAsync<int>(
+                    insertHeader,
+                    new
+                    {
+                        SetName = itemSet.SetName.Trim(),
+                        CreatedBy = itemSet.CreatedBy ?? "system",
+                        IsActive = itemSet.IsActive ? 1 : 0
+                    },
+                    tx
+                );
 
                 if (itemIds.Count > 0)
                 {
@@ -140,12 +155,16 @@ VALUES (@ItemSetId, @ItemId, @CreatedBy, SYSUTCDATETIME(), 1);";
 
                     foreach (var itemId in itemIds)
                     {
-                        await Connection.ExecuteAsync(insertItem, new
-                        {
-                            ItemSetId = newId,
-                            ItemId = itemId,
-                            CreatedBy = itemSet.CreatedBy ?? "system"
-                        }, tx);
+                        await conn.ExecuteAsync(
+                            insertItem,
+                            new
+                            {
+                                ItemSetId = newId,
+                                ItemId = itemId,
+                                CreatedBy = itemSet.CreatedBy ?? "system"
+                            },
+                            tx
+                        );
                     }
                 }
 
@@ -158,6 +177,7 @@ VALUES (@ItemSetId, @ItemId, @CreatedBy, SYSUTCDATETIME(), 1);";
                 throw;
             }
         }
+
 
         // =========================
         // UPDATE (Header + Items)
@@ -174,20 +194,27 @@ VALUES (@ItemSetId, @ItemId, @CreatedBy, SYSUTCDATETIME(), 1);";
                 .Distinct()
                 .ToList() ?? new List<long>();
 
-            using var tx = Connection.BeginTransaction();
+            // ✅ IMPORTANT: take Connection ONCE
+            using var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                conn.Open();
+
+            using var tx = conn.BeginTransaction();
             try
             {
-                // exists check
                 const string existsSql = @"SELECT COUNT(1) FROM dbo.ItemSet WHERE Id = @Id;";
-                var ok = await Connection.ExecuteScalarAsync<int>(existsSql, new { itemSet.Id }, tx);
+                var ok = await conn.ExecuteScalarAsync<int>(existsSql, new { itemSet.Id }, tx);
                 if (ok == 0) throw new KeyNotFoundException("ItemSet not found.");
 
-                // duplicate name check (active)
                 const string dupSql = @"
 SELECT COUNT(1)
 FROM dbo.ItemSet
 WHERE IsActive = 1 AND SetName = @SetName AND Id <> @Id;";
-                var dup = await Connection.ExecuteScalarAsync<int>(dupSql, new { SetName = itemSet.SetName.Trim(), itemSet.Id }, tx);
+                var dup = await conn.ExecuteScalarAsync<int>(
+                    dupSql,
+                    new { SetName = itemSet.SetName.Trim(), itemSet.Id },
+                    tx
+                );
                 if (dup > 0) throw new InvalidOperationException("SetName already exists.");
 
                 const string updateHeader = @"
@@ -198,17 +225,20 @@ SET SetName = @SetName,
     IsActive = @IsActive
 WHERE Id = @Id;";
 
-                await Connection.ExecuteAsync(updateHeader, new
-                {
-                    Id = itemSet.Id,
-                    SetName = itemSet.SetName.Trim(),
-                    UpdatedBy = itemSet.UpdatedBy ?? "system",
-                    IsActive = itemSet.IsActive ? 1 : 0
-                }, tx);
+                await conn.ExecuteAsync(
+                    updateHeader,
+                    new
+                    {
+                        Id = itemSet.Id,
+                        SetName = itemSet.SetName.Trim(),
+                        UpdatedBy = itemSet.UpdatedBy ?? "system",
+                        IsActive = itemSet.IsActive ? 1 : 0
+                    },
+                    tx
+                );
 
-                // deactivate all existing mappings
                 const string deactivateAll = @"UPDATE dbo.ItemSetItem SET IsActive = 0 WHERE ItemSetId = @Id;";
-                await Connection.ExecuteAsync(deactivateAll, new { Id = itemSet.Id }, tx);
+                await conn.ExecuteAsync(deactivateAll, new { Id = itemSet.Id }, tx);
 
                 if (desired.Count > 0)
                 {
@@ -226,14 +256,18 @@ END";
 
                     foreach (var itemId in desired)
                     {
-                        await Connection.ExecuteAsync(reactivate, new { ItemSetId = itemSet.Id, ItemId = itemId }, tx);
+                        await conn.ExecuteAsync(reactivate, new { ItemSetId = itemSet.Id, ItemId = itemId }, tx);
 
-                        await Connection.ExecuteAsync(insertIfMissing, new
-                        {
-                            ItemSetId = itemSet.Id,
-                            ItemId = itemId,
-                            CreatedBy = itemSet.UpdatedBy ?? "system"
-                        }, tx);
+                        await conn.ExecuteAsync(
+                            insertIfMissing,
+                            new
+                            {
+                                ItemSetId = itemSet.Id,
+                                ItemId = itemId,
+                                CreatedBy = itemSet.UpdatedBy ?? "system"
+                            },
+                            tx
+                        );
                     }
                 }
 
@@ -245,6 +279,7 @@ END";
                 throw;
             }
         }
+
 
         // =========================
         // DEACTIVATE (soft delete)
