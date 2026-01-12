@@ -71,4 +71,10 @@
     <Folder Include="wwwroot\pdf\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Services\PickingService .cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Compile>
+  </ItemGroup>
+
 </Project>
