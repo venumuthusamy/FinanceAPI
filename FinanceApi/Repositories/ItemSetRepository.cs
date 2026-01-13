@@ -60,10 +60,12 @@ ORDER BY s.Id DESC, i.Id;";
             const string sql = @"
 SELECT
     s.Id, s.SetName, s.CreatedBy, s.UpdatedBy, s.CreatedDate, s.UpdatedDate, s.IsActive,
-    i.Id, i.ItemSetId, i.ItemId, i.CreatedBy, i.CreatedDate, i.IsActive
+    i.Id, i.ItemSetId, i.ItemId, i.CreatedBy, i.CreatedDate, i.IsActive,u.Name as UomName
 FROM dbo.ItemSet s
 LEFT JOIN dbo.ItemSetItem i
        ON i.ItemSetId = s.Id AND i.IsActive = 1
+LEFT JOIN dbo.Item  it  on it.Id = i.ItemId 
+Left Join dbo.Uom  u on u.Id = it.UomId
 WHERE s.Id = @Id
 ORDER BY i.Id;";
 

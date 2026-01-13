@@ -10,6 +10,8 @@
         public DateTime? UpdatedDate { get; set; }
 
         public bool IsActive { get; set; } = true;
+
+
         public List<ItemSetItemDTO> Items { get; set; } = new();
     }
 }
