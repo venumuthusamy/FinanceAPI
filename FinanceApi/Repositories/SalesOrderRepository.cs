@@ -126,7 +126,8 @@ SELECT TOP(1)
     ISNULL(so.Subtotal,0)    AS Subtotal,
     ISNULL(so.TaxAmount,0)   AS TaxAmount,
     ISNULL(so.GrandTotal,0)  AS GrandTotal,
-    so.ApprovedBy
+    so.ApprovedBy,
+so.DeliveryTo
 FROM dbo.SalesOrder so
 LEFT JOIN dbo.Customer  c ON c.Id = so.CustomerId
 LEFT JOIN dbo.Quotation q ON q.Id = so.QuotationNo
