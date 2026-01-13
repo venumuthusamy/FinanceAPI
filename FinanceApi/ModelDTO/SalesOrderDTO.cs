@@ -27,6 +27,7 @@ namespace FinanceApi.ModelDTO
         public string? SalesOrderNo { get; set; }
 
         public decimal TaxAmount { get; set; }
+        public string DeliveryTo { get; set; }
         public List<SalesOrderLineDTO> LineItems { get; set; } = new();
     }
 }

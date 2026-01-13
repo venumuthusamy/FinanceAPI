@@ -65,7 +65,12 @@ namespace FinanceApi.Services
             var barText = $"{req.Prefix}-{countryYear}-{mmdd}-{serial4}-{req.SoId}";   // PKL-SG25-1108-0012
 
             //var apiBase = _config["PublicApiBaseUrl"] ?? "http://192.168.6.137:7182";
-            var apiBase = "http://192.168.6.137:7182";
+            var apiBase = _config["PublicApiBaseUrl"];
+            if (string.IsNullOrWhiteSpace(apiBase))
+                throw new Exception("PublicApiBaseUrl missing.");
+            apiBase = apiBase.TrimEnd('/');
+
+
             //var barPayload = $"{_frontend.BaseUrl}/Sales/Scan/So/{req.SoId}?code={Uri.EscapeDataString(barText)}";
 
             var token = _tokenSvc.Generate(req.SoId.ToString(), minutes: 15);
