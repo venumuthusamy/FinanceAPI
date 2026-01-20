@@ -6,7 +6,7 @@ namespace FinanceApi.ModelDTO
     public class StockTakeDTO : BaseEntity
     {
         public int Id { get; set; }
-        public int TakeTypeId { get; set; }
+        //public int TakeTypeId { get; set; }
         public int WarehouseTypeId { get; set; }
 
         public string? WarehouseName { get; set; }

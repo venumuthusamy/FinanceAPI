@@ -23,7 +23,7 @@ namespace FinanceApi.Repositories
             const string headersSql = @"
         SELECT
             st.Id,
-            st.TakeTypeId,
+            --st.TakeTypeId,
             st.WarehouseTypeId,
             ISNULL(w.Name,'') AS WarehouseName,
             st.StrategyId,
@@ -108,126 +108,13 @@ namespace FinanceApi.Repositories
         public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
      long warehouseId,
      long supplierId,        // pass 0 for "no supplier filter"
-     byte takeTypeId,
      long? strategyId)
         {
-            // 1) Find the most relevant matching StockTake (if any)
-            const string findStockTakeSql = @"
-SELECT TOP (1)
-    st.Id     AS StockTakeId,
-    st.Status AS StockTakeStatus
-FROM dbo.StockTake st
-WHERE
-    st.IsActive       = 1
-    AND st.WarehouseTypeId = @WarehouseId
-    AND st.TakeTypeId      = @TakeTypeId
-    AND (NULLIF(@SupplierId,0) IS NULL OR st.SupplierId = @SupplierId)
-    AND (@StrategyId IS NULL OR st.StrategyId = @StrategyId)
-ORDER BY st.CreatedDate DESC, st.Id DESC;";
-
-            var match = await Connection.QueryFirstOrDefaultAsync<(long StockTakeId, int StockTakeStatus)>(
-                findStockTakeSql,
-                new { WarehouseId = warehouseId, SupplierId = supplierId, TakeTypeId = takeTypeId, StrategyId = strategyId }
-            );
-
-            // 2) If matched & status is 1 or 2 (Draft/Approve), throw an error
-            if (match.StockTakeId != 0 && (match.StockTakeStatus == 1 || match.StockTakeStatus == 2))
+            // ✅ Supplier = ALL : don't use findStockTakeSql / postedSql
+            if (supplierId == 0)
             {
-                // throw a meaningful error; adjust exception type to your API layer
-                throw new InvalidOperationException(
-                    "A matching StockTake exists in Draft/Approved status.So Listing items is not allowed.Check and Proceed");
-            }
-
-            // 3) If NO match → return the normal list (BaseItems)
-            if (match.StockTakeId == 0)
-            {
-
-              
-                const string baseSql = @"
-SELECT
-    im.Id                       AS ItemId,
-    im.Sku                      AS Sku,
-    im.Name                     AS ItemName,
-    iws.WarehouseId,
-    w.Name                      AS WarehouseName,
-    iws.BinId,
-    b.BinName                   AS BinName,
-    CAST(NULL AS varchar(50))   AS BinCode,
-
-    CASE 
-        WHEN NULLIF(@SupplierId,0) IS NULL THEN iws.OnHand
-        ELSE ISNULL(sq.SupplierQty, 0)
-    END                         AS OnHand,
-
-    CASE 
-        WHEN NULLIF(@SupplierId,0) IS NULL THEN iws.Reserved
-        ELSE 0
-    END                         AS Reserved,
-
-    CASE 
-        WHEN NULLIF(@SupplierId,0) IS NULL THEN (iws.OnHand - iws.Reserved)
-        ELSE ISNULL(sq.SupplierQty, 0)
-    END                         AS AvailableQty,
-
-    iws.MinQty,
-    iws.MaxQty,
-    iws.ReorderQty,
-    NULLIF(@SupplierId,0)       AS SupplierId
-FROM dbo.ItemWarehouseStock iws
-JOIN dbo.ItemMaster  im ON im.Id = iws.ItemId
-JOIN dbo.Warehouse   w  ON w.Id  = iws.WarehouseId
-LEFT JOIN dbo.Bin    b  ON b.Id  = iws.BinId
-
--- Supplier qty is now strictly per (Item, Supplier, Warehouse) and must be > 0
-OUTER APPLY (
-    SELECT TOP (1) ip.Qty AS SupplierQty
-    FROM dbo.ItemPrice ip
-    WHERE ip.ItemId      = im.Id
-      AND ip.SupplierId  = @SupplierId
-      AND ip.WarehouseId = @WarehouseId
-      AND ISNULL(ip.Qty, 0) > 0
-    ORDER BY ip.Id DESC
-) sq
-
-WHERE
-    iws.WarehouseId = @WarehouseId
-    AND (
-          @TakeTypeId = 1
-       OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId)
-    )
-    -- Only show rows for the chosen supplier if they actually have stock in this warehouse
-    AND (
-        NULLIF(@SupplierId,0) IS NULL
-        OR EXISTS (
-            SELECT 1
-            FROM dbo.ItemPrice ip
-            WHERE ip.ItemId      = im.Id
-              AND ip.SupplierId  = @SupplierId
-              AND ip.WarehouseId = @WarehouseId
-              AND ISNULL(ip.Qty, 0) > 0
-        )
-    )
-    -- Double-gate: hide if APPLY found no positive qty
-    AND (
-        NULLIF(@SupplierId,0) IS NULL
-        OR ISNULL(sq.SupplierQty, 0) > 0
-    )
-ORDER BY im.Sku, im.Name;";
-
-
-                return await Connection.QueryAsync<StockTakeWarehouseItem>(baseSql, new
-                {
-                    WarehouseId = warehouseId,
-                    SupplierId = supplierId,
-                    TakeTypeId = takeTypeId,
-                    StrategyId = strategyId
-                });
-            }
-
-
-            // 4) Matched & Status = 3 → apply your three conditions, supplier-aware
-            const string postedSql = @"
-WITH BaseItems AS (
+                const string baseAllSuppliersSql = @" 
+;WITH BaseItems AS (
     SELECT
         im.Id                     AS ItemId,
         im.Sku                    AS Sku,
@@ -238,112 +125,468 @@ WITH BaseItems AS (
         b.BinName                 AS BinName,
         CAST(NULL AS varchar(50)) AS BinCode,
 
-        CASE 
-            WHEN NULLIF(@SupplierId,0) IS NULL THEN iws.OnHand
-            ELSE ISNULL(sq.SupplierQty, 0)
-        END                       AS OnHand,
+        ip.SupplierId             AS SupplierId,
+        sp.Name                   AS SupplierName,
 
-        CASE 
-            WHEN NULLIF(@SupplierId,0) IS NULL THEN iws.Reserved
-            ELSE 0
-        END                       AS Reserved,
-
-        CASE 
-            WHEN NULLIF(@SupplierId,0) IS NULL THEN (iws.OnHand - iws.Reserved)
-            ELSE ISNULL(sq.SupplierQty, 0)
-        END                       AS AvailableQty,
+        ISNULL(iws.OnHand,0)      AS WarehouseOnHand,
+        ISNULL(ip.Qty,0)          AS OnHand,
+        ISNULL(ip.Qty,0)          AS CurrentSupplierQty,
+        CAST(0 AS decimal(18,3))  AS Reserved,
+        ISNULL(ip.Qty,0)          AS AvailableQty,
 
         iws.MinQty,
         iws.MaxQty,
-        iws.ReorderQty,
-        NULLIF(@SupplierId,0)     AS SupplierId
+        iws.ReorderQty
     FROM dbo.ItemWarehouseStock iws
-    JOIN dbo.ItemMaster  im ON im.Id = iws.ItemId
-    JOIN dbo.Warehouse   w  ON w.Id  = iws.WarehouseId
-    LEFT JOIN dbo.Bin    b  ON b.Id  = iws.BinId
-
-    OUTER APPLY (
-        SELECT TOP (1) ip.Qty AS SupplierQty
-        FROM dbo.ItemPrice ip
-        WHERE ip.ItemId      = im.Id
-          AND ip.SupplierId  = @SupplierId
-          AND ip.WarehouseId = @WarehouseId
-          AND ISNULL(ip.Qty, 0) > 0
-        ORDER BY ip.Id DESC
-    ) sq
-
+    JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+    JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
+    LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
+    JOIN dbo.ItemPrice ip
+      ON ip.ItemId      = iws.ItemId
+     AND ip.WarehouseId = iws.WarehouseId
+     AND ISNULL(ip.Qty,0) > 0
+    LEFT JOIN dbo.Suppliers sp ON sp.Id = ip.SupplierId
     WHERE
         iws.WarehouseId = @WarehouseId
-        AND (
-              @TakeTypeId = 1
-           OR (@TakeTypeId = 2 AND iws.StrategyId = @StrategyId)
-        )
-        AND (
-            NULLIF(@SupplierId,0) IS NULL
-            OR EXISTS (
-                SELECT 1
-                FROM dbo.ItemPrice ip2
-                WHERE ip2.ItemId      = im.Id
-                  AND ip2.SupplierId  = @SupplierId
-                  AND ip2.WarehouseId = @WarehouseId
-                  AND ISNULL(ip2.Qty, 0) > 0
-            )
-        )
-        AND (
-            NULLIF(@SupplierId,0) IS NULL
-            OR ISNULL(sq.SupplierQty, 0) > 0
-        )
+        AND (NULLIF(@StrategyId,0) IS NULL OR iws.StrategyId = @StrategyId)
+),
+OpenTakePerSupplier AS (
+    -- if supplier has Draft/Approved take -> hide in ALL mode
+    SELECT SupplierId
+    FROM (
+        SELECT
+            COALESCE(NULLIF(st.SupplierId,0), stl.SupplierId) AS SupplierId,
+            ROW_NUMBER() OVER (
+              PARTITION BY COALESCE(NULLIF(st.SupplierId,0), stl.SupplierId)
+              ORDER BY st.CreatedDate DESC, st.Id DESC
+            ) AS rn
+        FROM dbo.StockTake st
+        LEFT JOIN dbo.StockTakeLines stl
+          ON stl.StockTakeId = st.Id AND stl.IsActive = 1
+        WHERE st.IsActive = 1
+          AND st.WarehouseTypeId = @WarehouseId
+          AND (NULLIF(@StrategyId,0) IS NULL OR st.StrategyId = @StrategyId)
+          AND st.Status IN (1,2)
+          AND (st.SupplierId <> 0 OR stl.SupplierId IS NOT NULL)
+    ) x
+    WHERE rn = 1
+),
+PostedTakes AS (
+    -- all posted takes in this warehouse/strategy
+    SELECT st.Id AS StockTakeId
+    FROM dbo.StockTake st
+    WHERE st.IsActive = 1
+      AND st.Status = 3
+      AND st.WarehouseTypeId = @WarehouseId
+      AND (NULLIF(@StrategyId,0) IS NULL OR st.StrategyId = @StrategyId)
+),
+BestPostedLine AS (
+    -- latest posted line per (Supplier, Item, Bin) across ALL posted takes
+    SELECT *
+    FROM (
+        SELECT
+            l.Id,
+            l.SupplierId,
+            l.ItemId,
+            l.BinId,
+            ISNULL(l.Selected,0)    AS Selected,
+            ISNULL(l.VarianceQty,0) AS VarianceQty,
+            l.OnHand                AS LineOnHand,
+            ROW_NUMBER() OVER (
+                PARTITION BY l.SupplierId, l.ItemId, ISNULL(l.BinId,0)
+                ORDER BY l.StockTakeId DESC, l.Id DESC
+            ) AS rn
+        FROM dbo.StockTakeLines l
+        JOIN PostedTakes pt ON pt.StockTakeId = l.StockTakeId
+        WHERE l.IsActive = 1
+    ) x
+    WHERE rn = 1
 ),
 Joined AS (
     SELECT
         bi.*,
+        pl.Id         AS LineId,
+        pl.Selected   AS Selected,
+        pl.VarianceQty AS VarianceQty,
+        pl.LineOnHand AS LineOnHand
+    FROM BaseItems bi
+    LEFT JOIN BestPostedLine pl
+      ON pl.SupplierId = bi.SupplierId
+     AND pl.ItemId     = bi.ItemId
+     AND ISNULL(pl.BinId,0) = ISNULL(bi.BinId,0)
+)
+SELECT
+    ItemId, Sku, ItemName,
+    WarehouseId, WarehouseName,
+    BinId, BinName, BinCode,
+    SupplierId, SupplierName,
+    OnHand, Reserved, AvailableQty,
+    MinQty, MaxQty, ReorderQty
+FROM Joined
+WHERE
+    -- hide suppliers that currently have Draft/Approved stocktake
+    SupplierId NOT IN (SELECT SupplierId FROM OpenTakePerSupplier)
+    AND (
+        -- never posted before (no line)
+        LineId IS NULL
+        -- posted before but needs action
+        OR ISNULL(Selected,0) = 0
+        OR ISNULL(VarianceQty,0) <> 0
+        OR ISNULL(CurrentSupplierQty,0) <> ISNULL(LineOnHand,0)
+
+    )
+ORDER BY Sku, ItemName, SupplierName;
+
+  ";
+
+                return await Connection.QueryAsync<StockTakeWarehouseItem>(baseAllSuppliersSql, new
+                {
+                    WarehouseId = warehouseId,
+                    StrategyId = strategyId
+                });
+            }
+
+            // 1) Find the most relevant matching StockTake (if any)
+            const string findStockTakeSql = @"
+SELECT TOP (1)
+    st.Id     AS StockTakeId,
+    st.Status AS StockTakeStatus
+FROM dbo.StockTake st
+WHERE
+    st.IsActive = 1
+    AND st.WarehouseTypeId = @WarehouseId
+    AND (NULLIF(@StrategyId,0) IS NULL OR st.StrategyId = @StrategyId)
+    AND (
+        -- supplier-specific header
+        st.SupplierId = @SupplierId
+
+        -- OR supplier exists via lines (covers ALL header SupplierId=0)
+        OR EXISTS (
+            SELECT 1
+            FROM dbo.StockTakeLines l
+            WHERE l.StockTakeId = st.Id
+              AND l.IsActive = 1
+              AND l.SupplierId = @SupplierId
+        )
+    )
+ORDER BY st.CreatedDate DESC, st.Id DESC;
+";
+
+            var match = await Connection.QueryFirstOrDefaultAsync<(long StockTakeId, int StockTakeStatus)>(
+                findStockTakeSql,
+                new { WarehouseId = warehouseId, SupplierId = supplierId, StrategyId = strategyId }
+            );
+
+            // 2) If matched & status is 1 or 2 (Draft/Approve), throw an error
+            if (supplierId != 0 &&  match.StockTakeId != 0 && (match.StockTakeStatus == 1 || match.StockTakeStatus == 2))
+            {
+                // throw a meaningful error; adjust exception type to your API layer
+                throw new InvalidOperationException(
+                    "A matching StockTake exists in Draft/Approved status.So Listing items is not allowed.Check and Proceed");
+            }
+
+            // 3) If NO match → return the normal list (BaseItems)
+            if (match.StockTakeId == 0)
+            {
+                const string baseAllSuppliersSql = @"
+;WITH BaseItems AS (
+    SELECT
+        im.Id                     AS ItemId,
+        im.Sku                    AS Sku,
+        im.Name                   AS ItemName,
+        iws.WarehouseId,
+        w.Name                    AS WarehouseName,
+        iws.BinId,
+        b.BinName                 AS BinName,
+        CAST(NULL AS varchar(50)) AS BinCode,
+
+        ip.SupplierId             AS SupplierId,
+        sp.Name                   AS SupplierName,
+
+        ISNULL(iws.OnHand,0)      AS WarehouseOnHand,
+        ISNULL(ip.Qty,0)          AS OnHand,
+        ISNULL(ip.Qty,0)          AS CurrentSupplierQty,   -- ✅ NEW (used for compare)
+        CAST(0 AS decimal(18,3))  AS Reserved,
+        ISNULL(ip.Qty,0)          AS AvailableQty,
+
+        iws.MinQty,
+        iws.MaxQty,
+        iws.ReorderQty
+    FROM dbo.ItemWarehouseStock iws
+    JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+    JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
+    LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
+    JOIN dbo.ItemPrice ip
+      ON ip.ItemId = iws.ItemId
+     AND ip.WarehouseId = iws.WarehouseId
+     AND ISNULL(ip.Qty,0) > 0
+    LEFT JOIN dbo.Suppliers sp ON sp.Id = ip.SupplierId
+    WHERE
+        iws.WarehouseId = @WarehouseId
+        AND (NULLIF(@StrategyId,0) IS NULL OR iws.StrategyId = @StrategyId)
+),
+TakeSupplier AS (
+    -- ✅ Map each stocktake to suppliers using header OR lines (covers header SupplierId=0)
+    SELECT DISTINCT
+        st.Id,
+        st.Status,
+        st.CreatedDate,
+        COALESCE(NULLIF(st.SupplierId,0), stl.SupplierId) AS SupplierId
+    FROM dbo.StockTake st
+    LEFT JOIN dbo.StockTakeLines stl
+      ON stl.StockTakeId = st.Id
+     AND stl.IsActive = 1
+    WHERE
+        st.IsActive = 1
+        AND st.WarehouseTypeId = @WarehouseId
+        AND (NULLIF(@StrategyId,0) IS NULL OR st.StrategyId = @StrategyId)
+        AND (st.SupplierId <> 0 OR stl.SupplierId IS NOT NULL)
+),
+LatestOpenTake AS (
+    -- ✅ Latest Draft/Approved per supplier
+    SELECT SupplierId, StockTakeId
+    FROM (
+        SELECT
+            ts.SupplierId,
+            ts.Id AS StockTakeId,
+            ROW_NUMBER() OVER (PARTITION BY ts.SupplierId ORDER BY ts.CreatedDate DESC, ts.Id DESC) AS rn
+        FROM TakeSupplier ts
+        WHERE ts.Status IN (1,2)
+    ) x
+    WHERE rn = 1
+),
+LatestPostedTake AS (
+    -- ✅ Latest Posted per supplier
+    SELECT SupplierId, StockTakeId
+    FROM (
+        SELECT
+            ts.SupplierId,
+            ts.Id AS StockTakeId,
+            ROW_NUMBER() OVER (PARTITION BY ts.SupplierId ORDER BY ts.CreatedDate DESC, ts.Id DESC) AS rn
+        FROM TakeSupplier ts
+        WHERE ts.Status = 3
+    ) x
+    WHERE rn = 1
+),
+Joined AS (
+    SELECT
+        bi.*,
+        ot.StockTakeId AS OpenTakeId,
+        pt.StockTakeId AS PostedTakeId,
+
         stl.Id                     AS LineId,
         ISNULL(stl.Selected,0)     AS Selected,
         ISNULL(stl.VarianceQty,0)  AS VarianceQty,
         stl.OnHand                 AS LineOnHand
     FROM BaseItems bi
+    LEFT JOIN LatestOpenTake ot
+      ON ot.SupplierId = bi.SupplierId
+    LEFT JOIN LatestPostedTake pt
+      ON pt.SupplierId = bi.SupplierId
     LEFT JOIN dbo.StockTakeLines stl
-      ON stl.StockTakeId = @StockTakeId
-     AND stl.ItemId      = bi.ItemId
-     AND stl.BinId       = bi.BinId
-     AND (
-            bi.SupplierId IS NULL      -- no supplier filter → ignore supplier
-         OR stl.SupplierId = bi.SupplierId
-     )
+      ON stl.StockTakeId = pt.StockTakeId
+     AND stl.IsActive = 1
+     AND stl.SupplierId = bi.SupplierId
+    AND stl.ItemId = bi.ItemId
+AND ISNULL(stl.BinId,0) = ISNULL(bi.BinId,0)
 )
 SELECT
-    ItemId,
-    Sku,
-    ItemName,
-    WarehouseId,
-    WarehouseName,
-    BinId,
-    BinName,
-    BinCode,
-    OnHand,
-    Reserved,
-    AvailableQty,
-    MinQty,
-    MaxQty,
-    ReorderQty,
-    SupplierId,
- -- expose for client logic
-    Selected,
-    VarianceQty,
-    LineOnHand,
+    ItemId, Sku, ItemName,
+    WarehouseId, WarehouseName,
+    BinId, BinName, BinCode,
+    SupplierId, SupplierName,
+    OnHand, Reserved, AvailableQty,
+    MinQty, MaxQty, ReorderQty
+FROM Joined
+WHERE
+    OpenTakeId IS NULL
+    AND (
+        PostedTakeId IS NULL
+        OR ISNULL(Selected,0) = 0
+        OR ISNULL(VarianceQty,0) <> 0
+        OR ISNULL(WarehouseOnHand,0) <> ISNULL(LineOnHand,0)
+    )
+    AND NOT (
+        LineId IS NOT NULL
+        AND ISNULL(Selected,0) = 1
+        AND ISNULL(VarianceQty,0) = 0
+        AND ISNULL(WarehouseOnHand,0) = ISNULL(LineOnHand,0)
+    )
+
+ORDER BY Sku, ItemName, SupplierName;
+
+
+";
+
+                const string baseSingleSupplierSql = @"
+SELECT
+    im.Id                      AS ItemId,
+    im.Sku                     AS Sku,
+    im.Name                    AS ItemName,
+    iws.WarehouseId,
+    w.Name                     AS WarehouseName,
+    iws.BinId,
+    b.BinName                  AS BinName,
+    CAST(NULL AS varchar(50))  AS BinCode,
+
+    ISNULL(ip.Qty, 0)          AS OnHand,
+    CAST(0 AS decimal(18,3))   AS Reserved,
+    ISNULL(ip.Qty, 0)          AS AvailableQty,
+
+    iws.MinQty,
+    iws.MaxQty,
+    iws.ReorderQty,
+
+    @SupplierId                AS SupplierId,
+    sp.Name                    AS SupplierName
+FROM dbo.ItemWarehouseStock iws
+JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
+LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
+LEFT JOIN dbo.ItemPrice ip
+  ON ip.ItemId      = iws.ItemId
+ AND ip.WarehouseId = iws.WarehouseId
+ AND ip.SupplierId  = @SupplierId
+LEFT JOIN dbo.Suppliers sp ON sp.Id = @SupplierId
+WHERE
+    iws.WarehouseId = @WarehouseId
+    AND (NULLIF(@StrategyId,0) IS NULL OR iws.StrategyId = @StrategyId)
+    AND ISNULL(ip.Qty, 0) > 0
+ORDER BY im.Sku, im.Name;";
+
+                var sql = (supplierId == 0) ? baseAllSuppliersSql : baseSingleSupplierSql;
+
+                return await Connection.QueryAsync<StockTakeWarehouseItem>(sql, new
+                {
+                    WarehouseId = warehouseId,
+                    SupplierId = supplierId,
+                    StrategyId = strategyId
+                });
+            }
+
+
+
+            // 4) Matched & Status = 3 → apply your three conditions, supplier-aware
+            const string postedSql = @"
+;WITH BaseItems AS (
+    SELECT
+        im.Id                     AS ItemId,
+        im.Sku                    AS Sku,
+        im.Name                   AS ItemName,
+        iws.WarehouseId,
+        w.Name                    AS WarehouseName,
+        iws.BinId,
+        b.BinName                 AS BinName,
+        CAST(NULL AS varchar(50)) AS BinCode,
+
+        @SupplierId               AS SupplierId,
+        ISNULL(sp.Name,'')        AS SupplierName,
+
+        ISNULL(ip.Qty,0)          AS OnHand,
+        ISNULL(ip.Qty,0)          AS CurrentSupplierQty,
+        CAST(0 AS decimal(18,3))  AS Reserved,
+        ISNULL(ip.Qty,0)          AS AvailableQty,
+
+        iws.MinQty,
+        iws.MaxQty,
+        iws.ReorderQty
+    FROM dbo.ItemWarehouseStock iws
+    JOIN dbo.ItemMaster im ON im.Id = iws.ItemId
+    JOIN dbo.Warehouse  w  ON w.Id  = iws.WarehouseId
+    LEFT JOIN dbo.Bin   b  ON b.Id  = iws.BinId
+    JOIN dbo.ItemPrice ip
+      ON ip.ItemId      = iws.ItemId
+     AND ip.WarehouseId = iws.WarehouseId
+     AND ip.SupplierId  = @SupplierId
+     AND ISNULL(ip.Qty,0) > 0
+    LEFT JOIN dbo.Suppliers sp ON sp.Id = @SupplierId
+    WHERE
+        iws.WarehouseId = @WarehouseId
+        AND (NULLIF(@StrategyId,0) IS NULL OR iws.StrategyId = @StrategyId)
+),
+PostedTakes AS (
+    -- ✅ ALL posted stocktakes for this supplier+warehouse+strategy (includes old 6 and new 11)
+    SELECT st.Id AS StockTakeId
+    FROM dbo.StockTake st
+    WHERE st.IsActive = 1
+      AND st.Status = 3
+      AND st.WarehouseTypeId = @WarehouseId
+      AND (NULLIF(@StrategyId,0) IS NULL OR st.StrategyId = @StrategyId)
+      AND (
+            st.SupplierId = @SupplierId
+            OR EXISTS (
+                SELECT 1
+                FROM dbo.StockTakeLines l
+                WHERE l.StockTakeId = st.Id
+                  AND l.IsActive = 1
+                  AND l.SupplierId = @SupplierId
+            )
+      )
+),
+BestPostedLine AS (
+    -- ✅ For each (Supplier, Item, Bin) pick the latest posted line among ALL posted takes
+    SELECT *
+    FROM (
+        SELECT
+            l.Id,
+            l.ItemId,
+            l.BinId,
+            l.SupplierId,
+            ISNULL(l.Selected,0)    AS Selected,
+            ISNULL(l.VarianceQty,0) AS VarianceQty,
+            l.OnHand                AS LineOnHand,
+            ROW_NUMBER() OVER (
+                PARTITION BY l.SupplierId, l.ItemId, ISNULL(l.BinId,-1)
+                ORDER BY l.StockTakeId DESC, l.Id DESC
+            ) AS rn
+        FROM dbo.StockTakeLines l
+        JOIN PostedTakes pt ON pt.StockTakeId = l.StockTakeId
+        WHERE l.IsActive = 1
+          AND l.SupplierId = @SupplierId
+    ) x
+    WHERE rn = 1
+),
+Joined AS (
+    SELECT
+        bi.*,
+        pl.Id         AS LineId,
+        pl.Selected   AS Selected,
+        pl.VarianceQty AS VarianceQty,
+        pl.LineOnHand AS LineOnHand
+    FROM BaseItems bi
+    LEFT JOIN BestPostedLine pl
+      ON pl.SupplierId = bi.SupplierId
+     AND pl.ItemId = bi.ItemId
+     AND ( (pl.BinId = bi.BinId) OR (pl.BinId IS NULL AND bi.BinId IS NULL) )
+)
+SELECT
+    ItemId, Sku, ItemName,
+    WarehouseId, WarehouseName,
+    BinId, BinName, BinCode,
+    SupplierId, SupplierName,
+    OnHand, Reserved, AvailableQty,
+    MinQty, MaxQty, ReorderQty,
+    Selected, VarianceQty, LineOnHand,
 
     CASE
-      WHEN Selected = 1 AND VarianceQty = 0 AND ISNULL(OnHand,0) = ISNULL(LineOnHand,0)
+      WHEN LineId IS NULL THEN 1
+      WHEN ISNULL(Selected,0) = 0 THEN 1
+      WHEN ISNULL(VarianceQty,0) <> 0 THEN 1
+      WHEN ISNULL(CurrentSupplierQty,0) <> ISNULL(LineOnHand,0) THEN 1
+      ELSE 0
+    END AS NeedsAction,
+
+    CASE
+      WHEN LineId IS NOT NULL
+       AND Selected = 1
+       AND ISNULL(VarianceQty,0) = 0
+       AND ISNULL(CurrentSupplierQty,0) = ISNULL(LineOnHand,0)
       THEN 1 ELSE 0
     END AS AlreadyCheckedPosted
 FROM Joined
-WHERE
-       Selected = 0
-   OR (Selected = 1 AND VarianceQty <> 0)
-   OR (Selected = 1 AND VarianceQty = 0 AND ISNULL(OnHand,0) <> ISNULL(LineOnHand,0))
-   OR (Selected = 1 AND VarianceQty = 0 AND ISNULL(OnHand,0) = ISNULL(LineOnHand,0)) -- <— ADD THIS
-   OR (LineId IS NULL)
-ORDER BY Sku, ItemName;";
+ORDER BY Sku, ItemName, SupplierName;
+";
+
 
             var rows = (await Connection.QueryAsync<StockTakeWarehouseItem>(
     postedSql,
@@ -351,7 +594,6 @@ ORDER BY Sku, ItemName;";
     {
         WarehouseId = warehouseId,
         SupplierId = supplierId,  // pass 0 for 'no supplier filter'
-        TakeTypeId = takeTypeId,
         StrategyId = strategyId,
         StockTakeId = match.StockTakeId
     })
@@ -360,18 +602,16 @@ ORDER BY Sku, ItemName;";
             // Count items that are already checked & posted
             int already = rows.Count(r => r.AlreadyCheckedPosted == 1);
 
-            // If everything is already posted → surface a clear message (choose one behavior)
-            if (rows.Count > 0 && already == rows.Count)
+            // If nothing needs action => show error
+            if (rows.Count > 0 && rows.All(r => r.NeedsAction == 0))
             {
-                // A) throw (simplest if you already surface exceptions as toasts)
-                throw new InvalidOperationException("All selected lines for this supplier in this warehouse are already checked & posted..");
-
-                // OR B) return empty list (uncomment if you prefer this)
-                // return Enumerable.Empty<StockTakeWarehouseItem>();
+                throw new InvalidOperationException(
+                    "All selected lines for this supplier in this warehouse are already checked & posted..");
             }
 
-            // Otherwise hide the “already posted” ones and return the rest
-            rows = rows.Where(r => r.AlreadyCheckedPosted != 1).ToList();
+            // Return only lines that need action
+            return rows.Where(r => r.NeedsAction == 1).ToList();
+
             return rows;
 
 
@@ -384,7 +624,7 @@ ORDER BY Sku, ItemName;";
             const string headerSql = @"
         SELECT TOP (1)
             st.Id,
-            st.TakeTypeId,
+            --st.TakeTypeId,
             st.WarehouseTypeId,
             ISNULL(w.Name,'') AS WarehouseName,
             st.StrategyId,
@@ -409,30 +649,33 @@ ORDER BY Sku, ItemName;";
             if (header == null) return null;
 
             const string linesSql = @"
-        SELECT
-            Id,
-            StockTakeId,
-            WarehouseTypeId,
-            SupplierId,
-            Status,
-            ItemId,
-            BinId,
-            OnHand,
-            CountedQty,
-            BadCountedQty,
-            VarianceQty,
-            Barcode,
-            ReasonId,
-            Remarks,
-            Selected,
-            CreatedBy,
-            CreatedDate,
-            UpdatedBy,
-            UpdatedDate,
-            IsActive
-        FROM StockTakeLines
-        WHERE StockTakeId = @Id AND IsActive = 1
-        ORDER BY Id;";
+   SELECT
+    stl.Id,
+    stl.StockTakeId,
+    stl.WarehouseTypeId,
+    stl.SupplierId,
+    ISNULL(sp.Name,'') AS SupplierName,     -- ✅ ADD
+    stl.Status,
+    stl.ItemId,
+    stl.BinId,
+    stl.OnHand,
+    stl.CountedQty,
+    stl.BadCountedQty,
+    stl.VarianceQty,
+    stl.Barcode,
+    stl.ReasonId,
+    stl.Remarks,
+    stl.Selected,
+    stl.CreatedBy,
+    stl.CreatedDate,
+    stl.UpdatedBy,
+    stl.UpdatedDate,
+    stl.IsActive
+FROM StockTakeLines stl
+LEFT JOIN Suppliers sp ON sp.Id = stl.SupplierId   -- ✅ ADD
+WHERE stl.StockTakeId = @Id AND stl.IsActive = 1
+ORDER BY stl.Id;
+";
 
             // 2) lines
             var lines = await Connection.QueryAsync<StockTakeLines>(linesSql, new { Id = id });
@@ -452,13 +695,13 @@ ORDER BY Sku, ItemName;";
             const string insertHeaderSql = @"
 INSERT INTO StockTake
 (
-    WarehouseTypeId,TakeTypeId, StrategyId,SupplierId,
+    WarehouseTypeId,StrategyId,SupplierId,
     Freeze, Status, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
 )
 OUTPUT INSERTED.Id
 VALUES
 (
-    @WarehouseTypeId,@TakeTypeId, @StrategyId,@SupplierId,
+    @WarehouseTypeId,@StrategyId,@SupplierId,
     @Freeze, @Status, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
 );";
 
@@ -489,7 +732,7 @@ VALUES
                     new
                     {
                         stockTake.WarehouseTypeId,                       
-                        stockTake.TakeTypeId,
+                        //stockTake.TakeTypeId,
                         stockTake.StrategyId,
                         stockTake.SupplierId,
                         stockTake.Freeze,
@@ -558,7 +801,7 @@ VALUES
 UPDATE StockTake
 SET
     WarehouseTypeId = @WarehouseTypeId,
-    TakeTypeId      = @TakeTypeId,   -- if you renamed: TakeType
+    --TakeTypeId      = @TakeTypeId,   -- if you renamed: TakeType
     StrategyId      = @StrategyId,
     SupplierId      = @SupplierId,
     Freeze          = @Freeze,
@@ -621,7 +864,7 @@ WHERE StockTakeId = @StockTakeId
                 await conn.ExecuteAsync(updateHeaderSql, new
                 {
                     updatedStockTake.WarehouseTypeId,                  
-                    updatedStockTake.TakeTypeId,   // if renamed -> TakeType
+                    //updatedStockTake.TakeTypeId,   // if renamed -> TakeType
                     updatedStockTake.StrategyId,
                     updatedStockTake.SupplierId,
                     updatedStockTake.Freeze,
@@ -785,7 +1028,7 @@ WHERE StockTakeId = @Id AND IsActive = 1;";
                 // 1) Header
                 const string headerSql = @"
 SELECT TOP(1)
-    Id, WarehouseTypeId, TakeTypeId, StrategyId, SupplierId, Freeze, Status, IsActive
+    Id, WarehouseTypeId, StrategyId, SupplierId, Freeze, Status, IsActive
 FROM StockTake
 WHERE Id = @Id AND IsActive = 1;";
                 var header = await conn.QueryFirstOrDefaultAsync(headerSql, new { Id = stockTakeId }, tx);
@@ -799,7 +1042,7 @@ WHERE Id = @Id AND IsActive = 1;";
 
                 // 2) Lines
                 var linesSql = @"
-SELECT Id, StockTakeId, ItemId, BinId, OnHand, CountedQty, BadCountedQty, VarianceQty,
+SELECT Id, StockTakeId, ItemId, BinId, SupplierId,OnHand, CountedQty, BadCountedQty, VarianceQty,
        Barcode, Remarks, ReasonId, Selected, IsActive
 FROM StockTakeLines
 WHERE StockTakeId = @Id AND IsActive = 1";
@@ -878,7 +1121,7 @@ VALUES
                         ItemId = l.ItemId,
                         BinId = l.BinId,
                         WarehouseTypeId = (int)header.WarehouseTypeId,
-                        SupplierId = (int)header.SupplierId,
+                        SupplierId = l.SupplierId,
                         TxnDate = txnDate,
                         ReasonId = l.ReasonId,
                         Remarks = !string.IsNullOrWhiteSpace(l.Remarks) ? l.Remarks : remarks,
@@ -987,14 +1230,15 @@ END;";
     SELECT TOP(1) *
     FROM dbo.ItemPrice
     WHERE ItemId = @ItemId AND SupplierId = @SupplierId
+AND WarehouseId = @WarehouseId
     ORDER BY Id DESC
 )
 UPDATE ip SET Qty = ISNULL(Qty,0) + @Delta;
 
 IF @@ROWCOUNT = 0
 BEGIN
-    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, Price, Barcode, Qty)
-    VALUES (@ItemId, @SupplierId, 0, NULL, @Delta);
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId,Price, Barcode, Qty)
+    VALUES (@ItemId, @SupplierId,  @WarehouseId ,0, NULL, @Delta);
 END;";
                     // Build the per-line deltas from the already filtered variance-producing lines
                     var deltas = lines
@@ -1019,7 +1263,7 @@ END;";
                ItemId = l.ItemId,
                WarehouseId = (int)header.WarehouseTypeId, // make sure this is the real WH id
                BinId = l.BinId,
-               SupplierId = (int)header.SupplierId,
+               SupplierId = l.SupplierId,
                Delta = delta
            };
        })

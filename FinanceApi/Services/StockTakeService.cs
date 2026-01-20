@@ -25,12 +25,13 @@ namespace FinanceApi.Services
         }
 
         public async Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(
-       long warehouseId, long supplierId, byte takeTypeId, long? strategyId)
+       long warehouseId, long supplierId, long? strategyId)
         {
-            if (takeTypeId == 2 && strategyId is null)
-                throw new ArgumentException("strategyId is required when takeTypeId = 2 (Cycle).", nameof(strategyId));
+            // normalize ALL
+            if (supplierId < 0) supplierId = 0;
+            if (strategyId.HasValue && strategyId.Value == 0) strategyId = null;
 
-            var rows = (await _repository.GetWarehouseItemsAsync(warehouseId, supplierId, takeTypeId, strategyId))
+            var rows = (await _repository.GetWarehouseItemsAsync(warehouseId, supplierId,strategyId))
                        ?.ToList() ?? new List<StockTakeWarehouseItem>();
 
             // If there are rows and ALL of them are "already checked & posted" → throw coded InvalidOperationException

@@ -10,6 +10,7 @@
         public long WarehouseId { get; set; }
         public long? BinId { get; set; }
         public long SupplierId { get; set; }
+        public string? SupplierName { get; set; }
         public decimal OnHand { get; set; }
         public decimal Reserved { get; set; }
         public decimal AvailableQty { get; set; }
@@ -21,5 +22,8 @@
         public decimal? VarianceQty { get; set; }
         public decimal? LineOnHand { get; set; }
         public int AlreadyCheckedPosted { get; set; } // 1 or 0
+
+        public int NeedsAction { get; set; }
+
     }
 }
