@@ -155,18 +155,45 @@ if (app.Environment.IsDevelopment())
 }
 app.Use(async (ctx, next) =>
 {
-    // Only protect SPA HTML pages
+    // Only protect SPA HTML pages (NOT APIs, NOT static files)
     var accept = ctx.Request.Headers.Accept.ToString();
-    var isHtmlGet = ctx.Request.Method == "GET" &&
-                    (accept.Contains("text/html") || ctx.Request.Path.Value?.EndsWith(".html") == true);
 
+    var isHtmlGet =
+        ctx.Request.Method.Equals("GET", StringComparison.OrdinalIgnoreCase) &&
+        (accept.Contains("text/html", StringComparison.OrdinalIgnoreCase) ||
+         ctx.Request.Path.Value?.EndsWith(".html", StringComparison.OrdinalIgnoreCase) == true);
+
+    // ✅ Allow APIs always
+    if (ctx.Request.Path.StartsWithSegments("/api") ||
+        ctx.Request.Path.StartsWithSegments("/swagger"))
+    {
+        await next();
+        return;
+    }
+
+    // ✅ Allow static files always (css/js/images/fonts)
+    if (ctx.Request.Path.StartsWithSegments("/assets") ||
+        ctx.Request.Path.StartsWithSegments("/images") ||
+        ctx.Request.Path.StartsWithSegments("/fonts") ||
+        ctx.Request.Path.StartsWithSegments("/css") ||
+        ctx.Request.Path.StartsWithSegments("/js") ||
+        ctx.Request.Path.StartsWithSegments("/lib"))
+    {
+        await next();
+        return;
+    }
+
+    // If not an HTML page request, don't block
     if (!isHtmlGet)
     {
         await next();
         return;
     }
 
-    // Allow only the mobile receiving route with valid token
+    // ✅ Allow normal SPA pages (index.html + angular routes)
+    // But protect ONLY the token pages below.
+
+    // 🔒 Protect: mobile receiving route with token
     if (ctx.Request.Path.StartsWithSegments("/purchase/mobilereceiving"))
     {
         var poNo = ctx.Request.Query["poNo"].ToString();
@@ -185,7 +212,7 @@ app.Use(async (ctx, next) =>
         return;
     }
 
-    // ✅ ADD HERE: Allow Picking scan page with valid token
+    // 🔒 Protect: picking scan page with token
     if (ctx.Request.Path.StartsWithSegments("/scan/so.html"))
     {
         var soId = ctx.Request.Query["id"].ToString();
@@ -204,12 +231,9 @@ app.Use(async (ctx, next) =>
         return;
     }
 
-
-    // Block everything else (root, other pages)
-    ctx.Response.StatusCode = 403;
-    await ctx.Response.WriteAsync("Access denied");
+    // ✅ Everything else HTML allowed
+    await next();
 });
-
 
 app.UseStaticFiles();
 
