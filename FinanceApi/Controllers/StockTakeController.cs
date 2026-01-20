@@ -37,23 +37,19 @@ namespace FinanceApi.Controllers
         public async Task<IActionResult> GetWarehouseItems(
         [FromQuery] long warehouseId,
         [FromQuery] long supplierId,
-        [FromQuery] byte takeTypeId,             // 1 = Full, 2 = Cycle  (required)
         [FromQuery] long? strategyId = null)    // strategyid is optional
         {
             // basic validation
             if (warehouseId <= 0) return BadRequest(new ResponseResult(false, "warehouseId is required.", null));
-            if (takeTypeId != 1 && takeTypeId != 2)
-                return BadRequest(new ResponseResult(false, "takeTypeId must be 1 (Full) or 2 (Cycle).", null));
-
-            if (takeTypeId == 2 && strategyId is null)
-                return BadRequest(new ResponseResult(false, "strategyId is required when takeTypeId = 2 (Cycle).", null));
+            if (supplierId < 0) supplierId = 0;
+            if (strategyId.HasValue && strategyId.Value == 0) strategyId = null;
 
 
 
 
             try
             {
-                var items = await _service.GetWarehouseItemsAsync(warehouseId, supplierId, takeTypeId, strategyId);
+                var items = await _service.GetWarehouseItemsAsync(warehouseId, supplierId,strategyId);
                 return Ok(new ResponseResult(true, "Success", items));
             }
             catch (InvalidOperationException ex) when ((ex.Data["code"] as string) == "AlreadyCheckedPosted")

@@ -7,7 +7,7 @@ namespace FinanceApi.Models
         public int Id { get; set; }
         public int WarehouseTypeId { get; set; }  
         public int SupplierId { get; set; }
-        public int TakeTypeId { get; set; }
+        //public int TakeTypeId { get; set; }
         public int? StrategyId { get; set; }      
 
         public List<StockTakeLines> LineItems { get; set; } = new();

@@ -7,7 +7,7 @@ namespace FinanceApi.InterfaceService
     {
         Task<IEnumerable<StockTakeDTO>> GetAllAsync();
         Task<IEnumerable<SupplierDto>> GetAllSupplierByWarehouseIdAsync(int id);
-        Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(long warehouseId, long supplierId,byte takeTypeId, long? strategyId);
+        Task<IEnumerable<StockTakeWarehouseItem>> GetWarehouseItemsAsync(long warehouseId, long supplierId,long? strategyId);
         Task<StockTakeDTO> GetByIdAsync(int id);
         Task<int> CreateAsync(StockTake stockTake);
         Task UpdateAsync(StockTake stockTake);
