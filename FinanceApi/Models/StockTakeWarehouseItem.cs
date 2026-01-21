@@ -17,6 +17,7 @@
         public decimal? MinQty { get; set; }
         public decimal? MaxQty { get; set; }
         public decimal? ReorderQty { get; set; }
+        public decimal? BadCountedQty { get; set; }
 
         public bool Selected { get; set; }
         public decimal? VarianceQty { get; set; }

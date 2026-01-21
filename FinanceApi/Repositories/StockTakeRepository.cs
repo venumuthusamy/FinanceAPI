@@ -1208,7 +1208,8 @@ WHERE StockTakeId = @Id AND IsActive = 1;",
                     // (A) Adjust warehouse/bin stock by DELTA, not overwrite
                     const string adjustWarehouseSql = @"
 UPDATE S
-   SET S.OnHand = S.OnHand + @Delta
+   SET S.OnHand = S.OnHand + @Delta,
+S.Available = (ISNULL(S.OnHand,0) + @Delta) - ISNULL(S.Reserved,0)
 FROM dbo.ItemWarehouseStock S
 WHERE S.ItemId      = @ItemId
   AND S.WarehouseId = @WarehouseId
@@ -1233,12 +1234,12 @@ END;";
 AND WarehouseId = @WarehouseId
     ORDER BY Id DESC
 )
-UPDATE ip SET Qty = ISNULL(Qty,0) + @Delta;
+UPDATE ip SET Qty = ISNULL(Qty,0) + @Delta,BadCountedQty = @Bad; 
 
 IF @@ROWCOUNT = 0
 BEGIN
-    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId,Price, Barcode, Qty)
-    VALUES (@ItemId, @SupplierId,  @WarehouseId ,0, NULL, @Delta);
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId,Price, Barcode, Qty,BadCountedQty)
+    VALUES (@ItemId, @SupplierId,  @WarehouseId ,0, NULL, @Delta,@Bad);
 END;";
                     // Build the per-line deltas from the already filtered variance-producing lines
                     var deltas = lines
@@ -1264,7 +1265,9 @@ END;";
                WarehouseId = (int)header.WarehouseTypeId, // make sure this is the real WH id
                BinId = l.BinId,
                SupplierId = l.SupplierId,
-               Delta = delta
+               Delta = delta,
+               Bad = bad,
+               Good = good,
            };
        })
        .ToList();
