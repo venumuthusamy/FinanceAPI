@@ -196,19 +196,20 @@ ORDER BY pgr.ID;";
         // ✅ GRN PostInventory -> update shortage SO lines + alloc + alert
         // ✅ EXACT signature as interface (NO extra param)
         // ===========================================================
-        public async Task ApplyGrnAndUpdateSalesOrderAsync(string itemCode, int? warehouseId, int? supplierId, int? binId, decimal receivedQty)
+        public async Task<ApplyGrnResult> ApplyGrnAndUpdateSalesOrderAsync(
+     string itemCode, int? warehouseId, int? supplierId, int? binId, decimal receivedQty)
         {
             using var conn = _connectionFactory.CreateConnection();
             conn.Open();
-            using var tx = conn.BeginTransaction();
 
+            using var tx = conn.BeginTransaction();
             try
             {
                 var itemId = await GetItemIdByCodeAsync(conn, tx, itemCode);
                 if (itemId == null)
                     throw new Exception($"ItemCode not found in Item master: {itemCode}");
 
-                var result = await conn.QueryFirstAsync<dynamic>(
+                var spResult = await conn.QuerySingleAsync<GrnAllocResult>(
                     "dbo.sp_GRN_LockSO_InsertAlloc_Debug",
                     new
                     {
@@ -222,19 +223,24 @@ ORDER BY pgr.ID;";
                     tx,
                     commandType: CommandType.StoredProcedure);
 
+                // ✅ IMPORTANT: no throw. UpdatedLines==0 is allowed.
                 tx.Commit();
 
-                // 👇 If this throws, you’ll know mismatch
-                if ((int)result.UpdatedLines == 0)
-                    throw new Exception($"No SO lines matched for ItemId={itemId.Value}. Check SalesOrderLines.ItemId mapping.");
+                return new ApplyGrnResult
+                {
+                    ItemId = itemId.Value,
+                    UpdatedSalesOrderLines = spResult.UpdatedLines,
+                    Message = spResult.UpdatedLines > 0
+                        ? "GRN applied and Sales Order updated."
+                        : "GRN applied. No Sales Order lines to update."
+                };
             }
             catch
             {
-                tx.Rollback();
+                try { tx.Rollback(); } catch { }
                 throw;
             }
         }
-
 
         // 🔹 Get ItemId from ItemCode
         private async Task<int?> GetItemIdByCodeAsync(IDbConnection conn, IDbTransaction tx, string itemCode)

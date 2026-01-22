@@ -146,22 +146,19 @@ namespace FinanceApi.Controllers
             }
         }
 
-        [HttpPost("ApproveTransfersBulk")]
-        public async Task<IActionResult> ApproveTransfersBulk([FromBody] IEnumerable<ApproveTransferRequest> requests)
+        [HttpPost("approve-bulk")]
+        public async Task<IActionResult> ApproveBulk([FromBody] List<TransferApproveRequest> req)
         {
-            if (requests == null || !requests.Any())
-                return BadRequest("Invalid request data.");
-
-            var result = await _service.ApproveTransfersBulkAsync(requests);
-            return Ok(new
+            try
             {
-                success = true,
-                message = "Transfers approved successfully.",
-                updatedItemWarehouseStock = result.UpdatedItemWarehouseStock,
-                updatedStock = result.UpdatedStock
-            });
+                await _service.ApproveTransfersBulkAsync(req);
+                return Ok(new { message = "Stock transfer approved successfully." });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error approving transfers", error = ex.Message });
+            }
         }
-
 
         [HttpGet("GetByIdStockHistory/{id}")]
         public async Task<IActionResult> GetByIdStockHistory(int id)
@@ -171,5 +168,22 @@ namespace FinanceApi.Controllers
             return Ok(data);
         }
 
+
+        [HttpGet("transferred-mr-ids")]
+        public async Task<IActionResult> GetTransferredMrIds()
+        {
+            var ids = await _service.GetTransferredMrIdsAsync();
+            return Ok(new { isSuccess = true, data = ids });
+        }
+
+
+
+        [HttpGet("GetMaterialTransferList")]
+        public async Task<IActionResult> GetMaterialTransferList()
+        {
+            var list = await _service.GetMaterialTransferList();
+            ResponseResult data = new ResponseResult(true, "Success", list);
+            return Ok(data);
+        }
     }
 }

@@ -57,7 +57,7 @@ namespace FinanceApi.Services
             return await _repository.MarkAsTransferredBulkAsync(requests);
         }
 
-        public async Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList()
+        public async Task<IEnumerable<MaterialTransferListViewInfo>> GetAllStockTransferedList()
         {
             return await _repository.GetAllStockTransferedList();
         }
@@ -71,14 +71,42 @@ namespace FinanceApi.Services
             return await _repository.AdjustOnHandAsync(request);
         }
 
-        public async Task<ApproveBulkResult> ApproveTransfersBulkAsync(IEnumerable<ApproveTransferRequest> requests)
+        public async Task ApproveTransfersBulkAsync(IEnumerable<TransferApproveRequest> transfers)
         {
-            return await _repository.ApproveTransfersBulkAsync(requests);
+            if (transfers == null) throw new ArgumentNullException(nameof(transfers));
+
+            var list = transfers.ToList();
+            if (!list.Any()) throw new ArgumentException("Transfer list is empty.");
+
+            foreach (var t in list)
+            {
+                if (t.StockId <= 0) throw new ArgumentException("StockId is required.");
+                if (t.ItemId <= 0) throw new ArgumentException("ItemId is required.");
+                if (t.WarehouseId <= 0) throw new ArgumentException("From WarehouseId is required.");
+                if (t.ToWarehouseId <= 0) throw new ArgumentException("To WarehouseId is required.");
+                if (t.ToBinId <= 0) throw new ArgumentException("ToBinId is required.");
+                if (t.TransferQty <= 0) throw new ArgumentException("TransferQty must be > 0.");
+                if (t.RequestedQty < 0) t.RequestedQty = 0;
+            }
+
+            await _repository.ApproveTransfersBulkAsync(list);
         }
 
         public async Task<StockHistoryViewInfo> GetByIdStockHistory(long id)
         {
             return await _repository.GetByIdStockHistory(id);
         }
+
+        public async Task<IEnumerable<int>> GetTransferredMrIdsAsync()
+        {
+            return await _repository.GetTransferredMrIdsAsync();
+        }
+
+        public async Task<IEnumerable<MaterialTransferListViewInfo>> GetMaterialTransferList()
+        {
+            return await _repository.GetMaterialTransferList();
+        }
+
+
     }
 }

@@ -13,7 +13,7 @@ namespace FinanceApi.Repositories
         {
         }
 
-        // ✅ GetAll with Lines
+        // ✅ GetAll with Lines (includes BinId + BinName)
         public async Task<IEnumerable<MaterialRequisitionDTO>> GetAllAsync()
         {
             const string sql = @"
@@ -21,6 +21,7 @@ SELECT
     mr.Id,
     mr.ReqNo,
     mr.OutletId,
+    mr.BinId,                         -- ✅ NEW
     mr.RequesterName,
     mr.ReqDate,
     mr.Status,
@@ -28,8 +29,12 @@ SELECT
     mr.CreatedDate,
     mr.UpdatedBy,
     mr.UpdatedDate,
-    mr.IsActive
+    mr.IsActive,
+    wh.Name AS OutletName,
+    b.BinName AS BinName              -- ✅ OPTIONAL (change table if needed)
 FROM dbo.MaterialRequisition mr
+INNER JOIN dbo.Warehouse wh ON wh.Id = mr.OutletId
+LEFT JOIN dbo.Bin b ON b.Id = mr.BinId   -- ✅ CHANGE BinMaster if your table name differs
 WHERE mr.IsActive = 1
 ORDER BY mr.Id DESC;
 
@@ -67,7 +72,7 @@ WHERE mr.IsActive = 1;";
             return headers;
         }
 
-        // ✅ GetById with DTO Lines (fix conversion error)
+        // ✅ GetById with DTO Lines (includes BinId + BinName)
         public async Task<MaterialRequisitionDTO?> GetByIdAsync(int id)
         {
             const string sql = @"
@@ -75,6 +80,7 @@ SELECT
     mr.Id,
     mr.ReqNo,
     mr.OutletId,
+    mr.BinId,                         -- ✅ NEW
     mr.RequesterName,
     mr.ReqDate,
     mr.Status,
@@ -82,8 +88,12 @@ SELECT
     mr.CreatedDate,
     mr.UpdatedBy,
     mr.UpdatedDate,
-    mr.IsActive
+    mr.IsActive,
+    wh.Name AS OutletName,
+    b.BinName AS BinName              -- ✅ OPTIONAL
 FROM dbo.MaterialRequisition mr
+INNER JOIN dbo.Warehouse wh ON wh.Id = mr.OutletId
+LEFT JOIN dbo.Bin b ON b.Id = mr.BinId   -- ✅ CHANGE BinMaster if your table name differs
 WHERE mr.Id = @Id AND mr.IsActive = 1;
 
 SELECT
@@ -111,13 +121,12 @@ ORDER BY l.Id;";
             return header;
         }
 
-        // ✅ Create/Update can stay same (Entity based)
+        // ✅ Create (includes BinId)
         public async Task<int> CreateAsync(MaterialRequisition mrq)
         {
             const string getNextReqNoSql = @"
 DECLARE @Prefix NVARCHAR(20) = 'MRQ-' + CONVERT(VARCHAR(8), GETDATE(), 112) + '-';
 
--- lock rows for this prefix to avoid duplicates in concurrent inserts
 DECLARE @NextSeq INT =
 (
   SELECT ISNULL(MAX(CAST(RIGHT(ReqNo, 4) AS INT)), 0) + 1
@@ -130,11 +139,11 @@ SELECT @Prefix + RIGHT('0000' + CAST(@NextSeq AS VARCHAR(4)), 4);
 
             const string insertHeaderSql = @"
 INSERT INTO dbo.MaterialRequisition
-    (ReqNo, OutletId, RequesterName, ReqDate, Status,
+    (ReqNo, OutletId, BinId, RequesterName, ReqDate, Status,
      CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive)
 OUTPUT INSERTED.Id
 VALUES
-    (@ReqNo, @OutletId, @RequesterName, @ReqDate, @Status,
+    (@ReqNo, @OutletId, @BinId, @RequesterName, @ReqDate, @Status,
      @CreatedBy, COALESCE(@CreatedDate, SYSUTCDATETIME()), @UpdatedBy, @UpdatedDate, @IsActive);";
 
             const string insertLineSql = @"
@@ -144,7 +153,7 @@ VALUES
     (@MaterialReqId, @ItemId, @ItemCode, @ItemName, @UomId, @UomName, @Qty,
      COALESCE(@CreatedDate, SYSUTCDATETIME()));";
 
-            using var conn = Connection; // ✅ IMPORTANT: new connection from factory
+            using var conn = Connection;
             conn.Open();
 
             using var tx = conn.BeginTransaction();
@@ -159,6 +168,7 @@ VALUES
                 {
                     ReqNo = reqNo,
                     mrq.OutletId,
+                    mrq.BinId,             // ✅ NEW
                     mrq.RequesterName,
                     mrq.ReqDate,
                     mrq.Status,
@@ -198,23 +208,35 @@ VALUES
             }
         }
 
-
-
+        // ✅ Update (includes BinId)
         public async Task UpdateAsync(MaterialRequisition mrq)
         {
             const string updateHeaderSql = @"
 UPDATE dbo.MaterialRequisition
 SET
-    OutletId = @OutletId,
+    OutletId      = @OutletId,
+    BinId         = @BinId,              -- ✅ NEW
     RequesterName = @RequesterName,
-    ReqDate = @ReqDate,
-    Status = @Status,
-    UpdatedBy = @UpdatedBy,
-    UpdatedDate = COALESCE(@UpdatedDate, SYSUTCDATETIME())
+    ReqDate       = @ReqDate,
+    Status        = @Status,
+    UpdatedBy     = @UpdatedBy,
+    UpdatedDate   = COALESCE(@UpdatedDate, SYSUTCDATETIME())
 WHERE Id = @Id;";
 
-            const string deleteLinesSql = @"DELETE FROM dbo.MaterialRequisitionLine WHERE MaterialReqId = @Id;";
+            // 1) Update existing line by Line.Id
+            const string updateLineSql = @"
+UPDATE dbo.MaterialRequisitionLine
+SET
+    ItemId    = @ItemId,
+    ItemCode  = @ItemCode,
+    ItemName  = @ItemName,
+    UomId     = @UomId,
+    UomName   = @UomName,
+    Qty       = @Qty
+WHERE Id = @Id
+  AND MaterialReqId = @MaterialReqId;";
 
+            // 2) Insert new line (Id = 0)
             const string insertLineSql = @"
 INSERT INTO dbo.MaterialRequisitionLine
     (MaterialReqId, ItemId, ItemCode, ItemName, UomId, UomName, Qty, CreatedDate)
@@ -222,17 +244,24 @@ VALUES
     (@MaterialReqId, @ItemId, @ItemCode, @ItemName, @UomId, @UomName, @Qty,
      COALESCE(@CreatedDate, SYSUTCDATETIME()));";
 
+            // 3) Delete removed lines (those not in payload)
+            const string deleteRemovedLinesSql = @"
+DELETE FROM dbo.MaterialRequisitionLine
+WHERE MaterialReqId = @MaterialReqId
+  AND (@KeepIdsCount = 0 OR Id NOT IN @KeepIds);";
+
             using var conn = Connection;
             conn.Open();
-
             using var tx = conn.BeginTransaction();
 
             try
             {
+                // header update
                 await conn.ExecuteAsync(updateHeaderSql, new
                 {
                     mrq.Id,
                     mrq.OutletId,
+                    mrq.BinId,             // ✅ NEW
                     mrq.RequesterName,
                     mrq.ReqDate,
                     mrq.Status,
@@ -240,12 +269,40 @@ VALUES
                     mrq.UpdatedDate
                 }, tx);
 
-                await conn.ExecuteAsync(deleteLinesSql, new { mrq.Id }, tx);
+                var lines = mrq.Lines ?? new List<MaterialRequisitionLine>();
 
-                if (mrq.Lines != null && mrq.Lines.Count > 0)
+                // KeepIds = existing line ids coming from UI
+                var keepIds = lines.Where(x => x.Id > 0).Select(x => x.Id).Distinct().ToList();
+
+                // delete removed lines
+                await conn.ExecuteAsync(deleteRemovedLinesSql, new
                 {
-                    foreach (var line in mrq.Lines)
+                    MaterialReqId = mrq.Id,
+                    KeepIds = keepIds,
+                    KeepIdsCount = keepIds.Count
+                }, tx);
+
+                // update/insert
+                foreach (var line in lines)
+                {
+                    if (line.Id > 0)
                     {
+                        // update existing row
+                        await conn.ExecuteAsync(updateLineSql, new
+                        {
+                            Id = line.Id,
+                            MaterialReqId = mrq.Id,
+                            line.ItemId,
+                            line.ItemCode,
+                            line.ItemName,
+                            line.UomId,
+                            line.UomName,
+                            line.Qty
+                        }, tx);
+                    }
+                    else
+                    {
+                        // insert new row
                         await conn.ExecuteAsync(insertLineSql, new
                         {
                             MaterialReqId = mrq.Id,
@@ -268,7 +325,6 @@ VALUES
                 throw;
             }
         }
-
 
         public async Task DeactivateAsync(int id)
         {
