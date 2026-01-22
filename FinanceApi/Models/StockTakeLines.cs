@@ -12,6 +12,8 @@
         public long ItemId { get; set; }
         public long BinId { get; set; }
         public decimal OnHand { get; set; }
+        public decimal BadOnHand { get; set; }   // book faulty qty from ItemPrice
+
         public decimal? CountedQty { get; set; }
         public decimal? BadCountedQty { get; set; }
         public decimal? VarianceQty { get; set; }

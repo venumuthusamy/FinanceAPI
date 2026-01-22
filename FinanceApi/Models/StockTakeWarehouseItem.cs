@@ -18,7 +18,7 @@
         public decimal? MaxQty { get; set; }
         public decimal? ReorderQty { get; set; }
         public decimal? BadCountedQty { get; set; }
-
+        public decimal BadOnHand { get; set; }
         public bool Selected { get; set; }
         public decimal? VarianceQty { get; set; }
         public decimal? LineOnHand { get; set; }

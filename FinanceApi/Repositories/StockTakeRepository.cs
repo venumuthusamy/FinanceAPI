@@ -131,6 +131,7 @@ namespace FinanceApi.Repositories
         ISNULL(iws.OnHand,0)      AS WarehouseOnHand,
         ISNULL(ip.Qty,0)          AS OnHand,
         ISNULL(ip.Qty,0)          AS CurrentSupplierQty,
+        ISNULL(ip.BadCountedQty,0) AS BadOnHand,
         CAST(0 AS decimal(18,3))  AS Reserved,
         ISNULL(ip.Qty,0)          AS AvailableQty,
 
@@ -220,7 +221,7 @@ SELECT
     WarehouseId, WarehouseName,
     BinId, BinName, BinCode,
     SupplierId, SupplierName,
-    OnHand, Reserved, AvailableQty,
+    OnHand,BadOnHand, Reserved, AvailableQty,
     MinQty, MaxQty, ReorderQty
 FROM Joined
 WHERE
@@ -305,6 +306,7 @@ ORDER BY st.CreatedDate DESC, st.Id DESC;
 
         ISNULL(iws.OnHand,0)      AS WarehouseOnHand,
         ISNULL(ip.Qty,0)          AS OnHand,
+        ISNULL(ip.BadCountedQty,0) AS BadOnHand,
         ISNULL(ip.Qty,0)          AS CurrentSupplierQty,   -- ✅ NEW (used for compare)
         CAST(0 AS decimal(18,3))  AS Reserved,
         ISNULL(ip.Qty,0)          AS AvailableQty,
@@ -395,7 +397,7 @@ SELECT
     WarehouseId, WarehouseName,
     BinId, BinName, BinCode,
     SupplierId, SupplierName,
-    OnHand, Reserved, AvailableQty,
+    OnHand,BadOnHand, Reserved, AvailableQty,
     MinQty, MaxQty, ReorderQty
 FROM Joined
 WHERE
@@ -430,6 +432,7 @@ SELECT
     CAST(NULL AS varchar(50))  AS BinCode,
 
     ISNULL(ip.Qty, 0)          AS OnHand,
+    ISNULL(ip.BadCountedQty,0) AS BadOnHand,
     CAST(0 AS decimal(18,3))   AS Reserved,
     ISNULL(ip.Qty, 0)          AS AvailableQty,
 
@@ -483,6 +486,7 @@ ORDER BY im.Sku, im.Name;";
         ISNULL(sp.Name,'')        AS SupplierName,
 
         ISNULL(ip.Qty,0)          AS OnHand,
+        ISNULL(ip.BadCountedQty,0) AS BadOnHand,
         ISNULL(ip.Qty,0)          AS CurrentSupplierQty,
         CAST(0 AS decimal(18,3))  AS Reserved,
         ISNULL(ip.Qty,0)          AS AvailableQty,
@@ -564,7 +568,7 @@ SELECT
     WarehouseId, WarehouseName,
     BinId, BinName, BinCode,
     SupplierId, SupplierName,
-    OnHand, Reserved, AvailableQty,
+    OnHand,BadOnHand, Reserved, AvailableQty,
     MinQty, MaxQty, ReorderQty,
     Selected, VarianceQty, LineOnHand,
 
@@ -654,11 +658,15 @@ ORDER BY Sku, ItemName, SupplierName;
     stl.StockTakeId,
     stl.WarehouseTypeId,
     stl.SupplierId,
-    ISNULL(sp.Name,'') AS SupplierName,     -- ✅ ADD
+    ISNULL(sp.Name,'') AS SupplierName,
+
     stl.Status,
     stl.ItemId,
     stl.BinId,
+
     stl.OnHand,
+    ISNULL(ip.BadOnHand,0) AS BadOnHand,      -- ✅ book faulty qty
+
     stl.CountedQty,
     stl.BadCountedQty,
     stl.VarianceQty,
@@ -672,9 +680,21 @@ ORDER BY Sku, ItemName, SupplierName;
     stl.UpdatedDate,
     stl.IsActive
 FROM StockTakeLines stl
-LEFT JOIN Suppliers sp ON sp.Id = stl.SupplierId   -- ✅ ADD
+LEFT JOIN Suppliers sp ON sp.Id = stl.SupplierId
+
+OUTER APPLY (
+    SELECT TOP(1)
+        ISNULL(ip.BadCountedQty,0) AS BadOnHand
+    FROM dbo.ItemPrice ip
+    WHERE ip.ItemId = stl.ItemId
+      AND ip.SupplierId = stl.SupplierId
+      AND ip.WarehouseId = stl.WarehouseTypeId
+    ORDER BY ip.Id DESC
+) ip
+
 WHERE stl.StockTakeId = @Id AND stl.IsActive = 1
 ORDER BY stl.Id;
+
 ";
 
             // 2) lines
@@ -1133,7 +1153,7 @@ VALUES
                         QtyBefore = before,
                         CountedQty = good,
                         BadCountedQty = bad,
-                        QtyAfter = good + bad,
+                        QtyAfter = good,
                         CreatedBy = userName,
                         CreatedDate = now,
                         UpdatedBy = userName,
@@ -1208,8 +1228,8 @@ WHERE StockTakeId = @Id AND IsActive = 1;",
                     // (A) Adjust warehouse/bin stock by DELTA, not overwrite
                     const string adjustWarehouseSql = @"
 UPDATE S
-   SET S.OnHand = S.OnHand + @Delta,
-S.Available = (ISNULL(S.OnHand,0) + @Delta) - ISNULL(S.Reserved,0)
+SET S.OnHand = S.OnHand + @GoodDeltaWarehouse,
+    S.Available = (ISNULL(S.OnHand,0) + @GoodDeltaWarehouse) - ISNULL(S.Reserved,0)
 FROM dbo.ItemWarehouseStock S
 WHERE S.ItemId      = @ItemId
   AND S.WarehouseId = @WarehouseId
@@ -1220,8 +1240,9 @@ BEGIN
     INSERT INTO dbo.ItemWarehouseStock
         (ItemId, WarehouseId, BinId, OnHand, Reserved, MinQty, MaxQty, ReorderQty)
     VALUES
-        (@ItemId, @WarehouseId, @BinId, @Delta, 0, 0, 0, 0);
-END;";
+        (@ItemId, @WarehouseId, @BinId, @GoodDeltaWarehouse, 0, 0, 0, 0);
+END;
+";
 
 
                     // (B) Adjust supplier-facing quantity (ItemPrice.Qty) by the same DELTA
@@ -1230,17 +1251,59 @@ END;";
 ;WITH ip AS (
     SELECT TOP(1) *
     FROM dbo.ItemPrice
-    WHERE ItemId = @ItemId AND SupplierId = @SupplierId
-AND WarehouseId = @WarehouseId
+    WHERE ItemId = @ItemId 
+      AND SupplierId = @SupplierId
+      AND WarehouseId = @WarehouseId
     ORDER BY Id DESC
 )
-UPDATE ip SET Qty = ISNULL(Qty,0) + @Delta,BadCountedQty = @Bad; 
+UPDATE ip 
+SET Qty = ISNULL(Qty,0) + @GoodDeltaSupplier,
+    BadCountedQty = ISNULL(BadCountedQty,0) + @BadDeltaSupplier;
 
 IF @@ROWCOUNT = 0
 BEGIN
-    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId,Price, Barcode, Qty,BadCountedQty)
-    VALUES (@ItemId, @SupplierId,  @WarehouseId ,0, NULL, @Delta,@Bad);
-END;";
+    INSERT INTO dbo.ItemPrice (ItemId, SupplierId, WarehouseId, Price, Barcode, Qty, BadCountedQty)
+    VALUES (@ItemId, @SupplierId, @WarehouseId, 0, NULL, @GoodDeltaSupplier, @BadDeltaSupplier);
+END;
+";
+
+
+                    // ✅ Load current supplier good+bad before posting (ItemPrice is source of truth)
+                    var keyPairs = lines
+                        .Where(l => postedLineIds.Contains(l.Id))
+                        .Select(l => new { l.ItemId, l.SupplierId })
+                        .Distinct()
+                        .ToList();
+
+                    var itemIds = keyPairs.Select(x => x.ItemId).Distinct().ToArray();
+                    var supplierIds = keyPairs.Select(x => x.SupplierId).Distinct().ToArray();
+
+                    const string ipBeforeSql = @"
+SELECT
+    ItemId,
+    SupplierId,
+    ISNULL(Qty,0)           AS GoodBefore,
+    ISNULL(BadCountedQty,0) AS BadBefore
+FROM dbo.ItemPrice
+WHERE WarehouseId = @WarehouseId
+  AND ItemId IN @ItemIds
+  AND SupplierId IN @SupplierIds;
+";
+
+                    var ipBefore = (await conn.QueryAsync<(int ItemId, int SupplierId, decimal GoodBefore, decimal BadBefore)>(
+                        ipBeforeSql,
+                        new
+                        {
+                            WarehouseId = (int)header.WarehouseTypeId,
+                            ItemIds = itemIds,
+                            SupplierIds = supplierIds
+                        },
+                        tx
+                    )).ToList();
+
+                    // key = (ItemId, SupplierId)
+                    var ipMap = ipBefore.ToDictionary(x => (x.ItemId, x.SupplierId), x => x);
+
                     // Build the per-line deltas from the already filtered variance-producing lines
                     var deltas = lines
        .Where(l => postedLineIds.Contains(l.Id))
@@ -1248,29 +1311,40 @@ END;";
        {
            decimal good = l.CountedQty ?? 0m;
            decimal bad = l.BadCountedQty ?? 0m;
-           decimal onHand = l.OnHand;              // baseline from when the line was created
 
-           // If there is any damaged qty on this line, only the good qty should remain in stock/supplier.
-           // Otherwise (no damage), use total counted (good+bad).
-           decimal effectiveCount = (bad > 0m) ? good : (good + bad);
+           // ✅ Warehouse stock "before" comes from StockTakeLines.OnHand
+           decimal goodBeforeWarehouse = l.OnHand;
 
-           // If you already populate VarianceQty elsewhere, allow it to override
-           //decimal delta = l.VarianceQty ?? (effectiveCount - onHand);
-           decimal delta = effectiveCount - onHand;
+           // ✅ Supplier "before" must come from ItemPrice
+           ipMap.TryGetValue(((int)l.ItemId, (int)l.SupplierId), out var before);
+           decimal goodBeforeSupplier = before.GoodBefore;
+           decimal badBeforeSupplier = before.BadBefore;
 
+           // ✅ Warehouse delta = GOOD variance only
+           decimal goodDeltaWarehouse = good - goodBeforeWarehouse;
+
+           // ✅ Supplier delta should reflect counted vs ItemPrice
+           decimal goodDeltaSupplier = good - goodBeforeSupplier;
+           decimal badDeltaSupplier = bad - badBeforeSupplier;
 
            return new
            {
                ItemId = l.ItemId,
-               WarehouseId = (int)header.WarehouseTypeId, // make sure this is the real WH id
+               WarehouseId = (int)header.WarehouseTypeId,
                BinId = l.BinId,
                SupplierId = l.SupplierId,
-               Delta = delta,
-               Bad = bad,
-               Good = good,
+
+               // for warehouse update
+               GoodDeltaWarehouse = goodDeltaWarehouse,
+
+               // for supplier update
+               GoodDeltaSupplier = goodDeltaSupplier,
+               BadDeltaSupplier = badDeltaSupplier
            };
        })
        .ToList();
+
+
 
 
                     // Apply to warehouse/bin
