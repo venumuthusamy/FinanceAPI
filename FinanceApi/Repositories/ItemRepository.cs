@@ -27,7 +27,8 @@ i.CategoryId,
         i.CreatedDate,
         i.UpdatedBy,
         i.UpdatedDate,
-        i.IsActive
+        i.IsActive,
+i.ItemTypeId
 FROM    Item i
 LEFT JOIN Uom u            ON u.Id  = i.UomId
 LEFT JOIN ChartOfAccount coa ON coa.Id = i.BudgetLineId
