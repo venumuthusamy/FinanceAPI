@@ -15,16 +15,26 @@ namespace FinanceApi.Interfaces
         Task<IEnumerable<StockListViewInfo>> GetAllStockList();
 
         Task<int> MarkAsTransferredBulkAsync(IEnumerable<MarkAsTransferredRequest> requests);
-        Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList();
+        Task<IEnumerable<MaterialTransferListViewInfo>> GetAllStockTransferedList();
 
         Task<int> AdjustOnHandAsync(AdjustOnHandRequest request);
 
         Task<IEnumerable<StockListViewInfo>> GetAllItemStockList();
 
-        Task<ApproveBulkResult> ApproveTransfersBulkAsync(IEnumerable<ApproveTransferRequest> requests);
+        Task ApproveTransfersBulkAsync(IEnumerable<TransferApproveRequest> transfers);
 
         Task<StockHistoryViewInfo> GetByIdStockHistory(long id);
 
         Task<IEnumerable<StockTransferListViewInfo>> GetStockTransferedList();
+
+        Task<IEnumerable<int>> GetTransferredMrIdsAsync();
+
+
+
+        Task<IEnumerable<MaterialTransferListViewInfo>> GetMaterialTransferList();
     }
 }
+
+
+
+

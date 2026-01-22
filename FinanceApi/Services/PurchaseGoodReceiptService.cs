@@ -59,7 +59,7 @@ namespace FinanceApi.Services
             return await _repository.GetAllGRNByPoId();
         }
 
-        public async Task ApplyGrnAndUpdateSalesOrderAsync(ApplyGrnAndSalesOrderRequest request)
+        public async Task<ApplyGrnResult> ApplyGrnAndUpdateSalesOrderAsync(ApplyGrnAndSalesOrderRequest request)
         {
             if (request == null)
                 throw new ArgumentNullException(nameof(request), "Request cannot be null.");
@@ -67,17 +67,17 @@ namespace FinanceApi.Services
             if (string.IsNullOrWhiteSpace(request.ItemCode))
                 throw new ArgumentException("ItemCode cannot be empty.");
 
-            // GRN already posted, so இங்க period check வேண்டாம்னு நினைச்சா comment பண்ணலாம்.
-            // Example: use a GRN date field inside request if you want:
-            // await _periodClose.EnsureOpenAsync(request.GrnDate);
-
-            await _repository.ApplyGrnAndUpdateSalesOrderAsync(
+            // repository already handles "no SO lines" as valid
+            var result = await _repository.ApplyGrnAndUpdateSalesOrderAsync(
                 request.ItemCode,
                 request.WarehouseId,
                 request.SupplierId,
                 request.BinId,
                 request.ReceivedQty
             );
+
+            return result;
         }
+
     }
 }

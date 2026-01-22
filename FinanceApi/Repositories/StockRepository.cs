@@ -3,6 +3,7 @@ using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
 using FinanceApi.Models;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Data.Common;
@@ -40,6 +41,7 @@ namespace FinanceApi.Repositories
             const string query = @"
 INSERT INTO [dbo].[Stock] (
     ItemID,
+    MrId,                -- ✅ NEW
     FromWarehouseID,
     ToWarehouseID,
     Available,
@@ -57,15 +59,17 @@ INSERT INTO [dbo].[Stock] (
     Remarks,
     SupplierId,       
     IsSupplierBased,
-ToBinId
+    ToBinId,
+Status
 )
 VALUES (
     @ItemId,
+    @MrId,               -- ✅ NEW
     @FromWarehouseID,
     @ToWarehouseID,
     @Available,
     @OnHand,
-    @IsApproved,
+    @isApproved,
     @CreatedBy,
     @CreatedDate,
     @UpdatedBy,
@@ -78,11 +82,13 @@ VALUES (
     @Remarks,
     @SupplierId,       
     @IsSupplierBased,
-@ToBinId
+    @ToBinId,
+1
 );";
 
             return await Connection.ExecuteAsync(query, stocks);
         }
+
 
 
 
@@ -239,82 +245,82 @@ WHERE  ip.ItemId      = @ItemId
 
 
 
-        public async Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList()
-        {
-            const string query = @"
-WITH RS AS (
-  SELECT
-      iws.ItemId,
-      iws.WarehouseId,
-      SUM(ISNULL(iws.Reserved,0)) AS Reserved,
-      MAX(ISNULL(iws.MinQty,0))   AS MinQty,
-      MAX(ISNULL(iws.MaxQty,0))   AS MaxQty
-  FROM ItemWarehouseStock iws
-  GROUP BY iws.ItemId, iws.WarehouseId
-)
-SELECT
-    s.Id                  AS StockId,
-    im.Id                 AS ItemId,
-    im.Name,
-    im.Sku,
+//        public async Task<IEnumerable<StockTransferListViewInfo>> GetAllStockTransferedList()
+//        {
+//            const string query = @"
+//WITH RS AS (
+//  SELECT
+//      iws.ItemId,
+//      iws.WarehouseId,
+//      SUM(ISNULL(iws.Reserved,0)) AS Reserved,
+//      MAX(ISNULL(iws.MinQty,0))   AS MinQty,
+//      MAX(ISNULL(iws.MaxQty,0))   AS MaxQty
+//  FROM ItemWarehouseStock iws
+//  GROUP BY iws.ItemId, iws.WarehouseId
+//)
+//SELECT
+//    s.Id                  AS StockId,
+//    im.Id                 AS ItemId,
+//    im.Name,
+//    im.Sku,
 
-    s.FromWarehouseID     AS WarehouseId,
-    whFrom.Name           AS WarehouseName,
+//    s.FromWarehouseID     AS WarehouseId,
+//    whFrom.Name           AS WarehouseName,
 
-    s.FromWarehouseID,
-    whFrom.Name           AS FromWarehouseName,
-    s.ToWarehouseID,
-    whTo.Name             AS ToWarehouseName,
+//    s.FromWarehouseID,
+//    whFrom.Name           AS FromWarehouseName,
+//    s.ToWarehouseID,
+//    whTo.Name             AS ToWarehouseName,
 
-    s.BinId,
-    bn.BinName,
+//    s.BinId,
+//    bn.BinName,
 
-    ISNULL(iws.OnHand,0)      AS OnHand,
-    ISNULL(iws.Available,0)   AS Available,
-    ISNULL(rs.Reserved,0)     AS Reserved,
-    ISNULL(rs.MinQty,0)       AS MinQty,
-    ISNULL(rs.MaxQty,0)       AS MaxQty,
+//    ISNULL(iws.OnHand,0)      AS OnHand,
+//    ISNULL(iws.Available,0)   AS Available,
+//    ISNULL(rs.Reserved,0)     AS Reserved,
+//    ISNULL(rs.MinQty,0)       AS MinQty,
+//    ISNULL(rs.MaxQty,0)       AS MaxQty,
 
-    lp.SupplierId,
-    lp.Price,
-    sp.Name               AS SupplierName,
+//    lp.SupplierId,
+//    lp.Price,
+//    sp.Name               AS SupplierName,
 
-    s.TransferQty,
-    s.Remarks,
-    s.IsApproved,
-    s.IsSupplierBased
-FROM Stock s
-JOIN ItemMaster im ON im.Id = s.ItemId
+//    s.TransferQty,
+//    s.Remarks,
+//    s.IsApproved,
+//    s.IsSupplierBased
+//FROM Stock s
+//JOIN ItemMaster im ON im.Id = s.ItemId
 
-OUTER APPLY (
-    SELECT TOP (1) ip.SupplierId, ip.Price
-    FROM ItemPrice ip
-    WHERE ip.ItemId = s.ItemId
-      AND (ip.SupplierId = s.SupplierId OR s.SupplierId IS NULL)
-      AND ip.WarehouseId = s.FromWarehouseID
-    ORDER BY ip.Id DESC
-) lp
+//OUTER APPLY (
+//    SELECT TOP (1) ip.SupplierId, ip.Price
+//    FROM ItemPrice ip
+//    WHERE ip.ItemId = s.ItemId
+//      AND (ip.SupplierId = s.SupplierId OR s.SupplierId IS NULL)
+//      AND ip.WarehouseId = s.FromWarehouseID
+//    ORDER BY ip.Id DESC
+//) lp
 
-LEFT JOIN Suppliers sp   ON sp.Id     = lp.SupplierId
-LEFT JOIN Warehouse whFrom ON whFrom.Id = s.FromWarehouseID
-LEFT JOIN Warehouse whTo   ON whTo.Id   = s.ToWarehouseID
-LEFT JOIN Bin bn           ON bn.Id     = s.BinId
+//LEFT JOIN Suppliers sp   ON sp.Id     = lp.SupplierId
+//LEFT JOIN Warehouse whFrom ON whFrom.Id = s.FromWarehouseID
+//LEFT JOIN Warehouse whTo   ON whTo.Id   = s.ToWarehouseID
+//LEFT JOIN Bin bn           ON bn.Id     = s.BinId
 
-LEFT JOIN ItemWarehouseStock iws
-       ON iws.ItemId = s.ItemId
-      AND iws.WarehouseId = s.FromWarehouseID
-      AND (iws.BinId = s.BinId OR s.BinId IS NULL)
+//LEFT JOIN ItemWarehouseStock iws
+//       ON iws.ItemId = s.ItemId
+//      AND iws.WarehouseId = s.FromWarehouseID
+//      AND (iws.BinId = s.BinId OR s.BinId IS NULL)
 
-LEFT JOIN RS rs
-       ON rs.ItemId      = s.ItemId
-      AND rs.WarehouseId = s.FromWarehouseID
+//LEFT JOIN RS rs
+//       ON rs.ItemId      = s.ItemId
+//      AND rs.WarehouseId = s.FromWarehouseID
 
-WHERE s.isApproved = 1    
-ORDER BY s.FromWarehouseID, lp.SupplierId;
+//WHERE s.isApproved = 1    
+//ORDER BY s.FromWarehouseID, lp.SupplierId;
 
-";
-            return await Connection.QueryAsync<StockTransferListViewInfo>(query);
-        }
+//";
+//            return await Connection.QueryAsync<StockTransferListViewInfo>(query);
+//        }
 
 
         public async Task<IEnumerable<StockTransferListViewInfo>> GetStockTransferedList()
@@ -471,288 +477,139 @@ WHERE ip.ItemId = @ItemId
 
 
 
-        public async Task<ApproveBulkResult> ApproveTransfersBulkAsync(IEnumerable<ApproveTransferRequest> requests)
+        public async Task ApproveTransfersBulkAsync(IEnumerable<TransferApproveRequest> transfers)
         {
-            var result = new ApproveBulkResult();
-            var conn = (SqlConnection)Connection;
+            using var conn = Connection;
+            conn.Open();
 
-            if (conn.State != ConnectionState.Open)
-                await conn.OpenAsync();
+            using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
 
-            using var tx = conn.BeginTransaction();
             try
             {
-                int countIws = 0;
-                int countStock = 0;
-                int countItemPrice = 0;
-                int countToWarehouse = 0;
-
-                foreach (var req in requests)
+                foreach (var t in transfers)
                 {
-                    // 1) Get current Available & OnHand from FROM warehouse (bin-aware)
-                    const string getAvailableSql = @"
-SELECT Available, OnHand
-FROM [dbo].[ItemWarehouseStock]
-WHERE ItemId = @ItemId
-  AND WarehouseId = @WarehouseId
-  AND (BinId = @BinId OR (@BinId IS NULL AND BinId IS NULL));";
+                    // -------------------------
+                    // 1) Read current balances WITH LOCK (avoid concurrent deduction)
+                    // -------------------------
 
-                    var current = await conn.QueryFirstOrDefaultAsync<(decimal Available, decimal OnHand)>(
-                        getAvailableSql, req, tx);
+                    // ItemPrice (source)
+                    var ip = await conn.QueryFirstOrDefaultAsync<(int Id, decimal Qty)>(@"
+SELECT TOP 1 Id, CAST(Qty as decimal(18,4)) as Qty
+FROM dbo.ItemPrice WITH (UPDLOCK, ROWLOCK)
+WHERE ItemId=@ItemId
+  AND (@SupplierId IS NULL OR SupplierId=@SupplierId)
+  AND WarehouseId=@WarehouseId
+ORDER BY Id DESC;
+", new { t.ItemId, t.SupplierId, WarehouseId = t.WarehouseId }, tx);
 
-                    if (current == default) continue;
+                    if (ip.Id == 0)
+                        throw new Exception($"ItemPrice not found for ItemId={t.ItemId}, SupplierId={t.SupplierId}, WarehouseId={t.WarehouseId}");
 
-                    // 2) Compute new FROM values
-                    var newAvailable = current.Available - req.TransferQty;
-                    var newOnHand = current.OnHand - req.TransferQty;
+                    if (ip.Qty < t.TransferQty)
+                        throw new Exception($"ItemPrice Qty not enough. Available={ip.Qty}, Transfer={t.TransferQty} (ItemId={t.ItemId})");
 
-                    // 3) Update FROM ItemWarehouseStock
-                    const string updateIwsSql = @"
-UPDATE [dbo].[ItemWarehouseStock]
-SET 
-    IsApproved        = 1,
-    Available         = @NewAvailable,
-    OnHand            = @NewOnHand,
-    IsFullTransfer    = @IsFullTransfer,
-    IsPartialTransfer = @IsPartialTransfer,
-    IsTransfered      = CASE 
-                           WHEN @IsPartialTransfer = 1 THEN 0
-                           ELSE IsTransfered
-                        END
-WHERE ItemId = @ItemId
-  AND WarehouseId = @WarehouseId
-  AND (BinId = @BinId OR (@BinId IS NULL AND BinId IS NULL));";
 
-                    countIws += await conn.ExecuteAsync(updateIwsSql, new
+                    // ItemWarehouseStock (source)
+                    var ws = await conn.QueryFirstOrDefaultAsync<(int Id, decimal OnHand, decimal Available)>(@"
+SELECT TOP 1 Id,
+       CAST(OnHand as decimal(18,4)) as OnHand,
+       CAST(Available as decimal(18,4)) as Available
+FROM dbo.ItemWarehouseStock WITH (UPDLOCK, ROWLOCK)
+WHERE ItemId=@ItemId
+  AND WarehouseId=@WarehouseId
+ORDER BY Id DESC;
+", new { t.ItemId, WarehouseId = t.WarehouseId }, tx);
+
+                    if (ws.Id == 0)
+                        throw new Exception($"ItemWarehouseStock not found for ItemId={t.ItemId}, WarehouseId={t.WarehouseId}");
+
+                    if (ws.Available < t.TransferQty)
+                        throw new Exception($"ItemWarehouseStock Available not enough. Available={ws.Available}, Transfer={t.TransferQty} (ItemId={t.ItemId})");
+
+
+                    // Stock row
+                    var st = await conn.QueryFirstOrDefaultAsync<(int Id, decimal OnHand, decimal Available, decimal TransferQty)>(@"
+SELECT TOP 1 ID as Id,
+       CAST(OnHand as decimal(18,4)) as OnHand,
+       CAST(Available as decimal(18,4)) as Available,
+       CAST(ISNULL(TransferQty,0) as decimal(18,4)) as TransferQty
+FROM dbo.Stock WITH (UPDLOCK, ROWLOCK)
+WHERE ID=@StockId AND ItemId=@ItemId;
+", new { t.StockId, t.ItemId }, tx);
+
+                    if (st.Id == 0)
+                        throw new Exception($"Stock row not found for StockId={t.StockId}, ItemId={t.ItemId}");
+
+                    if (st.Available < t.TransferQty)
+                        throw new Exception($"Stock.Available not enough. Available={st.Available}, Transfer={t.TransferQty} (StockId={t.StockId})");
+
+
+                    // -------------------------
+                    // 2) Decide Partial / Full
+                    // -------------------------
+                    bool isFull = (t.RequestedQty > 0 && t.TransferQty >= t.RequestedQty);
+                    bool isPartial = (t.RequestedQty > 0 && t.TransferQty < t.RequestedQty);
+
+                    // -------------------------
+                    // 3) Update ItemPrice
+                    // -------------------------
+                    await conn.ExecuteAsync(@"
+UPDATE dbo.ItemPrice
+SET Qty = Qty - @Qty,
+    IsTransfered = 1,
+    UpdatedDate = GETDATE()
+WHERE Id = @Id;
+", new { Qty = t.TransferQty, Id = ip.Id }, tx);
+
+                    // -------------------------
+                    // 4) Update ItemWarehouseStock (source deduct)
+                    // -------------------------
+                    await conn.ExecuteAsync(@"
+UPDATE dbo.ItemWarehouseStock
+SET OnHand = OnHand - @Qty,
+    Available = Available - @Qty,
+    IsTransfered = 1,
+    IsFullTransfer = @IsFull,
+    IsPartialTransfer = @IsPartial
+WHERE Id = @Id;
+", new
                     {
-                        req.ItemId,
-                        req.WarehouseId,
-                        req.BinId,
-                        req.ToWarehouseId,
-                        req.IsFullTransfer,
-                        req.IsPartialTransfer,
-                        NewAvailable = newAvailable,
-                        NewOnHand = newOnHand
+                        Qty = t.TransferQty,
+                        Id = ws.Id,
+                        IsFull = isFull ? 1 : 0,
+                        IsPartial = isPartial ? 1 : 0
                     }, tx);
 
-                    // 4) Update Stock
-                    const string sqlStock = @"
-UPDATE [dbo].[Stock]
-SET 
-    ToWarehouseID     = @ToWarehouseId,
-    ToBinId           = @ToBinId,
-    IsApproved        = 1,
-    Remarks           = COALESCE(@Remarks, Remarks),
-    Available         = Available - @TransferQty,
-    OnHand            = OnHand - @TransferQty,
-    TransferQty       = @TransferQty
-WHERE Id = @StockId;";
-
-                    countStock += await conn.ExecuteAsync(sqlStock, req, tx);
-
-                    // 5) Update ItemPrice (FROM side)
-                    const string sqlItemPrice = @"
-UPDATE [dbo].[ItemPrice]
-SET 
-    Qty = Qty - @TransferQty,
-    IsTransfered = CASE 
-                      WHEN @IsPartialTransfer = 1 THEN 0 
-                      ELSE IsTransfered
-                   END
-WHERE ItemId = @ItemId
-  AND WarehouseId = @WarehouseId
-  AND (
-        (@SupplierId IS NULL AND SupplierId IS NULL)
-        OR (SupplierId = @SupplierId)
-      );";
-
-                    countItemPrice += await conn.ExecuteAsync(sqlItemPrice, req, tx);
-
-                    // ------------------- TO warehouse handling -------------------
-
-                    // 6) Upsert ItemWarehouseStock at TO (bin-aware)
-                    const string checkToWarehouseSql = @"
-SELECT COUNT(*)
-FROM .[dbo].[ItemWarehouseStock]
-WHERE ItemId = @ItemId 
-  AND WarehouseId = @ToWarehouseId
-  AND (BinId = @ToBinId OR (@ToBinId IS NULL AND BinId IS NULL));";
-
-                    var existsIwsTo = await conn.ExecuteScalarAsync<int>(checkToWarehouseSql, req, tx);
-
-                    if (existsIwsTo > 0)
+                    // -------------------------
+                    // 5) Update Stock row
+                    //  - Status = 2
+                    //  - OnHand/Available minus
+                    //  - TransferQty minus (your requirement)
+                    // -------------------------
+                    await conn.ExecuteAsync(@"
+UPDATE dbo.Stock
+SET OnHand = OnHand - @Qty,
+    Available = Available - @Qty,
+    TransferQty = ISNULL(TransferQty,0) - @Qty,
+    Status = 2,
+    Remarks = COALESCE(NULLIF(@Remarks,''), Remarks),
+    UpdatedDate = GETDATE()
+WHERE ID=@StockId AND ItemId=@ItemId;
+", new
                     {
-                        const string updateToWarehouseSql = @"
-UPDATE [dbo].[ItemWarehouseStock]
-SET 
-    Available = Available + @TransferQty,
-    OnHand    = OnHand + @TransferQty
-WHERE ItemId = @ItemId 
-  AND WarehouseId = @ToWarehouseId
-  AND (BinId = @ToBinId OR (@ToBinId IS NULL AND BinId IS NULL));";
-
-                        countToWarehouse += await conn.ExecuteAsync(updateToWarehouseSql, req, tx);
-                    }
-                    else
-                    {
-                        const string insertToWarehouseSql = @"
-INSERT INTO [dbo].[ItemWarehouseStock]
-(
-    ItemId,
-    WarehouseId,
-    BinId,
-    StrategyId,
-    OnHand,
-    Reserved,
-    MinQty,
-    MaxQty,
-    ReorderQty,
-    LeadTimeDays,
-    BatchFlag,
-    SerialFlag,
-    Available,
-    IsApproved,
-    IsTransfered,
-    IsFullTransfer,
-    IsPartialTransfer,
-    StockIssueID
-)
-VALUES
-(
-    @ItemId,
-    @ToWarehouseId,
-    @ToBinId,
-    NULL,
-    @TransferQty,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    @TransferQty,
-    0,
-    0,
-    0,
-    0,
-    0
-);";
-
-                        countToWarehouse += await conn.ExecuteAsync(insertToWarehouseSql, req, tx);
-                    }
-
-                    // 7) ItemPrice at TO warehouse
-                    //    a) Check existence (supplier-aware)
-                    const string checkToItemPriceSql = @"
-SELECT COUNT(*) 
-FROM [dbo].[ItemPrice]
-WHERE ItemId = @ItemId 
-  AND WarehouseId = @ToWarehouseId
-  AND (
-       (@SupplierId IS NULL AND SupplierId IS NULL)
-       OR (SupplierId = @SupplierId)
-      );";
-
-                    var existsItemPrice = await conn.ExecuteScalarAsync<int>(checkToItemPriceSql, req, tx);
-
-                    if (existsItemPrice > 0)
-                    {
-                        // b) Update Qty only
-                        const string updateToItemPriceSql = @"
-UPDATE [dbo].[ItemPrice]
-SET 
-    Qty = Qty + @TransferQty,
-    UpdatedDate = GETDATE(),
-    IsTransfered = 0
-WHERE ItemId = @ItemId 
-  AND WarehouseId = @ToWarehouseId
-  AND (
-       (@SupplierId IS NULL AND SupplierId IS NULL)
-       OR (SupplierId = @SupplierId)
-      );";
-
-                        countItemPrice += await conn.ExecuteAsync(updateToItemPriceSql, req, tx);
-                    }
-                    else
-                    {
-                        // c) INSERT with PRICE taken from FROM warehouse's latest ItemPrice
-                        const string getSrcPriceSql = @"
-SELECT TOP (1) Price, Barcode
-FROM [dbo].[ItemPrice]
-WHERE ItemId = @ItemId 
-  AND WarehouseId = @WarehouseId
-  AND (
-       (@SupplierId IS NULL AND SupplierId IS NULL)
-       OR (SupplierId = @SupplierId)
-      )
-ORDER BY 
-    ISNULL(UpdatedDate, CreatedDate) DESC, Id DESC;";
-
-                        var src = await conn.QueryFirstOrDefaultAsync<(decimal? Price, string Barcode)>(getSrcPriceSql, req, tx);
-                        var price = src.Price ?? 0m;
-                        var barcode = (object?)src.Barcode ?? DBNull.Value;
-
-                        const string insertToItemPriceSql = @"
-INSERT INTO [dbo].[ItemPrice]
-(
-    ItemId,
-    SupplierId,
-    Price,
-    Barcode,
-    Qty,
-    CreatedBy,
-    CreatedDate,
-    UpdatedBy,
-    UpdatedDate,
-    WarehouseId,
-    IsTransfered
-)
-VALUES
-(
-    @ItemId,
-    @SupplierId,
-    @Price,          -- <-- carry price
-    @Barcode,        -- <-- carry barcode (if any)
-    @TransferQty,
-    'System',
-    GETDATE(),
-    NULL,
-    NULL,
-    @ToWarehouseId,
-    0                -- mark as transferred/created by transfer
-);";
-
-                        countItemPrice += await conn.ExecuteAsync(insertToItemPriceSql, new
-                        {
-                            req.ItemId,
-                            req.SupplierId,
-                            Price = price,
-                            Barcode = barcode,
-                            req.TransferQty,
-                            req.ToWarehouseId
-                        }, tx);
-                    }
-                    // ------------------- /TO warehouse handling -------------------
+                        Qty = t.TransferQty,
+                        t.StockId,
+                        t.ItemId,
+                        Remarks = t.Remarks
+                    }, tx);
                 }
 
                 tx.Commit();
-
-                result.UpdatedItemWarehouseStock = countIws;
-                result.UpdatedStock = countStock;
-                result.UpdatedItemPrice = countItemPrice;
-                result.UpdatedToWarehouse = countToWarehouse;
-
-                return result;
             }
             catch
             {
                 tx.Rollback();
                 throw;
-            }
-            finally
-            {
-                await conn.CloseAsync();
             }
         }
 
@@ -796,5 +653,62 @@ WHERE   s.Id = @Id ;
 
 
 
+        public async Task<IEnumerable<int>> GetTransferredMrIdsAsync()
+        {
+            const string sql = @"
+SELECT DISTINCT CAST(MrId as int) AS MrId
+FROM dbo.Stock
+WHERE MrId IS NOT NULL AND MrId > 0;
+";
+            using var conn = Connection;
+            return await conn.QueryAsync<int>(sql);
+        }
+
+        public async Task<IEnumerable<MaterialTransferListViewInfo>> GetMaterialTransferList()
+        {
+            const string query = @"
+select 
+s.ID as StockId, s.ItemName,s.Sku,s.FromWarehouseID,s.FromWarehouseName,s.ToWarehouseID,s.ToBinId,s.OnHand,s.Available,s.MrId,s.SupplierId,s.BinId,s.BinName,s.Status,s.ItemId,
+wh.Name as ToWarehouseName,
+b.BinName as ToBinName,
+mr.ReqNo,
+mrl.Qty as RequestQty,
+sp.Name as SupplierName
+from stock as s
+
+
+inner join Warehouse as wh on wh.Id = s.ToWarehouseID
+inner join Bin as b on b.ID = s.ToBinId
+inner join MaterialRequisition mr on mr.Id = s.MrId
+inner join MaterialRequisitionLine mrl on mrl.MaterialReqId = mr.Id
+inner join Suppliers as sp on sp.Id = s.SupplierId";
+
+            return await Connection.QueryAsync<MaterialTransferListViewInfo>(query);
+        }
+
+
+
+        public async Task<IEnumerable<MaterialTransferListViewInfo>> GetAllStockTransferedList()
+        {
+            const string query = @"
+select 
+s.ID as StockId, s.ItemName,s.Sku,s.FromWarehouseID,s.FromWarehouseName,s.ToWarehouseID,s.ToBinId,s.OnHand,s.Available,s.MrId,s.SupplierId,s.BinId,s.BinName,s.Status,s.TransferQty,
+wh.Name as ToWarehouseName,
+b.BinName as ToBinName,
+mr.ReqNo,
+mrl.Qty as RequestQty,
+sp.Name as SupplierName
+from stock as s
+
+
+inner join Warehouse as wh on wh.Id = s.ToWarehouseID
+inner join Bin as b on b.ID = s.ToBinId
+inner join MaterialRequisition mr on mr.Id = s.MrId
+inner join MaterialRequisitionLine mrl on mrl.MaterialReqId = mr.Id
+inner join Suppliers as sp on sp.Id = s.SupplierId;
+
+";
+            return await Connection.QueryAsync<MaterialTransferListViewInfo>(query);
+        }
     }
 }

@@ -16,6 +16,7 @@ namespace FinanceApi.Models
         public string? UpdatedBy { get; set; }
         public DateTime? UpdatedDate { get; set; }
         public bool IsActive { get; set; } = true;
+        public int BinId { get; set; }
 
         // Navigation
         public ICollection<MaterialRequisitionLine> Lines { get; set; } = new List<MaterialRequisitionLine>();

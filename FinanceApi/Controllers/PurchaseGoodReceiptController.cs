@@ -118,13 +118,22 @@ namespace FinanceApi.Controllers
         {
             try
             {
-                await _service.ApplyGrnAndUpdateSalesOrderAsync(req);
-                return Ok(new { message = "Sales order lines and purchase alerts updated successfully." });
+                var result = await _service.ApplyGrnAndUpdateSalesOrderAsync(req);
+
+                // result.Message already says either updated or no SO
+                return Ok(new
+                {
+                    message = result.Message,
+                    updatedSalesOrderLines = result.UpdatedSalesOrderLines,
+                    itemId = result.ItemId
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error updating sales order lines", error = ex.Message });
+                // only real errors come here: itemcode not found, sql error, etc.
+                return StatusCode(500, new { message = "Error applying GRN update", error = ex.Message });
             }
         }
+
     }
 }
