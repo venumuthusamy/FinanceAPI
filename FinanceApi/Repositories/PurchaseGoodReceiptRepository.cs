@@ -69,11 +69,23 @@ WHERE pg.IsActive = 1
             var newGRN = $"GRN-{nextNumber:D4}";
             goodReceiptItemsDTO.GrnNo = newGRN;
 
+            // ✅ 2) Copy SourceType/SourceRefId from PurchaseOrder using POID
+            var src = await Connection.QueryFirstOrDefaultAsync<(string? SourceType, int? SourceRefId)>(@"
+SELECT TOP 1
+    SourceType,
+    SourceRefId
+FROM dbo.PurchaseOrder
+WHERE Id = @POID;
+", new { goodReceiptItemsDTO.POID });
+
+            goodReceiptItemsDTO.SourceType = src.SourceType;
+            goodReceiptItemsDTO.SourceRefId = src.SourceRefId;
+
             const string insertQuery = @"
 INSERT INTO PurchaseGoodReceipt 
-    (POID, ReceptionDate, OverReceiptTolerance, GRNJson, GrnNo, isActive) 
+    (POID, ReceptionDate, OverReceiptTolerance, GRNJson, GrnNo, isActive,SourceType, SourceRefId) 
 OUTPUT INSERTED.Id 
-VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson, @GrnNo, @isActive)";
+VALUES (@POID, @ReceptionDate, @OverReceiptTolerance, @GRNJson, @GrnNo, @isActive, @SourceType, @SourceRefId)";
 
             return await Connection.QueryFirstAsync<int>(insertQuery, goodReceiptItemsDTO);
         }

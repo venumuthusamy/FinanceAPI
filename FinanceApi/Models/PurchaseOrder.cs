@@ -34,6 +34,9 @@ namespace FinanceApi.Models
         public decimal NetTotal { get; set; }
         public string PoLines { get; set; }
         public string? PurchaseRequestNo { get; set; }
+
+        public string? SourceType { get; set; }
+        public int? SourceRefId { get; set; }
     }
 
 

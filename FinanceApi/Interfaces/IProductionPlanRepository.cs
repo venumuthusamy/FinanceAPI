@@ -1,4 +1,5 @@
 ﻿using FinanceApi.ModelDTO;
+using Microsoft.AspNetCore.Mvc;
 
 namespace FinanceApi.Interfaces
 {
@@ -8,5 +9,8 @@ namespace FinanceApi.Interfaces
         Task<ProductionPlanResponseDto> GetBySalesOrderAsync(int salesOrderId, int warehouseId);
         Task<int> SavePlanAsync(SavePlanRequest req);
         Task<List<ProductionPlanListDto>> ListPlansWithLinesAsync();
+
+        Task<IEnumerable<ShortageGrnAlertDto>> GetShortageGrnAlertsAsync();
+
     }
 }

@@ -73,5 +73,38 @@ ORDER BY Id DESC;";
 
             return plans;
         }
+
+        public async Task<IEnumerable<ShortageGrnAlertDto>> GetShortageGrnAlertsAsync()
+        {
+            const string sql = @"
+SELECT
+    p.Id            AS ProductionPlanId,
+    p.SalesOrderId  AS SalesOrderId,
+
+    pg.Id           AS GrnId,
+    pg.GrnNo        AS GrnNo,
+    pg.ReceptionDate,
+
+    gd.ItemCode     AS ItemCode,
+    it.ItemName     AS ItemName,
+    CAST(ISNULL(gd.QtyReceived, 0) AS decimal(18,2)) AS QtyReceived
+FROM dbo.ProductionPlan p
+JOIN dbo.PurchaseGoodReceipt pg
+  ON pg.IsActive = 1
+ AND pg.SourceType = 'RECIPE_SHORTAGE'
+ AND pg.SourceRefId = p.Id              -- ✅ IMPORTANT FIX (use PlanId)
+OUTER APPLY OPENJSON(pg.GRNJson)
+WITH (
+    ItemCode     nvarchar(50)  '$.itemCode',
+    QtyReceived  decimal(18,2) '$.qtyReceived'
+) AS gd
+LEFT JOIN dbo.Item it
+  ON it.ItemCode = gd.ItemCode
+ORDER BY pg.Id DESC;";
+
+            return await Connection.QueryAsync<ShortageGrnAlertDto>(sql);
+        }
+
+
     }
 }
