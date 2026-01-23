@@ -135,7 +135,6 @@ SupplierList AS (
         ROW_NUMBER() OVER(PARTITION BY ip.ItemId, ip.WarehouseId ORDER BY ip.SupplierId) AS rn
     FROM ItemPrice ip
     INNER JOIN Suppliers s ON s.Id = ip.SupplierId
-    WHERE ip.IsTransfered = 0
 )
 SELECT
     im.Id,
@@ -476,20 +475,27 @@ WHERE ip.ItemId = @ItemId
 
 
 
-
         public async Task ApproveTransfersBulkAsync(IEnumerable<TransferApproveRequest> transfers)
         {
+            if (transfers == null) throw new ArgumentNullException(nameof(transfers));
+
             using var conn = Connection;
-            conn.Open();
+            if (conn.State != ConnectionState.Open) conn.Open();
 
             using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
 
             try
             {
+                // ✅ Track MR headers we touched
+                var touchedMrIds = new HashSet<int>();
+
                 foreach (var t in transfers)
                 {
+                    if (t.TransferQty <= 0)
+                        throw new Exception($"TransferQty must be > 0. StockId={t.StockId}, ItemId={t.ItemId}");
+
                     // -------------------------
-                    // 1) Read current balances WITH LOCK (avoid concurrent deduction)
+                    // 1) Read current balances WITH LOCK
                     // -------------------------
 
                     // ItemPrice (source)
@@ -508,8 +514,7 @@ ORDER BY Id DESC;
                     if (ip.Qty < t.TransferQty)
                         throw new Exception($"ItemPrice Qty not enough. Available={ip.Qty}, Transfer={t.TransferQty} (ItemId={t.ItemId})");
 
-
-                    // ItemWarehouseStock (source)
+                    // ItemWarehouseStock (source) - binless
                     var ws = await conn.QueryFirstOrDefaultAsync<(int Id, decimal OnHand, decimal Available)>(@"
 SELECT TOP 1 Id,
        CAST(OnHand as decimal(18,4)) as OnHand,
@@ -526,13 +531,13 @@ ORDER BY Id DESC;
                     if (ws.Available < t.TransferQty)
                         throw new Exception($"ItemWarehouseStock Available not enough. Available={ws.Available}, Transfer={t.TransferQty} (ItemId={t.ItemId})");
 
-
                     // Stock row
-                    var st = await conn.QueryFirstOrDefaultAsync<(int Id, decimal OnHand, decimal Available, decimal TransferQty)>(@"
+                    var st = await conn.QueryFirstOrDefaultAsync<(int Id, decimal OnHand, decimal Available, decimal TransferQty, int MrId)>(@"
 SELECT TOP 1 ID as Id,
        CAST(OnHand as decimal(18,4)) as OnHand,
        CAST(Available as decimal(18,4)) as Available,
-       CAST(ISNULL(TransferQty,0) as decimal(18,4)) as TransferQty
+       CAST(ISNULL(TransferQty,0) as decimal(18,4)) as TransferQty,
+       CAST(ISNULL(MrId,0) as int) as MrId
 FROM dbo.Stock WITH (UPDLOCK, ROWLOCK)
 WHERE ID=@StockId AND ItemId=@ItemId;
 ", new { t.StockId, t.ItemId }, tx);
@@ -543,15 +548,14 @@ WHERE ID=@StockId AND ItemId=@ItemId;
                     if (st.Available < t.TransferQty)
                         throw new Exception($"Stock.Available not enough. Available={st.Available}, Transfer={t.TransferQty} (StockId={t.StockId})");
 
-
                     // -------------------------
-                    // 2) Decide Partial / Full
+                    // 2) Decide Partial / Full (per this line request)
                     // -------------------------
                     bool isFull = (t.RequestedQty > 0 && t.TransferQty >= t.RequestedQty);
                     bool isPartial = (t.RequestedQty > 0 && t.TransferQty < t.RequestedQty);
 
                     // -------------------------
-                    // 3) Update ItemPrice
+                    // 3) Update ItemPrice (deduct)
                     // -------------------------
                     await conn.ExecuteAsync(@"
 UPDATE dbo.ItemPrice
@@ -582,9 +586,6 @@ WHERE Id = @Id;
 
                     // -------------------------
                     // 5) Update Stock row
-                    //  - Status = 2
-                    //  - OnHand/Available minus
-                    //  - TransferQty minus (your requirement)
                     // -------------------------
                     await conn.ExecuteAsync(@"
 UPDATE dbo.Stock
@@ -602,6 +603,76 @@ WHERE ID=@StockId AND ItemId=@ItemId;
                         t.ItemId,
                         Remarks = t.Remarks
                     }, tx);
+
+                    // =========================================================
+                    // 6) Update MR Line ReceivedQty (MaterialReqId = MrId)
+                    // =========================================================
+                    int mrId = (t.MrId.GetValueOrDefault(0) > 0)
+                        ? t.MrId.GetValueOrDefault(0)
+                        : st.MrId;
+
+                    if (mrId > 0)
+                    {
+                        var line = await conn.QueryFirstOrDefaultAsync<(int Id, decimal Qty, decimal ReceivedQty)>(@"
+SELECT TOP 1 Id,
+       CAST(Qty as decimal(18,4)) as Qty,
+       CAST(ISNULL(ReceivedQty,0) as decimal(18,4)) as ReceivedQty
+FROM dbo.MaterialRequisitionLine WITH (UPDLOCK, ROWLOCK)
+WHERE MaterialReqId = @MrId
+  AND ItemId = @ItemId
+ORDER BY Id DESC;
+", new { MrId = mrId, ItemId = t.ItemId }, tx);
+
+                        if (line.Id == 0)
+                            throw new Exception($"MR Line not found. MrId={mrId}, ItemId={t.ItemId}");
+
+                        decimal newReceived = line.ReceivedQty + t.TransferQty;
+                        if (newReceived > line.Qty) newReceived = line.Qty;
+
+                        await conn.ExecuteAsync(@"
+UPDATE dbo.MaterialRequisitionLine
+SET ReceivedQty = @ReceivedQty
+WHERE Id = @Id;
+", new { ReceivedQty = newReceived, Id = line.Id }, tx);
+
+                        touchedMrIds.Add(mrId);
+                    }
+                }
+
+                // =========================================================
+                // ✅ 7) Update MR Header Status:
+                //    If ALL lines fully received => Status = 3
+                //    Else => Status = 2
+                // =========================================================
+                if (touchedMrIds.Count > 0)
+                {
+                    var mrIdList = touchedMrIds.ToArray();
+
+                    // For each MR: if any pending line exists => partial
+                    var mrStatuses = await conn.QueryAsync<(int MrId, int HasPending)>(@"
+SELECT 
+    MaterialReqId AS MrId,
+    CASE 
+        WHEN SUM(CASE WHEN ISNULL(ReceivedQty,0) + 0.0000 < ISNULL(Qty,0) + 0.0000 THEN 1 ELSE 0 END) > 0 
+            THEN 1 
+        ELSE 0 
+    END AS HasPending
+FROM dbo.MaterialRequisitionLine WITH (UPDLOCK, ROWLOCK)
+WHERE MaterialReqId IN @MrIds
+GROUP BY MaterialReqId;
+", new { MrIds = mrIdList }, tx);
+
+                    foreach (var s in mrStatuses)
+                    {
+                        int newStatus = (s.HasPending == 1) ? 2 : 3;
+
+                        await conn.ExecuteAsync(@"
+UPDATE dbo.MaterialRequisition
+SET Status = @Status,
+    UpdatedDate = GETDATE()
+WHERE Id = @MrId;
+", new { Status = newStatus, MrId = s.MrId }, tx);
+                    }
                 }
 
                 tx.Commit();
@@ -612,6 +683,8 @@ WHERE ID=@StockId AND ItemId=@ItemId;
                 throw;
             }
         }
+
+
 
 
 
@@ -667,21 +740,86 @@ WHERE MrId IS NOT NULL AND MrId > 0;
         public async Task<IEnumerable<MaterialTransferListViewInfo>> GetMaterialTransferList()
         {
             const string query = @"
-select 
-s.ID as StockId, s.ItemName,s.Sku,s.FromWarehouseID,s.FromWarehouseName,s.ToWarehouseID,s.ToBinId,s.OnHand,s.Available,s.MrId,s.SupplierId,s.BinId,s.BinName,s.Status,s.ItemId,
-wh.Name as ToWarehouseName,
-b.BinName as ToBinName,
-mr.ReqNo,
-mrl.Qty as RequestQty,
-sp.Name as SupplierName
-from stock as s
+;WITH x AS (
+    SELECT
+        s.ID as StockId,
+        s.ItemName,
+        s.Sku,
+        s.FromWarehouseID,
+        s.FromWarehouseName,
+        s.ToWarehouseID,
+        s.ToBinId,
+        s.OnHand,
+        s.Available,
+        s.MrId,
+        s.SupplierId,
+        s.BinId,
+        s.BinName,
+        s.Status,
+        s.ItemId,
 
+        wh.Name as ToWarehouseName,
+        b.BinName as ToBinName,
+        mr.ReqNo,
 
-inner join Warehouse as wh on wh.Id = s.ToWarehouseID
-inner join Bin as b on b.ID = s.ToBinId
-inner join MaterialRequisition mr on mr.Id = s.MrId
-inner join MaterialRequisitionLine mrl on mrl.MaterialReqId = mr.Id
-inner join Suppliers as sp on sp.Id = s.SupplierId";
+        mrl.Qty as OriginalRequestQty,
+        mrl.ReceivedQty,
+
+        -- ✅ current pending based on MR line
+        CAST(mrl.Qty - ISNULL(mrl.ReceivedQty,0) AS decimal(18,4)) as PendingNow,
+
+        sp.Name as SupplierName,
+
+        -- ✅ include transfer qty for window calc
+        CAST(ISNULL(s.TransferQty,0) AS decimal(18,4)) as TransferQty,
+        ISNULL(s.isApproved, 0) as isApproved
+    FROM stock as s
+    inner join Warehouse as wh on wh.Id = s.ToWarehouseID
+    inner join Bin as b on b.ID = s.ToBinId
+    inner join MaterialRequisition mr on mr.Id = s.MrId
+
+    -- ✅ IMPORTANT: match correct line (avoid duplicates)
+    inner join MaterialRequisitionLine mrl 
+        on mrl.MaterialReqId = mr.Id
+       and mrl.ItemId = s.ItemId
+
+    inner join Suppliers as sp on sp.Id = s.SupplierId
+)
+SELECT
+    StockId, ItemName, Sku,
+    FromWarehouseID, FromWarehouseName,
+    ToWarehouseID, ToWarehouseName,
+    ToBinId, ToBinName,
+    OnHand, Available,
+    MrId, ReqNo,
+    SupplierId, SupplierName,
+    BinId, BinName,
+    Status, ItemId,
+    OriginalRequestQty,
+    ReceivedQty,
+
+    -- ✅ Row-wise RequestQty (1st row 10, 2nd row 5)
+    CAST(
+        PendingNow
+        + ISNULL(
+            SUM(
+                CASE 
+                    WHEN isApproved = 1 AND TransferQty <> 0
+                        THEN ABS(TransferQty)
+                    ELSE 0
+                END
+            )
+            OVER (
+                PARTITION BY MrId, ItemId
+                ORDER BY StockId
+                ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+            )
+        ,0)
+    AS decimal(18,4)) AS RequestQty
+FROM x
+ORDER BY MrId, ItemId, StockId;
+
+";
 
             return await Connection.QueryAsync<MaterialTransferListViewInfo>(query);
         }
@@ -691,21 +829,72 @@ inner join Suppliers as sp on sp.Id = s.SupplierId";
         public async Task<IEnumerable<MaterialTransferListViewInfo>> GetAllStockTransferedList()
         {
             const string query = @"
-select 
-s.ID as StockId, s.ItemName,s.Sku,s.FromWarehouseID,s.FromWarehouseName,s.ToWarehouseID,s.ToBinId,s.OnHand,s.Available,s.MrId,s.SupplierId,s.BinId,s.BinName,s.Status,s.TransferQty,
-wh.Name as ToWarehouseName,
-b.BinName as ToBinName,
-mr.ReqNo,
-mrl.Qty as RequestQty,
-sp.Name as SupplierName
-from stock as s
+;WITH x AS (
+    SELECT
+        s.ID as StockId,
+        s.ItemName,
+        s.Sku,
+        s.FromWarehouseID,
+        s.FromWarehouseName,
+        s.ToWarehouseID,
+        s.ToBinId,
+        s.OnHand,
+        s.Available,
+        s.MrId,
+        s.SupplierId,
+        s.BinId,
+        s.BinName,
+        s.Status,
+        s.TransferQty,
+        s.isApproved,
+		s.ItemId,
 
+        wh.Name as ToWarehouseName,
+        b.BinName as ToBinName,
+        mr.ReqNo,
 
-inner join Warehouse as wh on wh.Id = s.ToWarehouseID
-inner join Bin as b on b.ID = s.ToBinId
-inner join MaterialRequisition mr on mr.Id = s.MrId
-inner join MaterialRequisitionLine mrl on mrl.MaterialReqId = mr.Id
-inner join Suppliers as sp on sp.Id = s.SupplierId;
+        CAST(mrl.Qty - ISNULL(mrl.ReceivedQty,0) AS decimal(18,4)) as PendingNow,
+        sp.Name as SupplierName
+    FROM Stock s
+    INNER JOIN Warehouse wh ON wh.Id = s.ToWarehouseID
+    INNER JOIN Bin b ON b.ID = s.ToBinId
+    INNER JOIN MaterialRequisition mr ON mr.Id = s.MrId
+
+    -- ✅ IMPORTANT: join must match item (use sku/itemcode)
+    INNER JOIN MaterialRequisitionLine mrl
+        ON mrl.MaterialReqId = mr.Id
+       AND mrl.ItemCode = s.Sku
+
+    INNER JOIN Suppliers sp ON sp.Id = s.SupplierId
+)
+SELECT
+    StockId, ItemName, Sku,
+    FromWarehouseID, FromWarehouseName,
+    ToWarehouseID, ToWarehouseName,
+    ToBinId, ToBinName,
+    OnHand, Available,
+    MrId, ReqNo,
+    SupplierId, SupplierName,
+    BinId, BinName,
+    Status, TransferQty,itemId,
+
+    -- ✅ Row-wise RequestQty:
+    CAST(
+        PendingNow
+        + ISNULL(
+            SUM(CASE WHEN isApproved = 1 AND TransferQty IS NOT NULL
+                     THEN ABS(CAST(TransferQty AS decimal(18,4)))
+                     ELSE 0 END)
+            OVER (
+                PARTITION BY MrId, Sku
+                ORDER BY StockId
+                ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING
+            )
+        ,0)
+    AS decimal(18,4)) AS RequestQty
+FROM x
+ORDER BY MrId, Sku, StockId;
+
 
 ";
             return await Connection.QueryAsync<MaterialTransferListViewInfo>(query);
