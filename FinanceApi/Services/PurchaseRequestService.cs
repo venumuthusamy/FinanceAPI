@@ -62,5 +62,8 @@ namespace FinanceApi.Services
             );
         }
 
+        public Task<int> CreateFromRecipeShortageAsync(CreatePrFromRecipeShortageRequest req)
+        => _repository.CreateFromRecipeShortageAsync(req);
+
     }
 }

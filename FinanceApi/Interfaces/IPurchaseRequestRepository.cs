@@ -19,6 +19,7 @@ namespace FinanceApi.Interfaces
      string? note,
      DateTime? headerDeliveryDate, long? stockReorderId);
 
+        Task<int> CreateFromRecipeShortageAsync(CreatePrFromRecipeShortageRequest req);
 
     }
-}
+    }

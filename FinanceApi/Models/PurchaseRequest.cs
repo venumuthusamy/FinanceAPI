@@ -24,9 +24,9 @@ namespace FinanceApi.Models
 
         public DateTime? UpdatedDate { get; set; }
 
-        public string CreatedBy { get; set; }
+        public int CreatedBy { get; set; }
 
-        public string UpdatedBy { get; set; }
+        public int UpdatedBy { get; set; }
         public string PurchaseRequestNo { get; set; }
         public bool IsActive { get; set; }
         public int Status {  get; set; }
