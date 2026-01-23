@@ -17,5 +17,7 @@
         public decimal Qty { get; set; }
 
         public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
+
+        public int ReceivedQty { get; set; }
     }
 }

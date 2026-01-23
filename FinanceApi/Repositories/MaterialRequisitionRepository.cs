@@ -47,6 +47,7 @@ SELECT
     l.UomId,
     l.UomName,
     l.Qty,
+l.ReceivedQty,
     l.CreatedDate
 FROM dbo.MaterialRequisitionLine l
 INNER JOIN dbo.MaterialRequisition mr ON mr.Id = l.MaterialReqId
@@ -105,6 +106,7 @@ SELECT
     l.UomId,
     l.UomName,
     l.Qty,
+l.ReceivedQty,
     l.CreatedDate
 FROM dbo.MaterialRequisitionLine l
 WHERE l.MaterialReqId = @Id
