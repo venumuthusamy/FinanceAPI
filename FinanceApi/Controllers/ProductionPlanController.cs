@@ -29,5 +29,11 @@ namespace FinanceApi.Controllers
             var id = await _repo.SavePlanAsync(req);
             return Ok(new { productionPlanId = id });
         }
+        [HttpGet("list-with-lines")]
+        public async Task<IActionResult> ListWithLines()
+        {
+            var data = await _repo.ListPlansWithLinesAsync();
+            return Ok(new { isSuccess = true, data });
+        }
     }
 }

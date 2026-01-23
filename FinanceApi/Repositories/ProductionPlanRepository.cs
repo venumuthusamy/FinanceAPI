@@ -54,5 +54,24 @@ ORDER BY Id DESC;";
 
             return planId;
         }
+        public async Task<List<ProductionPlanListDto>> ListPlansWithLinesAsync()
+        {
+            using var multi = await Connection.QueryMultipleAsync(
+                "dbo.sp_PP_ListPlans_WithLines",
+                commandType: CommandType.StoredProcedure
+            );
+
+            var plans = (await multi.ReadAsync<ProductionPlanListDto>()).ToList();
+            var lines = (await multi.ReadAsync<ProductionPlanLineDto>()).ToList();
+
+            var dict = plans.ToDictionary(x => x.Id, x => x);
+            foreach (var ln in lines)
+            {
+                if (dict.TryGetValue(ln.ProductionPlanId, out var p))
+                    p.Lines.Add(ln);
+            }
+
+            return plans;
+        }
     }
 }
