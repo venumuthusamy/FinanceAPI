@@ -1,4 +1,6 @@
 ﻿using System.Data;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
@@ -210,15 +212,17 @@ ORDER BY pr.Id DESC;
             pr.CreatedDate = DateTime.UtcNow;
             pr.UpdatedDate = DateTime.UtcNow;
 
+            if (pr.IsReorder == null) pr.IsReorder = false;
+
             // Step 5: Insert new record
             const string insertQuery = @"
         INSERT INTO PurchaseRequest
             (Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines, CreatedDate,
-             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status,StockReorderId)
+             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status,IsReorder,StockReorderId)
         OUTPUT INSERTED.ID
         VALUES
             (@Requester, @DepartmentID, @DeliveryDate, @MultiLoc, @Oversea, @PRLines, @CreatedDate,
-             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status,@StockReorderId)";
+             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status,@IsReorder,@StockReorderId)";
 
             return await Connection.QueryFirstAsync<int>(insertQuery, pr);
         }
@@ -406,6 +410,207 @@ VALUES
             }
             return $"PR-{next:D4}";
         }
+
+        private async Task<int> GetDepartmentIdByUserIdAsync(IDbConnection conn, int userId, IDbTransaction tx)
+        {
+            // உங்கள் table name dbo.User (reserved keyword) → [] use பண்ணணும்
+            const string sql = @"SELECT TOP 1 ISNULL(DepartmentId, 1)
+                         FROM dbo.[User]
+                         WHERE Id = @UserId AND ISNULL(IsActive, 1) = 1";
+
+            return await conn.QueryFirstOrDefaultAsync<int>(sql, new { UserId = userId }, tx);
+        }
+
+
+        public async Task<int> CreateFromRecipeShortageAsync(CreatePrFromRecipeShortageRequest req)
+        {
+            using var conn = Connection;
+            if (conn.State != ConnectionState.Open)
+                await ((SqlConnection)conn).OpenAsync();
+
+            using var tx = conn.BeginTransaction();
+            try
+            {
+                // ✅ 0) Get DepartmentId from User table
+                var departmentId = await GetDepartmentIdByUserIdAsync(conn, req.UserId, tx);
+
+                const string shortageSql = @"
+;WITH so AS (
+    SELECT 
+        CAST(sol.ItemId AS BIGINT) AS FinishedItemId,
+        CAST(ISNULL(sol.Quantity,0) AS DECIMAL(18,4)) AS PlannedQty
+    FROM dbo.SalesOrderLines sol
+    WHERE sol.SalesOrderId = @SalesOrderId
+      AND ISNULL(sol.IsActive,1) = 1
+),
+ing AS (
+    SELECT
+        s.FinishedItemId,
+        s.PlannedQty,
+        rh.Id AS RecipeId,
+        CAST(ISNULL(rh.ExpectedOutput,0) AS DECIMAL(18,4)) AS ExpectedOutput,
+        CAST(ri.IngredientItemId AS BIGINT) AS IngredientItemId,
+        CAST(ISNULL(ri.Qty,0) AS DECIMAL(18,4)) AS IngredientQty,
+        CAST(ISNULL(ri.YieldPct,100) AS DECIMAL(18,4)) AS LineYieldPct,
+        ISNULL(NULLIF(ri.Uom,''),'') AS Uom
+    FROM so s
+    INNER JOIN dbo.RecipeHeader rh 
+        ON rh.FinishedItemId = s.FinishedItemId
+       AND ISNULL(rh.Status,'') <> 'Deleted'
+    INNER JOIN dbo.RecipeIngredient ri 
+        ON ri.RecipeId = rh.Id
+),
+reqq AS (
+    SELECT
+        IngredientItemId,
+        Uom,
+        SUM(
+            CASE 
+              WHEN ISNULL(PlannedQty,0) <= 0 THEN 0
+              WHEN ISNULL(ExpectedOutput,0) <= 0 THEN 
+                    (PlannedQty * IngredientQty)
+                    / (CASE WHEN LineYieldPct <= 0 THEN 1 ELSE (LineYieldPct/100.0) END)
+              ELSE
+                    (PlannedQty * (IngredientQty / ExpectedOutput))
+                    / (CASE WHEN LineYieldPct <= 0 THEN 1 ELSE (LineYieldPct/100.0) END)
+            END
+        ) AS RequiredQty
+    FROM ing
+    GROUP BY IngredientItemId, Uom
+),
+av AS (
+    SELECT
+        CAST(iws.ItemId AS BIGINT) AS ItemId,
+        SUM(CAST(ISNULL(iws.Available,0) AS DECIMAL(18,4))) AS AvailableQty
+    FROM dbo.ItemWarehouseStock iws
+    WHERE iws.WarehouseId = @WarehouseId
+    GROUP BY iws.ItemId
+)
+SELECT
+    r.IngredientItemId,
+    ISNULL(im.Name,'') AS IngredientItemName,
+    ISNULL(im.Sku,'')  AS ItemCode,
+    ISNULL(NULLIF(r.Uom,''), ISNULL(im.Uom,'')) AS Uom,
+    CAST(r.RequiredQty AS DECIMAL(18,4)) AS RequiredQty,
+    CAST(ISNULL(a.AvailableQty,0) AS DECIMAL(18,4)) AS AvailableQty,
+    CAST(
+        CASE WHEN r.RequiredQty > ISNULL(a.AvailableQty,0) 
+             THEN (r.RequiredQty - ISNULL(a.AvailableQty,0)) ELSE 0 END
+        AS DECIMAL(18,4)
+    ) AS ShortageQty
+FROM reqq r
+LEFT JOIN av a ON a.ItemId = r.IngredientItemId
+LEFT JOIN dbo.ItemMaster im ON im.Id = r.IngredientItemId
+WHERE r.RequiredQty > 0
+  AND (r.RequiredQty - ISNULL(a.AvailableQty,0)) > 0
+ORDER BY r.IngredientItemId;
+";
+
+                var shortage = (await conn.QueryAsync<RecipeShortageRowDto>(
+                    shortageSql,
+                    new { req.SalesOrderId, req.WarehouseId },
+                    tx
+                )).AsList();
+
+                if (shortage == null || shortage.Count == 0)
+                {
+                    tx.Commit();
+                    return 0;
+                }
+
+
+                // ✅ 2) PRLines = your UI schema (original keys)
+                var prLines = shortage.Select(x => new
+                {
+                    itemSearch = x.IngredientItemName,
+                    itemCode = x.ItemCode,           // ItemMaster.Sku
+                    qty = x.ShortageQty,             // ✅ 100-20 = 80
+                    uomSearch = x.Uom,
+                    uom = x.Uom,
+                    locationSearch = "",
+                    location = "",
+                    budget = "",
+                    remarks = $"Auto from SO:{req.SalesOrderId}"
+                }).ToList();
+
+                var prLinesJson = System.Text.Json.JsonSerializer.Serialize(prLines);
+
+                // ✅ 3) Build PR entity (DeliveryDate today if null)
+                var pr = new PurchaseRequest
+                {
+                    Requester = string.IsNullOrWhiteSpace(req.UserName) ? "System" : req.UserName.Trim(),
+                    DepartmentID = departmentId,
+                    DeliveryDate = (req.DeliveryDate ?? DateTime.Today).Date,   // ✅ today
+                    MultiLoc = false,
+                    Oversea = false,
+                    PRLines = prLinesJson,
+                    CreatedBy = req.UserId,    // ✅ int
+                    UpdatedBy = req.UserId,    // ✅ int
+                    Description = string.IsNullOrWhiteSpace(req.Note)
+                        ? $"Auto from Production Planning SO:{req.SalesOrderId}"
+                        : req.Note,
+                    IsActive = true,
+                    Status = 1,
+                    IsReorder = false,
+                    StockReorderId = null
+                };
+
+                // ✅ 4) Use your CreateAsync to generate PR-0001 series
+                // Important: CreateAsync currently uses Connection without tx.
+                // So create a Transaction version OR copy insert logic here using tx.
+
+                var prId = await CreateAsyncTx(pr, conn, tx);
+
+                tx.Commit();
+                return prId;
+            }
+            catch
+            {
+                tx.Rollback();
+                throw;
+            }
+        }
+
+        public async Task<int> CreateAsyncTx(PurchaseRequest pr, IDbConnection conn, IDbTransaction tx)
+        {
+            const string getLastPurchaseRequestNo = @"
+SELECT TOP 1 PurchaseRequestNo
+FROM dbo.PurchaseRequest WITH (UPDLOCK, HOLDLOCK)
+WHERE PurchaseRequestNo LIKE 'PR-%'
+  AND ISNUMERIC(SUBSTRING(PurchaseRequestNo, 4, LEN(PurchaseRequestNo))) = 1
+ORDER BY ID DESC;";
+
+
+            var lastPR = await conn.QueryFirstOrDefaultAsync<string>(getLastPurchaseRequestNo, transaction: tx);
+
+            int nextNumber = 1;
+
+            if (!string.IsNullOrWhiteSpace(lastPR) && lastPR.StartsWith("PR-"))
+            {
+                var numericPart = lastPR.Substring(3); // remove "PR-"
+                if (int.TryParse(numericPart, out int lastNumber))
+                    nextNumber = lastNumber + 1;
+            }
+
+            pr.PurchaseRequestNo = $"PR-{nextNumber:D4}";
+            pr.CreatedDate = DateTime.UtcNow;
+            pr.UpdatedDate = DateTime.UtcNow;
+
+            const string insertQuery = @"
+INSERT INTO dbo.PurchaseRequest
+(Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines, CreatedDate,
+ UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo, IsActive, Status, IsReorder, StockReorderId)
+OUTPUT INSERTED.ID
+VALUES
+(@Requester, @DepartmentID, @DeliveryDate, @MultiLoc, @Oversea, @PRLines, @CreatedDate,
+ @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo, @IsActive, @Status, @IsReorder, @StockReorderId);";
+
+            return await conn.QueryFirstAsync<int>(insertQuery, pr, transaction: tx);
+        }
+
+
+
+
 
     }
 }

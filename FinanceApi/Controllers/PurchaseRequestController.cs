@@ -93,5 +93,24 @@ namespace FinanceApi.Controllers
 
             return Ok(new { created });
         }
+
+        [HttpPost("create-from-recipe-shortage")]
+        public async Task<IActionResult> CreateFromRecipeShortage([FromBody] CreatePrFromRecipeShortageRequest req)
+        {
+            if (req == null) return BadRequest("Payload required");
+            if (req.SalesOrderId <= 0) return BadRequest("SalesOrderId required");
+            if (req.WarehouseId <= 0) return BadRequest("WarehouseId required");
+            if (req.OutletId <= 0) return BadRequest("OutletId required");
+            if (req.UserId <= 0) return BadRequest("UserId required");
+            if (string.IsNullOrWhiteSpace(req.UserName)) return BadRequest("UserName required");
+
+            var prId = await _service.CreateFromRecipeShortageAsync(req);
+
+            if (prId <= 0)
+                return Ok(new { isSuccess = true, message = "No shortage items. PR not created.", prId = 0 });
+
+            return Ok(new { isSuccess = true, message = "PR created from recipe shortage", prId });
+        }
+
     }
 }
