@@ -18,5 +18,8 @@ namespace FinanceApi.Models
         public string GRNJson { get; set; }
 
         public bool isActive { get; set; } = true;
+
+        public string? SourceType { get; set; }
+        public int? SourceRefId { get; set; }
     }
 }

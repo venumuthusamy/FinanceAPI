@@ -221,20 +221,59 @@ ORDER BY po.Id;
                 var nextNumber = lastId + 1;
                 purchaseOrder.PurchaseOrderNo = $"PO-{nextNumber:00000}";
 
+                // ✅ 1.5) Derive SourceType/SourceRefId from PRs in PoLines
+                var src = await conn.QueryFirstOrDefaultAsync<(string? SourceType, int? SourceRefId)>(@"
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (
+        __fromPR bit          '$.__fromPR',
+        prNo     nvarchar(50) '$.prNo'
+    )
+    WHERE ISNULL(__fromPR, 0) = 1
+      AND ISNULL(prNo, '') <> ''
+),
+Src AS (
+    SELECT
+        COUNT(*) AS Cnt,
+        COUNT(DISTINCT ISNULL(PR.SourceType,'')) AS SrcTypeCnt,
+        COUNT(DISTINCT ISNULL(CONVERT(nvarchar(50),PR.SourceRefId),'')) AS SrcRefCnt,
+        MIN(PR.SourceType) AS SourceType,
+        MIN(PR.SourceRefId) AS SourceRefId
+    FROM dbo.PurchaseRequest PR
+    JOIN PRs ON PR.PurchaseRequestNo = PRs.prNo
+)
+SELECT
+    SourceType =
+        CASE WHEN Cnt = 0 THEN NULL
+             WHEN SrcTypeCnt = 1 THEN SourceType
+             ELSE 'MIXED' END,
+    SourceRefId =
+        CASE WHEN Cnt = 0 THEN NULL
+             WHEN SrcRefCnt = 1 THEN SourceRefId
+             ELSE NULL END
+FROM Src;
+", new { PoLines = purchaseOrder.PoLines }, tx);
+
+                // set into PO object
+                purchaseOrder.SourceType = src.SourceType;
+                purchaseOrder.SourceRefId = src.SourceRefId;
+
+
                 // 2) Insert PO and capture Id
                 const string insertPoSql = @"
 INSERT INTO dbo.PurchaseOrder
 (
     PurchaseOrderNo, SupplierId, ApproveLevelId, ApprovalStatus, PaymentTermId,
     CurrencyId, IncotermsId, PoDate, DeliveryDate, Remarks, FxRate, Tax,Location,ContactNumber,Shipping,
-    Discount, SubTotal, NetTotal, PoLines, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive
+    Discount, SubTotal, NetTotal, PoLines, CreatedBy, CreatedDate, UpdatedBy, UpdatedDate, IsActive,SourceType, SourceRefId
 )
 OUTPUT INSERTED.Id
 VALUES
 (
     @PurchaseOrderNo, @SupplierId, @ApproveLevelId, @ApprovalStatus, @PaymentTermId,
     @CurrencyId, @IncotermsId, @PoDate, @DeliveryDate, @Remarks, @FxRate, @Tax,@Location,@ContactNumber, @Shipping,
-    @Discount, @SubTotal, @NetTotal, @PoLines, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive
+    @Discount, @SubTotal, @NetTotal, @PoLines, @CreatedBy, @CreatedDate, @UpdatedBy, @UpdatedDate, @IsActive,@SourceType, @SourceRefId
 );";
 
                 var poId = await conn.ExecuteScalarAsync<int>(insertPoSql, purchaseOrder, tx);
@@ -336,6 +375,45 @@ JOIN SRids X ON X.StockReorderId = L.StockReorderId;
             using var tx = conn.BeginTransaction();
             try
             {
+
+                // ✅ 1.5) Derive SourceType/SourceRefId from PRs in PoLines
+                var src = await conn.QueryFirstOrDefaultAsync<(string? SourceType, int? SourceRefId)>(@"
+;WITH PRs AS (
+    SELECT DISTINCT prNo = LTRIM(RTRIM(prNo))
+    FROM OPENJSON(@PoLines)
+    WITH (
+        __fromPR bit          '$.__fromPR',
+        prNo     nvarchar(50) '$.prNo'
+    )
+    WHERE ISNULL(__fromPR, 0) = 1
+      AND ISNULL(prNo, '') <> ''
+),
+Src AS (
+    SELECT
+        COUNT(*) AS Cnt,
+        COUNT(DISTINCT ISNULL(PR.SourceType,'')) AS SrcTypeCnt,
+        COUNT(DISTINCT ISNULL(CONVERT(nvarchar(50),PR.SourceRefId),'')) AS SrcRefCnt,
+        MIN(PR.SourceType) AS SourceType,
+        MIN(PR.SourceRefId) AS SourceRefId
+    FROM dbo.PurchaseRequest PR
+    JOIN PRs ON PR.PurchaseRequestNo = PRs.prNo
+)
+SELECT
+    SourceType =
+        CASE WHEN Cnt = 0 THEN NULL
+             WHEN SrcTypeCnt = 1 THEN SourceType
+             ELSE 'MIXED' END,
+    SourceRefId =
+        CASE WHEN Cnt = 0 THEN NULL
+             WHEN SrcRefCnt = 1 THEN SourceRefId
+             ELSE NULL END
+FROM Src;
+", new { PoLines = updatedPurchaseOrder.PoLines }, tx);
+
+                updatedPurchaseOrder.SourceType = src.SourceType;
+                updatedPurchaseOrder.SourceRefId = src.SourceRefId;
+
+
                 // 1) Update PO header
                 const string updatePoSql = @"
 UPDATE dbo.PurchaseOrder 
@@ -359,6 +437,8 @@ SET
     SubTotal        = @SubTotal,
     NetTotal        = @NetTotal,
     PoLines         = @PoLines,
+    SourceType     = @SourceType,
+    SourceRefId    = @SourceRefId,
     UpdatedBy       = @UpdatedBy,
     UpdatedDate     = @UpdatedDate,
     IsActive        = @IsActive

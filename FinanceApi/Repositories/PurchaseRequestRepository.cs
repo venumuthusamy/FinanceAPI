@@ -218,11 +218,11 @@ ORDER BY pr.Id DESC;
             const string insertQuery = @"
         INSERT INTO PurchaseRequest
             (Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines, CreatedDate,
-             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status,IsReorder,StockReorderId)
+             UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo,IsActive,Status,IsReorder,StockReorderId,SourceType, SourceRefId)
         OUTPUT INSERTED.ID
         VALUES
             (@Requester, @DepartmentID, @DeliveryDate, @MultiLoc, @Oversea, @PRLines, @CreatedDate,
-             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status,@IsReorder,@StockReorderId)";
+             @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo,@IsActive,@Status,@IsReorder,@StockReorderId,@SourceType, @SourceRefId)";
 
             return await Connection.QueryFirstAsync<int>(insertQuery, pr);
         }
@@ -552,7 +552,9 @@ ORDER BY r.IngredientItemId;
                     IsActive = true,
                     Status = 1,
                     IsReorder = false,
-                    StockReorderId = null
+                    StockReorderId = null,
+                    SourceType = "RECIPE_SHORTAGE",
+                    SourceRefId = req.SalesOrderId
                 };
 
                 // ✅ 4) Use your CreateAsync to generate PR-0001 series
@@ -599,11 +601,11 @@ ORDER BY ID DESC;";
             const string insertQuery = @"
 INSERT INTO dbo.PurchaseRequest
 (Requester, DepartmentID, DeliveryDate, MultiLoc, Oversea, PRLines, CreatedDate,
- UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo, IsActive, Status, IsReorder, StockReorderId)
+ UpdatedDate, CreatedBy, UpdatedBy, Description, PurchaseRequestNo, IsActive, Status, IsReorder, StockReorderId,SourceType, SourceRefId)
 OUTPUT INSERTED.ID
 VALUES
 (@Requester, @DepartmentID, @DeliveryDate, @MultiLoc, @Oversea, @PRLines, @CreatedDate,
- @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo, @IsActive, @Status, @IsReorder, @StockReorderId);";
+ @UpdatedDate, @CreatedBy, @UpdatedBy, @Description, @PurchaseRequestNo, @IsActive, @Status, @IsReorder, @StockReorderId,@SourceType, @SourceRefId);";
 
             return await conn.QueryFirstAsync<int>(insertQuery, pr, transaction: tx);
         }

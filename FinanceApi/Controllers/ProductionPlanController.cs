@@ -35,5 +35,13 @@ namespace FinanceApi.Controllers
             var data = await _repo.ListPlansWithLinesAsync();
             return Ok(new { isSuccess = true, data });
         }
+
+        [HttpGet("shortage-grn-alerts")]
+        public async Task<IActionResult> GetShortageGrnAlerts()
+        {
+            var list = await _repo.GetShortageGrnAlertsAsync();
+            return Ok(new { data = list, count = list.Count() });
+        }
+
     }
 }
