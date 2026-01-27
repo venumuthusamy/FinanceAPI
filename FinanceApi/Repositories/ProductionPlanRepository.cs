@@ -1,8 +1,10 @@
-﻿using System.Data;
-using Dapper;
+﻿using Dapper;
 using FinanceApi.Data;
 using FinanceApi.Interfaces;
 using FinanceApi.ModelDTO;
+using Microsoft.Data.SqlClient;
+using System.Data;
+using System.Text.Json;
 
 namespace FinanceApi.Repositories
 {
@@ -11,20 +13,30 @@ namespace FinanceApi.Repositories
         private readonly IDbConnection _db;
         public ProductionPlanRepository(IDbConnectionFactory connectionFactory) : base(connectionFactory) { }
 
-        public async Task<IEnumerable<SoHeaderDto>> GetSalesOrdersAsync()
+        public async Task<IEnumerable<SoHeaderDto>> GetSalesOrdersAsync(int? includeSoId = null)
         {
             const string sql = @"
 SELECT TOP 200
-  Id,
-  SalesOrderNo,
-  CustomerId,
-  DeliveryDate,
-  Status
-FROM dbo.SalesOrder
-WHERE ISNULL(IsActive,1)=1
-ORDER BY Id DESC;";
-            return await Connection.QueryAsync<SoHeaderDto>(sql);
+    so.Id,
+    so.SalesOrderNo,
+    so.CustomerId,
+    so.DeliveryDate,
+    so.Status
+FROM dbo.SalesOrder so
+LEFT JOIN dbo.ProductionPlan pp
+  ON pp.SalesOrderId = so.Id
+ AND pp.Status <> 'Cancelled'           -- optional: ignore cancelled plans
+WHERE ISNULL(so.IsActive, 1) = 1
+  AND (
+        pp.Id IS NULL                   -- not planned yet
+        OR so.Id = @IncludeSoId         -- include edit SO
+      )
+ORDER BY so.Id DESC;
+";
+
+            return await Connection.QueryAsync<SoHeaderDto>(sql, new { IncludeSoId = includeSoId });
         }
+
 
         public async Task<ProductionPlanResponseDto> GetBySalesOrderAsync(int salesOrderId, int warehouseId)
         {
@@ -104,7 +116,88 @@ ORDER BY pg.Id DESC;";
 
             return await Connection.QueryAsync<ShortageGrnAlertDto>(sql);
         }
+        public async Task<int> UpdateAsync(ProductionPlanUpdateRequest req)
+        {
+            var linesJson = JsonSerializer.Serialize(req.Lines ?? new());
 
+            var pid = await Connection.ExecuteScalarAsync<int>(
+                "[dbo].[sp_PP_UpdatePlan]",
+                new
+                {
+                    req.Id,
+                    req.SalesOrderId,
+                    req.OutletId,
+                    req.WarehouseId,
+                    PlanDate = req.PlanDate.Date,
+                    req.Status,
+                    UpdatedBy = req.UpdatedBy,
+                    LinesJson = linesJson
+                },
+                commandType: CommandType.StoredProcedure
+            );
+
+            return pid;
+        }
+
+        public async Task<int> DeleteAsync(int id)
+        {
+            var pid = await Connection.ExecuteScalarAsync<int>(
+                "[dbo].[sp_PP_DeletePlan]",
+                new { Id = id },
+                commandType: CommandType.StoredProcedure
+            );
+
+            return pid;
+        }
+        public async Task<ProductionPlanGetByIdDto> GetByIdAsync(int id)
+        {
+            using var conn = (SqlConnection)Connection;
+            if (conn.State != ConnectionState.Open)
+                await conn.OpenAsync();
+
+            const string sql = @"
+-- 1) Header
+SELECT TOP 1
+  p.Id,
+  p.SalesOrderId,
+  p.OutletId,
+  p.WarehouseId,
+  p.PlanDate,
+  p.Status,
+  p.CreatedBy,
+  p.CreatedDate
+FROM [Finance].[dbo].[ProductionPlan] p
+WHERE p.Id = @Id;
+
+-- 2) Lines
+SELECT
+  pl.Id,
+  pl.ProductionPlanId,
+  pl.RecipeId,
+  pl.FinishedItemId,
+  CAST(pl.PlannedQty AS DECIMAL(18,4)) AS PlannedQty,
+  CAST(pl.ExpectedOutput AS DECIMAL(18,4)) AS ExpectedOutput,
+  im.Name AS FinishedItemName
+FROM [dbo].[ProductionPlanLines] pl
+LEFT JOIN [dbo].[ItemMaster] im ON im.Id = pl.FinishedItemId
+WHERE pl.ProductionPlanId = @Id
+ORDER BY pl.Id;
+";
+
+            using var multi = await conn.QueryMultipleAsync(sql, new { Id = id });
+
+            var header = await multi.ReadFirstOrDefaultAsync<ProductionPlanHeaderDto>();
+            if (header == null)
+                throw new Exception("Production plan not found");
+
+            var lines = (await multi.ReadAsync<ProductionPlanLineDto>()).AsList();
+
+            return new ProductionPlanGetByIdDto
+            {
+                Header = header,
+                Lines = lines
+            };
+        }
 
     }
 }

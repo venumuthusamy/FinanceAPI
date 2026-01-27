@@ -65,7 +65,46 @@
         public string? CreatedBy { get; set; }
         public DateTime CreatedDate { get; set; }
         public decimal TotalShortage { get; set; }
+        public string ProductionPlanNo { get; set; }    
+        public List<ProductionPlanLineDto> Lines { get; set; } = new();
+    }
+    public class ProductionPlanLineUpsertDto
+    {
+        public int RecipeId { get; set; }
+        public int FinishedItemId { get; set; }
+        public decimal PlannedQty { get; set; }
+        public decimal ExpectedOutput { get; set; }
+    }
 
+    public class ProductionPlanUpdateRequest
+    {
+        public int Id { get; set; }
+        public int SalesOrderId { get; set; }
+        public int OutletId { get; set; }
+        public int WarehouseId { get; set; }
+        public DateTime PlanDate { get; set; }
+        public string Status { get; set; } = "Draft";
+        public string UpdatedBy { get; set; } = "";
+        public List<ProductionPlanLineUpsertDto> Lines { get; set; } = new();
+    }
+
+    public class ProductionPlanHeaderDto
+    {
+        public int Id { get; set; }
+        public int SalesOrderId { get; set; }
+        public int OutletId { get; set; }
+        public int WarehouseId { get; set; }
+        public DateTime PlanDate { get; set; }
+        public string Status { get; set; } = "";
+        public string? CreatedBy { get; set; }
+        public DateTime CreatedDate { get; set; }
+    }
+
+ 
+
+    public class ProductionPlanGetByIdDto
+    {
+        public ProductionPlanHeaderDto Header { get; set; } = new();
         public List<ProductionPlanLineDto> Lines { get; set; } = new();
     }
 
